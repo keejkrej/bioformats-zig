@@ -3,11 +3,21 @@ const bio = @import("../root.zig");
 
 const magic = "SpimData";
 const max_metadata_bytes = 64 * 1024 * 1024;
+const max_image_bytes = 512 * 1024 * 1024;
+const hdf5_signature = "\x89HDF\r\n\x1a\n";
 
 const Dimensions = struct {
     width: u32,
     height: u32,
     size_z: u16,
+};
+
+const Dataset = struct {
+    size_z: u16,
+    height: u32,
+    width: u32,
+    data_offset: usize,
+    data_size: usize,
 };
 
 pub fn matches(data: []const u8) bool {
@@ -38,6 +48,47 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     _ = data;
     _ = plane_index;
     return error.UnsupportedVariant;
+}
+
+pub fn readPlanePathRegionIndex(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    path: []const u8,
+    plane_index: u32,
+    region: bio.Region,
+) !bio.Plane {
+    if (!isPath(path)) return error.InvalidFormat;
+    const xml_path = if (hasExtension(path, "h5")) try siblingXmlPath(allocator, path) else try allocator.dupe(u8, path);
+    defer allocator.free(xml_path);
+
+    const xml = try std.Io.Dir.cwd().readFileAlloc(io, xml_path, allocator, .limited(max_metadata_bytes));
+    defer allocator.free(xml);
+    const metadata = try metadataFromXml(xml);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
+
+    const h5_name = tagText(xml, "hdf5") orelse return error.InvalidFormat;
+    const parent = try parentPath(allocator, xml_path);
+    defer allocator.free(parent);
+    const h5_path = try joinPath(allocator, parent, std.mem.trim(u8, h5_name, " \t\r\n"));
+    defer allocator.free(h5_path);
+    const h5 = try std.Io.Dir.cwd().readFileAlloc(io, h5_path, allocator, .limited(max_image_bytes));
+    defer allocator.free(h5);
+
+    const zct = try planeToZct(metadata, plane_index);
+    const dataset_index = std.math.add(usize, std.math.mul(usize, zct.t, metadata.size_c) catch return error.UnsupportedVariant, zct.c) catch return error.UnsupportedVariant;
+    const dataset = findDataset(h5, metadata, dataset_index) orelse return error.UnsupportedVariant;
+    const plane_len = try planeByteCount(metadata);
+    const z_offset = std.math.mul(usize, zct.z, plane_len) catch return error.UnsupportedVariant;
+    if (z_offset + plane_len > dataset.data_size) return error.TruncatedData;
+    const offset = dataset.data_offset + z_offset;
+    if (offset + plane_len > h5.len) return error.TruncatedData;
+    const full = try allocator.dupe(u8, h5[offset..][0..plane_len]);
+    errdefer allocator.free(full);
+    const plane: bio.Plane = .{ .metadata = metadata, .data = full };
+    try region.validate(metadata);
+    if (region.isFull(metadata)) return plane;
+    defer allocator.free(full);
+    return .{ .metadata = metadata, .data = try bio.cropPlane(allocator, plane, region) };
 }
 
 fn metadataFromXml(xml: []const u8) bio.ReaderError!bio.Metadata {
@@ -194,12 +245,166 @@ fn parseSizeTriple(text: []const u8) bio.ReaderError![3]u32 {
     return values;
 }
 
+const Zct = struct {
+    z: usize,
+    c: usize,
+    t: usize,
+};
+
+fn planeToZct(metadata: bio.Metadata, plane_index: u32) bio.ReaderError!Zct {
+    const zc = std.math.mul(u32, metadata.size_z, metadata.size_c) catch return error.InvalidPlaneIndex;
+    return .{
+        .z = plane_index % metadata.size_z,
+        .c = (plane_index / metadata.size_z) % metadata.size_c,
+        .t = plane_index / zc,
+    };
+}
+
+fn findDataset(data: []const u8, metadata: bio.Metadata, target_index: usize) ?Dataset {
+    if (data.len < hdf5_signature.len or !std.mem.eql(u8, data[0..hdf5_signature.len], hdf5_signature)) return null;
+    var seen: usize = 0;
+    var offset: usize = 0;
+    while (offset + 64 <= data.len) : (offset += 1) {
+        const dataset = parseObjectHeaderForZyx(data, offset) orelse continue;
+        if (dataset.width != metadata.width or dataset.height != metadata.height or dataset.size_z != metadata.size_z) continue;
+        const expected_stack = std.math.mul(usize, planeByteCount(metadata) catch return null, metadata.size_z) catch return null;
+        if (dataset.data_size < expected_stack) continue;
+        if (seen == target_index) return dataset;
+        seen += 1;
+    }
+    return null;
+}
+
+fn parseObjectHeaderForZyx(data: []const u8, offset: usize) ?Dataset {
+    if (data[offset] != 1 or data[offset + 1] != 0) return null;
+    const message_count = readU16(data, offset + 2);
+    if (message_count == 0 or message_count > 32) return null;
+    const ref_count = readU32(data, offset + 4);
+    const header_size = readU32(data, offset + 8);
+    if (ref_count == 0 or header_size == 0 or header_size > 4096) return null;
+
+    var dims: ?[3]u64 = null;
+    var element_size: ?u8 = null;
+    var data_offset: ?usize = null;
+    var data_size: ?usize = null;
+    var has_filter_pipeline = false;
+    var pos = offset + 16;
+    var i: u16 = 0;
+    while (i < message_count) : (i += 1) {
+        if (pos + 8 > data.len) return null;
+        const message_type = readU16(data, pos);
+        const message_size = readU16(data, pos + 2);
+        const payload = pos + 8;
+        const end = payload + @as(usize, message_size);
+        if (end > data.len) return null;
+        if (message_type == 1) {
+            dims = parseDataspaceMessage(data[payload..end]);
+        } else if (message_type == 3 and message_size >= 4) {
+            const size = data[payload + 3];
+            if (size == 1 or size == 2 or size == 4) element_size = size;
+        } else if (message_type == 8) {
+            if (parseContiguousLayoutMessage(data[payload..end])) |layout| {
+                data_offset = layout.offset;
+                data_size = layout.size;
+            }
+        } else if (message_type == 11) {
+            has_filter_pipeline = true;
+        }
+        pos = end;
+        const relative = pos - offset;
+        if (relative % 8 != 0) pos += 8 - (relative % 8);
+    }
+    if (has_filter_pipeline or (element_size orelse 2) != 2) return null;
+    const shape = dims orelse return null;
+    if (shape[0] > std.math.maxInt(u16) or shape[1] > std.math.maxInt(u32) or shape[2] > std.math.maxInt(u32)) return null;
+    return .{
+        .size_z = @intCast(shape[0]),
+        .height = @intCast(shape[1]),
+        .width = @intCast(shape[2]),
+        .data_offset = data_offset orelse return null,
+        .data_size = data_size orelse return null,
+    };
+}
+
+fn parseDataspaceMessage(payload: []const u8) ?[3]u64 {
+    if (payload.len < 8) return null;
+    const version = payload[0];
+    const rank = payload[1];
+    if ((version != 1 and version != 2) or rank != 3) return null;
+    var dims: [3]u64 = undefined;
+    var pos: usize = 8;
+    for (&dims) |*dim| {
+        if (pos + 8 > payload.len) return null;
+        dim.* = std.mem.readInt(u64, payload[pos..][0..8], .little);
+        if (dim.* == 0 or dim.* > 1_000_000) return null;
+        pos += 8;
+    }
+    return dims;
+}
+
+const Layout = struct {
+    offset: usize,
+    size: usize,
+};
+
+fn parseContiguousLayoutMessage(payload: []const u8) ?Layout {
+    if (payload.len < 18 or payload[0] != 3 or payload[1] != 1) return null;
+    const offset = std.mem.readInt(u64, payload[2..][0..8], .little);
+    const size = std.mem.readInt(u64, payload[10..][0..8], .little);
+    if (offset > std.math.maxInt(usize) or size > std.math.maxInt(usize) or size == 0) return null;
+    return .{ .offset = @intCast(offset), .size = @intCast(size) };
+}
+
+fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
+    const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
+    return std.math.mul(usize, pixels, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
+}
+
+fn readU16(data: []const u8, offset: usize) u16 {
+    return std.mem.readInt(u16, data[offset..][0..2], .little);
+}
+
+fn readU32(data: []const u8, offset: usize) u32 {
+    return std.mem.readInt(u32, data[offset..][0..4], .little);
+}
+
 fn siblingXmlPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     const dot = std.mem.lastIndexOfScalar(u8, path, '.') orelse return error.InvalidFormat;
     const out = try allocator.alloc(u8, dot + 4);
     @memcpy(out[0..dot], path[0..dot]);
     @memcpy(out[dot..], ".xml");
     return out;
+}
+
+fn parentPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    const sep = lastSeparator(path) orelse return allocator.dupe(u8, ".");
+    if (sep == 0) return allocator.dupe(u8, path[0..1]);
+    return allocator.dupe(u8, path[0..sep]);
+}
+
+fn joinPath(allocator: std.mem.Allocator, base: []const u8, name: []const u8) ![]u8 {
+    if (isAbsolutePath(name)) return allocator.dupe(u8, name);
+    const sep: u8 = if (std.mem.indexOfScalar(u8, base, '\\') != null) '\\' else '/';
+    const needs_sep = base.len != 0 and base[base.len - 1] != '/' and base[base.len - 1] != '\\';
+    const extra: usize = if (needs_sep) 1 else 0;
+    const out = try allocator.alloc(u8, base.len + extra + name.len);
+    @memcpy(out[0..base.len], base);
+    if (needs_sep) out[base.len] = sep;
+    @memcpy(out[base.len + extra ..], name);
+    return out;
+}
+
+fn lastSeparator(path: []const u8) ?usize {
+    const slash = std.mem.lastIndexOfScalar(u8, path, '/');
+    const backslash = std.mem.lastIndexOfScalar(u8, path, '\\');
+    if (slash == null) return backslash;
+    if (backslash == null) return slash;
+    return @max(slash.?, backslash.?);
+}
+
+fn isAbsolutePath(path: []const u8) bool {
+    if (path.len >= 1 and (path[0] == '/' or path[0] == '\\')) return true;
+    return path.len >= 3 and std.ascii.isAlphabetic(path[0]) and path[1] == ':' and (path[2] == '/' or path[2] == '\\');
 }
 
 fn hasExtension(path: []const u8, extension: []const u8) bool {
@@ -209,6 +414,45 @@ fn hasExtension(path: []const u8, extension: []const u8) bool {
 
 fn boundedU16(value: u32) u16 {
     return @intCast(@min(@max(value, 1), std.math.maxInt(u16)));
+}
+
+fn appendObjectHeaderWithLayout(list: *std.ArrayList(u8), allocator: std.mem.Allocator, data_offset: usize, data_size: usize) !void {
+    try list.appendSlice(allocator, &.{
+        1,   0, 3,  0,
+        1,   0, 0,  0,
+        128, 0, 0,  0,
+        0,   0, 0,  0,
+        1,   0, 56, 0,
+        0,   0, 0,  0,
+        1,   3, 1,  0,
+        0,   0, 0,  0,
+    });
+    for ([_]u64{ 2, 2, 3 }) |value| {
+        var bytes: [8]u8 = undefined;
+        std.mem.writeInt(u64, &bytes, value, .little);
+        try list.appendSlice(allocator, &bytes);
+    }
+    for ([_]u64{ 2, 2, 3 }) |value| {
+        var bytes: [8]u8 = undefined;
+        std.mem.writeInt(u64, &bytes, value, .little);
+        try list.appendSlice(allocator, &bytes);
+    }
+    try list.appendSlice(allocator, &.{
+        3, 0, 8,  0,
+        0, 0, 0,  0,
+        1, 3, 0,  2,
+        0, 0, 0,  0,
+        8, 0, 24, 0,
+        0, 0, 0,  0,
+        3, 1,
+    });
+    var offset_bytes: [8]u8 = undefined;
+    std.mem.writeInt(u64, &offset_bytes, @intCast(data_offset), .little);
+    try list.appendSlice(allocator, &offset_bytes);
+    var size_bytes: [8]u8 = undefined;
+    std.mem.writeInt(u64, &size_bytes, @intCast(data_size), .little);
+    try list.appendSlice(allocator, &size_bytes);
+    try list.appendNTimes(allocator, 0, 6);
 }
 
 const sample_xml =
@@ -278,6 +522,49 @@ test "reads h5 path through sibling bdv xml" {
     try std.testing.expectEqualStrings("bdv", metadata.format);
     try std.testing.expectEqual(@as(u32, 11), metadata.width);
     try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
+}
+
+test "reads bdv contiguous hdf5 plane through xml path" {
+    const dir_path = "bdv-plane-test";
+    const xml_path = "bdv-plane-test/sample.xml";
+    const h5_path = "bdv-plane-test/sample.h5";
+    std.Io.Dir.cwd().deleteFile(std.testing.io, xml_path) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, h5_path) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, dir_path) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, dir_path, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, dir_path) catch {};
+
+    const xml =
+        \\<SpimData>
+        \\  <SequenceDescription>
+        \\    <ImageLoader format="bdv.hdf5"><hdf5 type="relative">sample.h5</hdf5></ImageLoader>
+        \\    <ViewSetups><ViewSetup><size>3 2 2</size></ViewSetup></ViewSetups>
+        \\    <Timepoints type="range"><first>0</first><last>0</last></Timepoints>
+        \\  </SequenceDescription>
+        \\</SpimData>
+    ;
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xml_path, .data = xml });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, xml_path) catch {};
+
+    var h5: std.ArrayList(u8) = .empty;
+    defer h5.deinit(std.testing.allocator);
+    try h5.appendSlice(std.testing.allocator, hdf5_signature);
+    try h5.appendNTimes(std.testing.allocator, 0, 32);
+    const raw_offset = h5.items.len + 128;
+    try appendObjectHeaderWithLayout(&h5, std.testing.allocator, raw_offset, 24);
+    try h5.appendSlice(std.testing.allocator, &.{
+        1,  0, 2,  0, 3,  0,
+        4,  0, 5,  0, 6,  0,
+        11, 0, 12, 0, 13, 0,
+        14, 0, 15, 0, 16, 0,
+    });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = h5_path, .data = h5.items });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, h5_path) catch {};
+
+    const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, xml_path, 1, .{ .x = 1, .y = 0, .width = 2, .height = 1 });
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("bdv", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 12, 0, 13, 0 }, plane.data);
 }
 
 test "rejects non-bdv xml" {

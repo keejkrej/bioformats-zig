@@ -842,6 +842,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "cellh5")) {
             return bio.cellh5.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "bdv")) {
+            return bio.bdv.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "cellworx")) {
             return bio.cellworx.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }

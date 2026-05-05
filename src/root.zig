@@ -393,9 +393,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "bdv",
-        .name = "BigDataViewer XML/HDF5 metadata",
+        .name = "BigDataViewer XML/HDF5 contiguous planes",
         .extensions = &.{ "xml", "h5" },
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "bd",
