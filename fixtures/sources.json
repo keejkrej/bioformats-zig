@@ -64,6 +64,7 @@
     "feitiff": ["needs-public-sample"],
     "filepattern": ["generated-fixture"],
     "fits": ["generated-fixture"],
+    "flex": ["ome_images/Flex/"],
     "flowsight": ["needs-public-sample"],
     "fluoview": ["ome_images/Olympus-FluoView/"],
     "fuji": ["needs-public-sample"],

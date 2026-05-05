@@ -72,7 +72,8 @@ example, Analyze 7.5 `.hdr`/`.img`, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`,
 CellWorx `.htd` plus Deltavision `.pnl` planes, Columbus
 `MeasurementIndex.ColumbusIDX.xml` plus TIFF planes, Fuji LAS 3000
 `.inf`/`.img`, Inveon `.hdr`/data pairs, MetaXpress `.htd` plus neighboring
-TIFF planes, Micro-Manager `metadata.txt` plus TIFF planes, PerkinElmer `.htm`
+TIFF planes, Flex `.mea/.res` files plus sibling `.flex` TIFF planes,
+Micro-Manager `metadata.txt` plus TIFF planes, PerkinElmer `.htm`
 plus TIFF planes, JDCE `.jdce`/CSV datasets plus TIFF planes, Perkin Elmer
 Densitometer `.hdr`/`.img`, Hitachi S-4800 `.txt` plus neighboring TIFF/BMP,
 PCO-RAW `.pcoraw`/`.rec`, and Unisoku STM `.HDR`/`.DAT` datasets can be opened
@@ -173,6 +174,7 @@ plane, which can differ from logical OME `sizeC`.
 - FEI TIFF files identified by S-FEG, Helios, or Titan private metadata tags, decoded through the TIFF pixel path.
 - File pattern `.pattern` files with a literal relative or absolute target path delegated through the existing reader stack; wildcard/range expansion and multi-file stitching are not yet handled.
 - FITS primary image HDUs with 8-bit unsigned, 16/32-bit signed integer, and 32/64-bit floating-point pixels, with `NAXIS3` exposed as planes.
+- Evotec Flex `.flex` TIFF files identified by private XML tag 65200 and decoded through the TIFF pixel path; `.mea/.res` selection delegates to the first sibling `.flex`, while HCS grouping, XML metadata, intensity factors, and multi-file plate assembly are not yet surfaced.
 - FlowSight CIF files identified by first-IFD metadata XML, with the first image IFD exposed as channel planes for FlowSight bitmask and greyscale compression; additional FlowSight image IFDs, channel metadata, masks as separate series, and acquisition metadata are not yet modeled.
 - Olympus Fluoview/ABD TIFF files identified by Fluoview or Andor comments and private metadata tags, decoded through the TIFF pixel path; montage/field grouping, timestamps, physical sizes, and hardware metadata parsing are not yet handled.
 - Fuji LAS 3000 `.inf`/`.img` pairs with uncompressed unsigned 8/16/32-bit planes; physical calibration, timestamps, and instrument metadata are not yet surfaced.

@@ -30,6 +30,7 @@ pub const fei = @import("readers/fei.zig");
 pub const feitiff = @import("readers/feitiff.zig");
 pub const filepattern = @import("readers/filepattern.zig");
 pub const fits = @import("readers/fits.zig");
+pub const flex = @import("readers/flex.zig");
 pub const flowsight = @import("readers/flowsight.zig");
 pub const fluoview = @import("readers/fluoview.zig");
 pub const fuji = @import("readers/fuji.zig");
@@ -477,6 +478,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "fits",
         .name = "FITS primary image",
         .extensions = &.{ "fits", "fts" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "flex",
+        .name = "Evotec Flex TIFF",
+        .extensions = &.{ "flex", "mea", "res" },
         .can_read_pixels = true,
     },
     .{
@@ -1197,6 +1204,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (eps.matches(data)) return "eps";
     if (fei.matches(data)) return "fei";
     if (fits.matches(data)) return "fits";
+    if (flex.matches(data)) return "flex";
     if (fuji.matches(data)) return "fuji";
     if (gif.matches(data)) return "gif";
     if (his.matches(data)) return "his";
@@ -1328,6 +1336,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (eps.matches(data)) return eps.readMetadata(data);
     if (fei.matches(data)) return fei.readMetadata(data);
     if (fits.matches(data)) return fits.readMetadata(data);
+    if (flex.matches(data)) return flex.readMetadata(data);
     if (flowsight.matches(data)) return flowsight.readMetadata(data);
     if (fuji.matches(data)) return fuji.readMetadata(data);
     if (gif.matches(data)) return gif.readMetadata(data);
@@ -1479,6 +1488,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return fei.readPlane(allocator, data);
     }
     if (fits.matches(data)) return fits.readPlaneIndex(allocator, data, plane_index);
+    if (flex.matches(data)) return flex.readPlaneIndex(allocator, data, plane_index);
     if (flowsight.matches(data)) return flowsight.readPlaneIndex(allocator, data, plane_index);
     if (fuji.matches(data)) return fuji.readPlaneIndex(allocator, data, plane_index);
     if (gif.matches(data)) {
@@ -1738,6 +1748,7 @@ test {
     _ = fake;
     _ = feitiff;
     _ = filepattern;
+    _ = flex;
     _ = flowsight;
     _ = fluoview;
     _ = fuji;

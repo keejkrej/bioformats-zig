@@ -531,6 +531,9 @@ pub const Server = struct {
         if (bio.filepattern.isPath(path)) {
             if (bio.filepattern.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.flex.isPath(path)) {
+            if (bio.flex.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.zeisstiff.isPath(path)) {
             if (bio.zeisstiff.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -620,6 +623,9 @@ pub const Server = struct {
         }
         if (bio.filepattern.isPath(path)) {
             if (bio.filepattern.readMetadataPath(self.allocator, self.io, path)) |_| return "filepattern" else |_| {}
+        }
+        if (bio.flex.isPath(path)) {
+            if (bio.flex.readMetadataPath(self.allocator, self.io, path)) |_| return "flex" else |_| {}
         }
         if (bio.zeisstiff.isPath(path)) {
             if (bio.zeisstiff.readMetadataPath(self.allocator, self.io, path)) |_| return "zeisstiff" else |_| {}
@@ -737,6 +743,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "filepattern")) {
             return bio.filepattern.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "flex")) {
+            return bio.flex.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "zeisstiff")) {
             return bio.zeisstiff.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -790,6 +799,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "visitech") or
             std.mem.eql(u8, format, "bruker") or
             std.mem.eql(u8, format, "filepattern") or
+            std.mem.eql(u8, format, "flex") or
             std.mem.eql(u8, format, "zeisstiff") or
             std.mem.eql(u8, format, "imaristiff") or
             std.mem.eql(u8, format, "rcpnl") or
