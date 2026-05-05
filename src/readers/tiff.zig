@@ -127,6 +127,12 @@ pub fn firstIfdAsciiTag(data: []const u8, tag: u16) ?[]const u8 {
     return readIfdAsciiTag(data, info, ifd_offset, tag) catch null;
 }
 
+pub fn firstIfdByteTag(data: []const u8, tag: u16) ?[]const u8 {
+    const info = readTiffInfo(data) catch return null;
+    const ifd_offset = firstIfdOffset(data, info) catch return null;
+    return readIfdByteTag(data, info, ifd_offset, tag) catch null;
+}
+
 pub fn ifdCount(data: []const u8) ?u32 {
     const info = readTiffInfo(data) catch return null;
     return countIfds(data, info) catch null;
@@ -381,6 +387,26 @@ fn readIfdAsciiTag(data: []const u8, info: TiffInfo, ifd_offset_u64: u64, tag: u
     while (i < entry_count) : (i += 1) {
         const entry = parseEntry(info, data, entries_start + i * entry_size);
         if (entry.tag == tag) return try entryAscii(data, entry);
+    }
+    return null;
+}
+
+fn readIfdByteTag(data: []const u8, info: TiffInfo, ifd_offset_u64: u64, tag: u16) bio.ReaderError!?[]const u8 {
+    const ifd_offset = try checkedUsize(ifd_offset_u64);
+    const count_size: usize = if (info.big) 8 else 2;
+    const entry_size: usize = if (info.big) 20 else 12;
+    if (ifd_offset > data.len or data.len - ifd_offset < count_size) return error.TruncatedData;
+
+    const entry_count_u64 = if (info.big) readU64(info.order, data[ifd_offset..][0..8]) else readU16(info.order, data[ifd_offset..][0..2]);
+    const entry_count = try checkedUsize(entry_count_u64);
+    const entries_start = ifd_offset + count_size;
+    const entries_bytes = std.math.mul(usize, entry_count, entry_size) catch return error.UnsupportedVariant;
+    if (entries_start > data.len or data.len - entries_start < entries_bytes) return error.TruncatedData;
+
+    var i: usize = 0;
+    while (i < entry_count) : (i += 1) {
+        const entry = parseEntry(info, data, entries_start + i * entry_size);
+        if (entry.tag == tag) return try entryBytes(data, entry);
     }
     return null;
 }
@@ -1584,6 +1610,14 @@ fn entryAscii(data: []const u8, entry: Entry) bio.ReaderError![]const u8 {
     return text;
 }
 
+fn entryBytes(data: []const u8, entry: Entry) bio.ReaderError![]const u8 {
+    if (entry.field_type != 1 and entry.field_type != 7) return error.UnsupportedVariant;
+    const len = try checkedUsize(entry.count);
+    const value_base = if (len <= entry.inline_capacity) entry.value_field_offset else try checkedUsize(entry.value_offset);
+    if (value_base > data.len or data.len - value_base < len) return error.TruncatedData;
+    return data[value_base..][0..len];
+}
+
 fn parseOmePixels(xml: []const u8) ?OmePixels {
     const pixels_start = std.mem.indexOf(u8, xml, "<Pixels") orelse return null;
     const rest = xml[pixels_start..];
@@ -1622,7 +1656,7 @@ fn parseStringAttr(tag: []const u8, name: []const u8) ?[]const u8 {
 
 fn tiffTypeSize(field_type: u16) ?usize {
     return switch (field_type) {
-        1, 2 => 1,
+        1, 2, 7 => 1,
         3 => 2,
         4 => 4,
         16 => 8,
