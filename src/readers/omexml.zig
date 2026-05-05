@@ -59,6 +59,9 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         }
         const decoded = try decodeBase64(allocator, bin.content);
         defer allocator.free(decoded);
+        if (decoded.len == 0) {
+            return .{ .metadata = metadata, .data = out };
+        }
         if (bin.compression != null and std.ascii.eqlIgnoreCase(bin.compression.?, "zlib")) {
             try decodeZlib(decoded, out);
         } else {
@@ -95,16 +98,16 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
 fn findTag(data: []const u8, name: []const u8) ?[]const u8 {
     var pos: usize = 0;
     while (pos < data.len) {
-        const rel = std.mem.indexOfScalarPos(u8, data, pos, '<') orelse return null;
-        pos = rel + 1;
-        if (pos < data.len and data[pos] == '/') continue;
-        if (pos + name.len <= data.len and std.mem.eql(u8, data[pos..][0..name.len], name)) {
-            const after = pos + name.len;
-            if (after < data.len and (std.ascii.isWhitespace(data[after]) or data[after] == '>' or data[after] == '/')) {
-                const end = std.mem.indexOfScalarPos(u8, data, after, '>') orelse return null;
-                return data[pos - 1 .. end + 1];
-            }
+        const tag_start = std.mem.indexOfScalarPos(u8, data, pos, '<') orelse return null;
+        const name_start = tag_start + 1;
+        pos = name_start;
+        if (name_start >= data.len or data[name_start] == '/' or data[name_start] == '!' or data[name_start] == '?') continue;
+        const tag_name = tagName(data, name_start) orelse continue;
+        if (std.mem.eql(u8, localName(tag_name), name)) {
+            const end = std.mem.indexOfScalarPos(u8, data, name_start + tag_name.len, '>') orelse return null;
+            return data[tag_start .. end + 1];
         }
+        pos = name_start + tag_name.len;
     }
     return null;
 }
@@ -114,21 +117,79 @@ fn findBinData(data: []const u8, plane_index: u32) ?BinData {
     var seen: u32 = 0;
     var last: ?BinData = null;
     while (pos < data.len) {
-        const tag_start = std.mem.indexOfPos(u8, data, pos, "<BinData") orelse break;
-        const tag_end = std.mem.indexOfScalarPos(u8, data, tag_start, '>') orelse break;
+        const tag_start = std.mem.indexOfScalarPos(u8, data, pos, '<') orelse break;
+        const name_start = tag_start + 1;
+        pos = name_start;
+        if (name_start >= data.len or data[name_start] == '/' or data[name_start] == '!' or data[name_start] == '?') continue;
+        const tag_name = tagName(data, name_start) orelse continue;
+        if (!std.mem.eql(u8, localName(tag_name), "BinData")) {
+            pos = name_start + tag_name.len;
+            continue;
+        }
+
+        const tag_end = std.mem.indexOfScalarPos(u8, data, name_start + tag_name.len, '>') orelse break;
         const tag = data[tag_start .. tag_end + 1];
-        const close_start = std.mem.indexOfPos(u8, data, tag_end + 1, "</BinData>") orelse break;
+        const content_start = tag_end + 1;
+        const close = if (isSelfClosingTag(tag)) null else findClosingTag(data, content_start, "BinData") orelse break;
+        const content_end = if (close) |closing| closing.start else content_start;
         const bin = BinData{
-            .content = std.mem.trim(u8, data[tag_end + 1 .. close_start], " \t\r\n"),
+            .content = std.mem.trim(u8, data[content_start..content_end], " \t\r\n"),
             .compression = attr(tag, "Compression"),
             .big_endian = if (attr(tag, "BigEndian")) |value| parseBool(value) else null,
         };
         last = bin;
         if (seen == plane_index) return bin;
         seen += 1;
-        pos = close_start + "</BinData>".len;
+        pos = if (close) |closing| closing.end else tag_end + 1;
     }
     return last;
+}
+
+const CloseTag = struct {
+    start: usize,
+    end: usize,
+};
+
+fn findClosingTag(data: []const u8, pos: usize, name: []const u8) ?CloseTag {
+    var search = pos;
+    while (search < data.len) {
+        const tag_start = std.mem.indexOfScalarPos(u8, data, search, '<') orelse return null;
+        const name_start = tag_start + 2;
+        search = tag_start + 1;
+        if (tag_start + 1 >= data.len or data[tag_start + 1] != '/') continue;
+        const tag_name = tagName(data, name_start) orelse continue;
+        if (std.mem.eql(u8, localName(tag_name), name)) {
+            const tag_end = std.mem.indexOfScalarPos(u8, data, name_start + tag_name.len, '>') orelse return null;
+            return .{ .start = tag_start, .end = tag_end + 1 };
+        }
+        search = name_start + tag_name.len;
+    }
+    return null;
+}
+
+fn tagName(data: []const u8, start: usize) ?[]const u8 {
+    var end = start;
+    while (end < data.len and !std.ascii.isWhitespace(data[end]) and data[end] != '>' and data[end] != '/') : (end += 1) {}
+    if (end == start) return null;
+    return data[start..end];
+}
+
+fn localName(name: []const u8) []const u8 {
+    if (std.mem.lastIndexOfScalar(u8, name, ':')) |colon| {
+        return name[colon + 1 ..];
+    }
+    return name;
+}
+
+fn isSelfClosingTag(tag: []const u8) bool {
+    if (tag.len < 2 or tag[tag.len - 1] != '>') return false;
+    var i = tag.len - 1;
+    while (i > 0) {
+        i -= 1;
+        if (std.ascii.isWhitespace(tag[i])) continue;
+        return tag[i] == '/';
+    }
+    return false;
 }
 
 fn attr(tag: []const u8, name: []const u8) ?[]const u8 {
@@ -230,10 +291,41 @@ test "reads uncompressed ome xml bindata plane" {
     try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, plane.data);
 }
 
+test "reads namespaced ome xml bindata plane" {
+    const data =
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<OME:OME xmlns:OME="http://www.openmicroscopy.org/Schemas/OME/2011-06" xmlns:Bin="http://www.openmicroscopy.org/Schemas/BinaryFile/2011-06">
+        \\  <OME:Image ID="Image:0">
+        \\    <OME:Pixels DimensionOrder="XYZCT" Type="uint8" SizeX="2" SizeY="1" SizeZ="1" SizeC="1" SizeT="1" BigEndian="false">
+        \\      <Bin:BinData Compression="none" Length="2">AQI=</Bin:BinData>
+        \\    </OME:Pixels>
+        \\  </OME:Image>
+        \\</OME:OME>
+    ;
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, plane.data);
+}
+
 test "ome xml without bindata returns blank plane" {
     const data =
         \\<?xml version="1.0"?>
         \\<OME><Image ID="Image:0"><Pixels DimensionOrder="XYZCT" Type="uint16" SizeX="1" SizeY="1" SizeZ="1" SizeC="1" SizeT="1"/></Image></OME>
+    ;
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 0, 0 }, plane.data);
+}
+
+test "ome xml empty bindata returns blank plane" {
+    const data =
+        \\<?xml version="1.0"?>
+        \\<OME><Image ID="Image:0"><Pixels DimensionOrder="XYZCT" Type="uint16" SizeX="1" SizeY="1" SizeZ="1" SizeC="1" SizeT="1"><Bin:BinData xmlns:Bin="http://www.openmicroscopy.org/Schemas/BinaryFile/2011-06" Length="0"/></Pixels></Image></OME>
     ;
 
     const plane = try readPlaneIndex(std.testing.allocator, data, 0);
