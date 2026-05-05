@@ -164,6 +164,7 @@
     "visitech": ["needs-public-sample"],
     "volocityclipping": ["needs-public-sample"],
     "watop": ["needs-public-sample"],
+    "xlef": ["ome_images/Leica-XLEF/"],
     "zeisslms": ["needs-public-sample"],
     "zeisslsm": ["needs-public-sample"],
     "zeisstiff": ["ome_images/Zeiss-AxioVision-TIFF/"],

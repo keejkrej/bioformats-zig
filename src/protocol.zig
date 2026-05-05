@@ -573,6 +573,9 @@ pub const Server = struct {
         if (bio.spc.isPath(path)) {
             if (bio.spc.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.xlef.isPath(path)) {
+            if (bio.xlef.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         return bio.readMetadata(bytes) catch |err| {
             if (bio.analyze.isPath(path)) {
                 if (bio.analyze.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
@@ -683,6 +686,9 @@ pub const Server = struct {
         }
         if (bio.spc.isPath(path)) {
             if (bio.spc.readMetadataPath(self.allocator, self.io, path)) |_| return "spc" else |_| {}
+        }
+        if (bio.xlef.isPath(path)) {
+            if (bio.xlef.readMetadataPath(self.allocator, self.io, path)) |_| return "xlef" else |_| {}
         }
         return null;
     }
@@ -827,6 +833,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "spc")) {
             return bio.spc.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "xlef")) {
+            return bio.xlef.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         return error.UnsupportedFormat;
     }
 
@@ -868,7 +877,8 @@ pub const Server = struct {
             std.mem.eql(u8, format, "imagic") or
             std.mem.eql(u8, format, "ics") or
             std.mem.eql(u8, format, "unisoku") or
-            std.mem.eql(u8, format, "spc");
+            std.mem.eql(u8, format, "spc") or
+            std.mem.eql(u8, format, "xlef");
     }
 };
 
