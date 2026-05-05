@@ -26,6 +26,7 @@ const hrdgdf = @import("hrdgdf.zig");
 const i2i = @import("i2i.zig");
 const imaris = @import("imaris.zig");
 const imod = @import("imod.zig");
+const improvisiontiff = @import("improvisiontiff.zig");
 const inr = @import("inr.zig");
 const ionpathmibi = @import("ionpathmibi.zig");
 const iplab = @import("iplab.zig");
@@ -98,7 +99,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -170,6 +171,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .i2i => i2i.readMetadata(entry.data),
         .imaris => imaris.readMetadata(entry.data),
         .imod => imod.readMetadata(entry.data),
+        .improvisiontiff => improvisiontiff.readMetadata(entry.data),
         .inr => inr.readMetadata(entry.data),
         .ionpathmibi => ionpathmibi.readMetadata(entry.data),
         .iplab => iplab.readMetadata(entry.data),
@@ -261,6 +263,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .i2i => i2i.readPlaneIndex(allocator, entry.data, plane_index),
         .imaris => imaris.readPlaneIndex(allocator, entry.data, plane_index),
         .imod => imod.readPlaneIndex(allocator, entry.data, plane_index),
+        .improvisiontiff => improvisiontiff.readPlaneIndex(allocator, entry.data, plane_index),
         .inr => inr.readPlaneIndex(allocator, entry.data, plane_index),
         .ionpathmibi => ionpathmibi.readPlaneIndex(allocator, entry.data, plane_index),
         .iplab => iplab.readPlaneIndex(allocator, entry.data, plane_index),
@@ -331,6 +334,7 @@ fn readInnerRegionIndex(
     region: bio.Region,
 ) bio.ReaderError!bio.Plane {
     if (entry.kind == .ometiff) return ometiff.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .improvisiontiff) return improvisiontiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .ionpathmibi) return ionpathmibi.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .metamorph) return metamorph.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .mias) return mias.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -423,6 +427,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (hasExtension(filename, ".i2i") and i2i.matches(data)) return .i2i;
     if (imaris.matches(data)) return .imaris;
     if (imod.matches(data)) return .imod;
+    if (improvisiontiff.matches(data)) return .improvisiontiff;
     if (inr.matches(data)) return .inr;
     if (ionpathmibi.matches(data)) return .ionpathmibi;
     if (hasExtension(filename, ".ipl") and iplab.matches(data)) return .iplab;
@@ -2708,6 +2713,62 @@ test "reads stored imod zip entry through inner reader" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0, 0, 0, 0 }, plane.data);
+}
+
+test "reads stored improvision tiff zip entry before baseline tiff" {
+    var improvision_data: std.ArrayList(u8) = .empty;
+    defer improvision_data.deinit(std.testing.allocator);
+
+    try improvision_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&improvision_data, 42);
+    try appendU32Le(&improvision_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const description = "Improvision\nTotalChannels=1\x00";
+    const pixel_offset = ifd_end + description.len;
+
+    try appendU16Le(&improvision_data, entry_count);
+    try appendTiffEntry(&improvision_data, 256, 4, 1, 1);
+    try appendTiffEntry(&improvision_data, 257, 4, 1, 1);
+    try appendTiffEntry(&improvision_data, 258, 3, 1, 8);
+    try appendTiffEntry(&improvision_data, 259, 3, 1, 1);
+    try appendTiffEntry(&improvision_data, 262, 3, 1, 1);
+    try appendTiffEntry(&improvision_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&improvision_data, 277, 3, 1, 1);
+    try appendTiffEntry(&improvision_data, 278, 4, 1, 1);
+    try appendTiffEntry(&improvision_data, 279, 4, 1, 1);
+    try appendTiffEntry(&improvision_data, 270, 2, description.len, @intCast(ifd_end));
+    try appendU32Le(&improvision_data, 0);
+    try improvision_data.appendSlice(std.testing.allocator, description);
+    try improvision_data.append(std.testing.allocator, 88);
+
+    try std.testing.expectEqual(Entry.Kind.improvisiontiff, detectInner("image.tif", improvision_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.tif", improvision_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{88}, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{88}, region_plane.data);
 }
 
 test "reads stored inr zip entry through inner reader" {
