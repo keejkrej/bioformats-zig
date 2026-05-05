@@ -16,6 +16,7 @@ const dcimg = @import("dcimg.zig");
 const dicom = @import("dicom.zig");
 const ecat7 = @import("ecat7.zig");
 const eps = @import("eps.zig");
+const fei = @import("fei.zig");
 const fits = @import("fits.zig");
 const gatandm2 = @import("gatandm2.zig");
 const gif = @import("gif.zig");
@@ -76,7 +77,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, jeol, khoros, klb, kodak, lim, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, jeol, khoros, klb, kodak, lim, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -138,6 +139,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .dicom => dicom.readMetadata(entry.data),
         .ecat7 => ecat7.readMetadata(entry.data),
         .eps => eps.readMetadata(entry.data),
+        .fei => fei.readMetadata(entry.data),
         .fits => fits.readMetadata(entry.data),
         .gatandm2 => gatandm2.readMetadata(entry.data),
         .gif => gif.readMetadata(entry.data),
@@ -207,6 +209,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .dicom => dicom.readPlaneIndex(allocator, entry.data, plane_index),
         .ecat7 => ecat7.readPlaneIndex(allocator, entry.data, plane_index),
         .eps => if (plane_index == 0) eps.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
+        .fei => if (plane_index == 0) fei.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .fits => fits.readPlaneIndex(allocator, entry.data, plane_index),
         .gatandm2 => gatandm2.readPlaneIndex(allocator, entry.data, plane_index),
         .gif => gif.readPlaneIndex(allocator, entry.data, plane_index),
@@ -330,6 +333,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (dicom.matches(data)) return .dicom;
     if (ecat7.matches(data)) return .ecat7;
     if (eps.matches(data)) return .eps;
+    if (hasExtension(filename, ".img") and fei.matches(data)) return .fei;
     if (fits.matches(data)) return .fits;
     if (gatandm2.matches(data)) return .gatandm2;
     if (gif.matches(data)) return .gif;
@@ -1669,6 +1673,39 @@ test "reads stored eps zip entry through inner reader" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0xff }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
+}
+
+test "reads stored fei zip entry through extension-gated inner reader" {
+    var fei_data: std.ArrayList(u8) = .empty;
+    defer fei_data.deinit(std.testing.allocator);
+    try fei_data.appendNTimes(std.testing.allocator, 0, 524);
+    @memcpy(fei_data.items[0..2], "XL");
+    writeU16(fei_data.items, 514, 116);
+    writeU16(fei_data.items, 516, 1);
+    writeU16(fei_data.items, 522, 524);
+    try fei_data.appendSlice(std.testing.allocator, &.{ 1, 3 });
+    try fei_data.appendNTimes(std.testing.allocator, 0, 56);
+    try fei_data.appendSlice(std.testing.allocator, &.{ 2, 4 });
+    try fei_data.appendNTimes(std.testing.allocator, 0, 56);
+
+    try std.testing.expectEqual(Entry.Kind.fei, detectInner("sem.IMG", fei_data.items).?);
+    try std.testing.expectEqual(null, detectInner("sem.dat", fei_data.items));
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "sem.img", fei_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 4), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 4 }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
 }
 
