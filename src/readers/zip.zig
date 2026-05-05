@@ -55,6 +55,7 @@ const mias = @import("mias.zig");
 const molecularimaging = @import("molecularimaging.zig");
 const mrc = @import("mrc.zig");
 const mrw = @import("mrw.zig");
+const ndpi = @import("ndpi.zig");
 const netpbm = @import("netpbm.zig");
 const nifti = @import("nifti.zig");
 const nikonelements = @import("nikonelements.zig");
@@ -111,7 +112,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -212,6 +213,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .molecularimaging => molecularimaging.readMetadata(entry.data),
         .mrc => mrc.readMetadata(entry.data),
         .mrw => mrw.readMetadata(entry.data),
+        .ndpi => ndpi.readMetadata(entry.data),
         .netpbm => netpbm.readMetadata(entry.data),
         .nifti => nifti.readMetadata(entry.data),
         .nikonelements => nikonelements.readMetadata(entry.data),
@@ -316,6 +318,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .molecularimaging => molecularimaging.readPlaneIndex(allocator, entry.data, plane_index),
         .mrc => mrc.readPlaneIndex(allocator, entry.data, plane_index),
         .mrw => mrw.readPlaneIndex(allocator, entry.data, plane_index),
+        .ndpi => ndpi.readPlaneIndex(allocator, entry.data, plane_index),
         .netpbm => if (plane_index == 0) netpbm.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .nifti => nifti.readPlaneIndex(allocator, entry.data, plane_index),
         .nikonelements => nikonelements.readPlaneIndex(allocator, entry.data, plane_index),
@@ -382,6 +385,7 @@ fn readInnerRegionIndex(
     if (entry.kind == .metamorph) return metamorph.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .mias) return mias.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .mikroscan) return mikroscan.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .ndpi) return ndpi.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .nikonelements) return nikonelements.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .nikontiff) return nikontiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .trestle) return trestle.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -498,6 +502,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (molecularimaging.matches(data)) return .molecularimaging;
     if (hasMrcExtension(filename) and mrc.matches(data)) return .mrc;
     if (mrw.matches(data)) return .mrw;
+    if (hasExtension(filename, ".ndpi") and ndpi.matches(data)) return .ndpi;
     if (netpbm.matches(data)) return .netpbm;
     if (nifti.matches(data)) return .nifti;
     if (nikonelements.matches(data)) return .nikonelements;
@@ -4221,6 +4226,65 @@ test "reads stored mrw zip entry through inner reader" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 0, 10, 0, 30, 0, 30 }, plane.data[0..6]);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
+}
+
+test "reads stored hamamatsu ndpi zip entry through extension-gated inner reader" {
+    var ndpi_data: std.ArrayList(u8) = .empty;
+    defer ndpi_data.deinit(std.testing.allocator);
+
+    try ndpi_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&ndpi_data, 42);
+    try appendU32Le(&ndpi_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const marker = "NDPI_MARKER\x00";
+    const marker_offset = ifd_end;
+    const pixel_offset = marker_offset + marker.len;
+
+    try appendU16Le(&ndpi_data, entry_count);
+    try appendTiffEntry(&ndpi_data, 256, 4, 1, 1);
+    try appendTiffEntry(&ndpi_data, 257, 4, 1, 1);
+    try appendTiffEntry(&ndpi_data, 258, 3, 1, 8);
+    try appendTiffEntry(&ndpi_data, 259, 3, 1, 1);
+    try appendTiffEntry(&ndpi_data, 262, 3, 1, 1);
+    try appendTiffEntry(&ndpi_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&ndpi_data, 277, 3, 1, 1);
+    try appendTiffEntry(&ndpi_data, 278, 4, 1, 1);
+    try appendTiffEntry(&ndpi_data, 279, 4, 1, 1);
+    try appendTiffEntry(&ndpi_data, 65426, 2, marker.len, @intCast(marker_offset));
+    try appendU32Le(&ndpi_data, 0);
+    try ndpi_data.appendSlice(std.testing.allocator, marker);
+    try ndpi_data.append(std.testing.allocator, 88);
+
+    try std.testing.expectEqual(Entry.Kind.ndpi, detectInner("image.NDPI", ndpi_data.items).?);
+    try std.testing.expectEqual(Entry.Kind.tiff, detectInner("image.bin", ndpi_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.ndpi", ndpi_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{88}, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{88}, region_plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
 }
 
