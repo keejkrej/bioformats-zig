@@ -42,10 +42,13 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    _ = allocator;
-    _ = data;
-    _ = plane_index;
-    return error.UnsupportedVariant;
+    const metadata = try readMetadata(data);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
+    if (metadata.samples_per_pixel != 1) return error.UnsupportedVariant;
+    const plane_len = try planeByteCount(metadata);
+    const payload = findImageDataPayload(data, plane_index, plane_len) orelse return error.UnsupportedVariant;
+    const out = try allocator.dupe(u8, payload[0..plane_len]);
+    return .{ .metadata = metadata, .data = out };
 }
 
 fn hasMagic(data: []const u8) bool {
@@ -125,6 +128,28 @@ fn boundedDimension(value: u32) u16 {
     return @intCast(@min(@max(value, 1), std.math.maxInt(u16)));
 }
 
+fn findImageDataPayload(data: []const u8, plane_index: u32, plane_len: usize) ?[]const u8 {
+    const marker = "ImageDataSeq|";
+    var pos: usize = 0;
+    var index: u32 = 0;
+    while (std.mem.indexOfPos(u8, data, pos, marker)) |found| {
+        const bang = std.mem.indexOfScalarPos(u8, data, found + marker.len, '!') orelse return null;
+        const payload_start = bang + 1;
+        const next = std.mem.indexOfPos(u8, data, payload_start, marker) orelse data.len;
+        if (next >= payload_start and next - payload_start >= plane_len) {
+            if (index == plane_index) return data[payload_start..next];
+            index += 1;
+        }
+        pos = payload_start;
+    }
+    return null;
+}
+
+fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
+    const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
+    return std.math.mul(usize, pixels, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
+}
+
 fn appendUtf16Le(list: *std.ArrayList(u8), text: []const u8) !void {
     for (text) |byte| {
         try list.append(std.testing.allocator, byte);
@@ -155,7 +180,7 @@ test "reads nd2 metadata from ascii text" {
     try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
 }
 
-test "reads nd2 metadata from utf16 text and rejects pixels" {
+test "reads nd2 metadata from utf16 text and rejects missing pixels" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
     try data.appendSlice(std.testing.allocator, &.{ 0, 0, 0, 0, 0x20, 0x20, 0x50, 0x6a });
@@ -167,4 +192,29 @@ test "reads nd2 metadata from utf16 text and rejects pixels" {
     try std.testing.expectEqual(@as(u16, 3), metadata.size_c);
     try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
     try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data.items, 0));
+}
+
+test "reads nd2 raw image data sequence payload" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendSlice(std.testing.allocator, &.{ 0x0a, 0xbe, 0xce, 0xda, 0, 0, 0, 0 });
+    try data.appendSlice(std.testing.allocator,
+        \\<uiWidth>3</uiWidth><uiHeight>2</uiHeight><uiBpcInMemory>16</uiBpcInMemory>
+        \\SizeC=1
+        \\SizeZ=2
+        \\SizeT=1
+    );
+    try data.appendSlice(std.testing.allocator, "ImageDataSeq|0!");
+    try data.appendSlice(std.testing.allocator, &.{ 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0 });
+    try data.appendSlice(std.testing.allocator, "ImageDataSeq|1!");
+    try data.appendSlice(std.testing.allocator, &.{ 11, 0, 12, 0, 13, 0, 14, 0, 15, 0, 16, 0 });
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("nd2", plane.metadata.format);
+    try std.testing.expectEqual(@as(u32, 3), plane.metadata.width);
+    try std.testing.expectEqual(@as(u32, 2), plane.metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), plane.metadata.size_z);
+    try std.testing.expectEqual(bio.PixelType.uint16, plane.metadata.pixel_type);
+    try std.testing.expectEqualSlices(u8, &.{ 11, 0, 12, 0, 13, 0, 14, 0, 15, 0, 16, 0 }, plane.data);
 }

@@ -1041,9 +1041,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "nd2",
-        .name = "Nikon ND2 metadata",
+        .name = "Nikon ND2 raw ImageDataSeq planes",
         .extensions = &.{ "nd2", "jp2" },
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "ndpi",
