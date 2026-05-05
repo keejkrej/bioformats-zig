@@ -66,16 +66,26 @@ pub fn build(b: *std.Build) void {
 }
 
 fn findOpenJpegRoot(b: *std.Build) ?[]const u8 {
+    if (b.graph.environ_map.get("VCPKG_ROOT")) |root| {
+        if (isOpenJpegRoot(b, root)) return root;
+        const installed = b.pathJoin(&.{ root, "installed", "x64-windows" });
+        if (isOpenJpegRoot(b, installed)) return installed;
+    }
+
     const candidates = [_][]const u8{
         "C:\\Users\\ctyja\\scoop\\persist\\vcpkg\\installed\\x64-windows",
         "C:\\Users\\ctyja\\vcpkg\\installed\\x64-windows",
     };
     for (candidates) |candidate| {
-        const header = b.pathJoin(&.{ candidate, "include", "openjpeg-2.5", "openjpeg.h" });
-        const lib = b.pathJoin(&.{ candidate, "lib", "openjp2.lib" });
-        std.Io.Dir.accessAbsolute(b.graph.io, header, .{}) catch continue;
-        std.Io.Dir.accessAbsolute(b.graph.io, lib, .{}) catch continue;
-        return candidate;
+        if (isOpenJpegRoot(b, candidate)) return candidate;
     }
     return null;
+}
+
+fn isOpenJpegRoot(b: *std.Build, root: []const u8) bool {
+    const header = b.pathJoin(&.{ root, "include", "openjpeg-2.5", "openjpeg.h" });
+    const lib = b.pathJoin(&.{ root, "lib", "openjp2.lib" });
+    std.Io.Dir.accessAbsolute(b.graph.io, header, .{}) catch return false;
+    std.Io.Dir.accessAbsolute(b.graph.io, lib, .{}) catch return false;
+    return true;
 }
