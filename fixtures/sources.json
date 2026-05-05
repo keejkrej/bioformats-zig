@@ -98,6 +98,7 @@
     "jdce": ["ome_images/JDCE/"],
     "jeol": ["needs-public-sample"],
     "jpeg": ["generated-fixture"],
+    "jpeg2000": ["generated-fixture", "bioformats-docs/jpeg2000-reader-uses-jai-image-io"],
     "jpk": ["needs-public-sample"],
     "khoros": ["needs-public-sample"],
     "kodak": ["needs-public-sample"],
