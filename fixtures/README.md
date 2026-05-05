@@ -35,6 +35,13 @@ from the first direct OME/HTTP source:
 ./fixtures/fetch.ps1 -Format tiff -MaxBytes 52428800
 ```
 
+After building the binary, run the cached fixtures through JSON-RPC smoke checks:
+
+```powershell
+zig build
+./fixtures/smoke.ps1
+```
+
 `implemented_format_sources` tracks formats currently advertised by
 `src/root.zig`. `pending_reader_sources` tracks fixture leads for concrete
 Bio-Formats Java readers that still need Zig implementations; do not count

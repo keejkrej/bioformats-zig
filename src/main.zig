@@ -44,7 +44,7 @@ pub fn main(init: std.process.Init) !void {
         const owned_message = message orelse break;
         defer allocator.free(owned_message.data);
         const request = switch (owned_message.framing) {
-            .line => std.mem.trimEnd(u8, owned_message.data, "\r"),
+            .line => trimUtf8Bom(std.mem.trimEnd(u8, owned_message.data, "\r")),
             .content_length => owned_message.data,
         };
         if (request.len == 0) continue;
@@ -152,6 +152,11 @@ fn writeContentLengthResponse(writer: *std.Io.Writer, response_with_newline: []c
     try writer.writeAll(response);
 }
 
+fn trimUtf8Bom(data: []const u8) []const u8 {
+    if (std.mem.startsWith(u8, data, "\xef\xbb\xbf")) return data[3..];
+    return data;
+}
+
 test {
     _ = protocol;
 }
@@ -183,6 +188,11 @@ test "readMessageAlloc keeps newline-delimited json messages" {
 
     try std.testing.expectEqual(Framing.line, message.framing);
     try std.testing.expectEqualStrings("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}", message.data);
+}
+
+test "trimUtf8Bom removes Windows redirected stdin preamble" {
+    try std.testing.expectEqualStrings("{}", trimUtf8Bom("\xef\xbb\xbf{}"));
+    try std.testing.expectEqualStrings("{}", trimUtf8Bom("{}"));
 }
 
 test "readMessageAlloc reads content-length framed json messages" {
