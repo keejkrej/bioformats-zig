@@ -44,6 +44,7 @@ const mrc = @import("mrc.zig");
 const mrw = @import("mrw.zig");
 const netpbm = @import("netpbm.zig");
 const nifti = @import("nifti.zig");
+const nikonelements = @import("nikonelements.zig");
 const nikontiff = @import("nikontiff.zig");
 const nrrd = @import("nrrd.zig");
 const omexml = @import("omexml.zig");
@@ -95,7 +96,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, metamorph, mias, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, metamorph, mias, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -185,6 +186,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .mrw => mrw.readMetadata(entry.data),
         .netpbm => netpbm.readMetadata(entry.data),
         .nifti => nifti.readMetadata(entry.data),
+        .nikonelements => nikonelements.readMetadata(entry.data),
         .nikontiff => nikontiff.readMetadata(entry.data),
         .nrrd => nrrd.readMetadata(entry.data),
         .omexml => omexml.readMetadata(entry.data),
@@ -273,6 +275,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .mrw => mrw.readPlaneIndex(allocator, entry.data, plane_index),
         .netpbm => if (plane_index == 0) netpbm.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .nifti => nifti.readPlaneIndex(allocator, entry.data, plane_index),
+        .nikonelements => nikonelements.readPlaneIndex(allocator, entry.data, plane_index),
         .nikontiff => nikontiff.readPlaneIndex(allocator, entry.data, plane_index),
         .nrrd => nrrd.readPlaneIndex(allocator, entry.data, plane_index),
         .omexml => omexml.readPlaneIndex(allocator, entry.data, plane_index),
@@ -324,6 +327,7 @@ fn readInnerRegionIndex(
     if (entry.kind == .ometiff) return ometiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .metamorph) return metamorph.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .mias) return mias.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .nikonelements) return nikonelements.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .nikontiff) return nikontiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .trestle) return trestle.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .photoshoptiff) return photoshoptiff.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -427,6 +431,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (mrw.matches(data)) return .mrw;
     if (netpbm.matches(data)) return .netpbm;
     if (nifti.matches(data)) return .nifti;
+    if (nikonelements.matches(data)) return .nikonelements;
     if (nikontiff.matches(data)) return .nikontiff;
     if (nrrd.matches(data)) return .nrrd;
     if (omexml.matches(data)) return .omexml;
@@ -2445,6 +2450,63 @@ test "reads stored nikon tiff zip entry before baseline tiff" {
     defer std.testing.allocator.free(region_plane.data);
     try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{36}, region_plane.data);
+}
+
+test "reads stored nikon elements zip entry before baseline tiff" {
+    var nikon_data: std.ArrayList(u8) = .empty;
+    defer nikon_data.deinit(std.testing.allocator);
+
+    try nikon_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&nikon_data, 42);
+    try appendU32Le(&nikon_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const xml = "<x>\x00";
+    const xml_offset = ifd_end;
+    const pixel_offset = xml_offset + xml.len;
+
+    try appendU16Le(&nikon_data, entry_count);
+    try appendTiffEntry(&nikon_data, 256, 4, 1, 1);
+    try appendTiffEntry(&nikon_data, 257, 4, 1, 1);
+    try appendTiffEntry(&nikon_data, 258, 3, 1, 8);
+    try appendTiffEntry(&nikon_data, 259, 3, 1, 1);
+    try appendTiffEntry(&nikon_data, 262, 3, 1, 1);
+    try appendTiffEntry(&nikon_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&nikon_data, 277, 3, 1, 1);
+    try appendTiffEntry(&nikon_data, 278, 4, 1, 1);
+    try appendTiffEntry(&nikon_data, 279, 4, 1, 1);
+    try appendTiffEntry(&nikon_data, 65332, 4, xml.len, @intCast(xml_offset));
+    try appendU32Le(&nikon_data, 0);
+    try nikon_data.appendSlice(std.testing.allocator, xml);
+    try nikon_data.append(std.testing.allocator, 42);
+
+    try std.testing.expectEqual(Entry.Kind.nikonelements, detectInner("image.tif", nikon_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.tif", nikon_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{42}, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{42}, region_plane.data);
 }
 
 test "reads stored amira zip entry through inner reader" {
