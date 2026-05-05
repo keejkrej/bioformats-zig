@@ -56,9 +56,10 @@ Supported methods:
 
 For companion-file formats, path-based requests may use neighboring files. For
 example, Analyze 7.5 `.hdr`/`.img`, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`,
-Inveon `.hdr`/data pairs, Perkin Elmer Densitometer `.hdr`/`.img`, and Unisoku
-STM `.HDR`/`.DAT` datasets can be opened by selecting either file; inline
-`data` can identify the header but cannot provide the paired pixel file.
+Fuji LAS 3000 `.inf`/`.img`, Inveon `.hdr`/data pairs, Perkin Elmer
+Densitometer `.hdr`/`.img`, and Unisoku STM `.HDR`/`.DAT` datasets can be
+opened by selecting either file; inline `data` can identify the header but
+cannot provide the paired pixel file.
 
 Example:
 
@@ -150,6 +151,7 @@ plane, which can differ from logical OME `sizeC`.
 - FITS primary image HDUs with 8-bit unsigned, 16/32-bit signed integer, and 32/64-bit floating-point pixels, with `NAXIS3` exposed as planes.
 - FlowSight CIF files identified by first-IFD metadata XML, with the first image IFD exposed as channel planes for FlowSight bitmask and greyscale compression; additional FlowSight image IFDs, channel metadata, masks as separate series, and acquisition metadata are not yet modeled.
 - Olympus Fluoview/ABD TIFF files identified by Fluoview or Andor comments and private metadata tags, decoded through the TIFF pixel path; montage/field grouping, timestamps, physical sizes, and hardware metadata parsing are not yet handled.
+- Fuji LAS 3000 `.inf`/`.img` pairs with uncompressed unsigned 8/16/32-bit planes; physical calibration, timestamps, and instrument metadata are not yet surfaced.
 - Gatan DM2 files with fixed headers and contiguous big-endian integer pixels; footer tag metadata, physical sizes, timestamps, and newer DM3/DM4 tag-tree formats are not yet handled.
 - Amersham Biosciences GEL TIFF files identified by Molecular Dynamics private tags, decoded through the TIFF pixel path for single-IFD linear files; square-root scaled GEL images and two-IFD merge variants are rejected as unsupported.
 - GIF87a/GIF89a indexed color images exposed as planes, with global or local palettes, image descriptor offsets on the logical canvas, interlaced row reordering, Graphic Control transparency, and LZW image data, returned as RGB/RGBA.
