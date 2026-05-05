@@ -161,6 +161,7 @@ pub const veeco = @import("readers/veeco.zig");
 pub const ventana = @import("readers/ventana.zig");
 pub const visitech = @import("readers/visitech.zig");
 pub const vgsam = @import("readers/vgsam.zig");
+pub const volocity = @import("readers/volocity.zig");
 pub const volocityclipping = @import("readers/volocityclipping.zig");
 pub const watop = @import("readers/watop.zig");
 pub const xlef = @import("readers/xlef.zig");
@@ -1340,6 +1341,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "volocity",
+        .name = "Volocity Library",
+        .extensions = &.{ "mvd2", "aisf", "aiix", "dat", "atsf" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "volocityclipping",
         .name = "Volocity Library Clipping",
         .extensions = &.{"acff"},
@@ -1489,6 +1496,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (mng.matches(data)) return "mng";
     if (varianfdf.matches(data)) return "varianfdf";
     if (vgsam.matches(data)) return "vgsam";
+    if (volocity.matches(data)) return "volocity";
     if (volocityclipping.matches(data)) return "volocityclipping";
     if (watop.matches(data)) return "watop";
     if (xlef.matches(data)) return "xlef";
@@ -1652,6 +1660,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (mng.matches(data)) return mng.readMetadata(data);
     if (varianfdf.matches(data)) return varianfdf.readMetadata(data);
     if (vgsam.matches(data)) return vgsam.readMetadata(data);
+    if (volocity.matches(data)) return volocity.readMetadata(data);
     if (volocityclipping.matches(data)) return volocityclipping.readMetadata(data);
     if (watop.matches(data)) return watop.readMetadata(data);
     if (xlef.matches(data)) return xlef.readMetadata(data);
@@ -1872,6 +1881,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return vgsam.readPlane(allocator, data);
     }
+    if (volocity.matches(data)) return volocity.readPlaneIndex(allocator, data, plane_index);
     if (volocityclipping.matches(data)) return volocityclipping.readPlaneIndex(allocator, data, plane_index);
     if (watop.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
@@ -2159,6 +2169,7 @@ test {
     _ = veeco;
     _ = ventana;
     _ = visitech;
+    _ = volocity;
     _ = volocityclipping;
     _ = xlef;
     _ = zeissczi;

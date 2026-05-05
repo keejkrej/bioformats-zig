@@ -307,6 +307,7 @@ plane, which can differ from logical OME `sizeC`.
 - PerkinElmer Vectra/QPTIFF files identified by QPI software tags, decoded through the TIFF pixel path; profile XML, annotation companion files, subresolution modeling, and Vectra channel metadata parsing are not yet handled.
 - Veeco AFM classic NetCDF `.hdf` files with a first 2D 8-bit or 16-bit signed image variable; HDF5/HDF4 variants, additional variables, attributes, calibration, and AFM metadata expansion are not yet handled.
 - Ventana BIF TIFF files identified by iScan XML private metadata, decoded through the TIFF pixel path; tile stitching, split-tile mode, subresolution mapping, and Ventana XML metadata extraction are not yet handled.
+- Volocity `.mvd2` libraries are supported for the external `Data/*.aisf` stack subset by resolving the first AISF stack and reusing the raw Volocity stack path; Metakit table parsing, multi-stack/channel association, timestamps, LZO clipping streams, and embedded streams are not yet implemented.
 - Visitech XYS datasets with HTML report-derived dimensions and raw `.xys` companion pixels; multi-position splitting, per-plane padding heuristics, acquisition metadata, and physical sizes are not yet handled.
 - VG SAM DTI files with big-endian 8/16-bit unsigned or 32-bit floating-point grayscale planes.
 - Volocity Library Clipping `.acff` files with inline uncompressed 8-bit planes; LZO-compressed clipping payloads are not yet handled.

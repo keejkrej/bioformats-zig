@@ -182,6 +182,7 @@
     "vgsam": ["needs-public-sample"],
     "veeco": ["bioformats-docs/veeco-afm-says-few-sample-datasets"],
     "visitech": ["needs-public-sample"],
+    "volocity": ["vendor-downloads-unverified", "bioformats-docs/volocity-perkinelmer-downloads", "bioformats-docs/volocity-many-internal-datasets"],
     "volocityclipping": ["needs-public-sample"],
     "watop": ["needs-public-sample"],
     "xlef": ["ome_images/Leica-XLEF/"],
@@ -196,7 +197,6 @@
   "pending_reader_sources": {
     "cellh5": ["ome_images/CellH5/samples/reduced/", "bioformats-docs/cellh5-public-sample-images"],
     "imarishdf": ["ome_images/Imaris-IMS/", "bioformats-docs/bitplane-imaris-hdf-public-sample-images"],
-    "tissuefaxs": ["needs-public-sample", "bioformats-docs/tissuegnostics-tfcyto-several-internal-datasets"],
-    "volocity": ["vendor-downloads-unverified", "bioformats-docs/volocity-perkinelmer-downloads", "bioformats-docs/volocity-many-internal-datasets"]
+    "tissuefaxs": ["needs-public-sample", "bioformats-docs/tissuegnostics-tfcyto-several-internal-datasets"]
   }
 }
