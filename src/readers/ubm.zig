@@ -1,5 +1,6 @@
 const std = @import("std");
 const bio = @import("../root.zig");
+const cfb = @import("cfb.zig");
 
 const header_len = 128;
 const bytes_per_pixel = 4;
@@ -56,6 +57,7 @@ pub fn readPlane(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError
 
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (data.len < header_len) return error.TruncatedData;
+    if (cfb.matches(data)) return error.InvalidFormat;
     const width = readU32(data[Offset.width..][0..4]);
     const height = readU32(data[Offset.height..][0..4]);
     if (width == 0 or height == 0) return error.InvalidFormat;
@@ -136,4 +138,15 @@ test "rejects truncated ubm pixels" {
 
     try std.testing.expect(!matches(data.items));
     try std.testing.expectError(error.TruncatedData, readPlane(std.testing.allocator, data.items));
+}
+
+test "rejects cfb containers as ubm candidates" {
+    var data = [_]u8{0} ** (header_len + 4);
+    @memcpy(data[0..cfb.magic.len], &cfb.magic);
+    writeU32(&data, Offset.width, 1);
+    writeU32(&data, Offset.height, 1);
+    data[header_len] = 1;
+
+    try std.testing.expect(!matches(&data));
+    try std.testing.expectError(error.InvalidFormat, readMetadata(&data));
 }
