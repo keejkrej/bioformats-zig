@@ -72,6 +72,7 @@
     "flex": ["ome_images/Flex/"],
     "flowsight": ["needs-public-sample"],
     "fluoview": ["ome_images/Olympus-FluoView/"],
+    "fv1000": ["ome_images/Olympus-FluoView/"],
     "fuji": ["needs-public-sample"],
     "gel": ["needs-public-sample"],
     "gif": ["generated-fixture"],

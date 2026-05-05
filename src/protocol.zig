@@ -552,6 +552,9 @@ pub const Server = struct {
         if (bio.flex.isPath(path)) {
             if (bio.flex.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.fv1000.isPath(path)) {
+            if (bio.fv1000.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.jpx.isPath(path)) {
             if (bio.jpx.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -674,6 +677,9 @@ pub const Server = struct {
         }
         if (bio.flex.isPath(path)) {
             if (bio.flex.readMetadataPath(self.allocator, self.io, path)) |_| return "flex" else |_| {}
+        }
+        if (bio.fv1000.isPath(path)) {
+            if (bio.fv1000.readMetadataPath(self.allocator, self.io, path)) |_| return "fv1000" else |_| {}
         }
         if (bio.jpx.isPath(path)) {
             if (bio.jpx.readMetadataPath(self.allocator, self.io, path)) |_| return "jpx" else |_| {}
@@ -824,6 +830,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "flex")) {
             return bio.flex.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "fv1000")) {
+            return bio.fv1000.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "jpx")) {
             return bio.jpx.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -896,6 +905,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "tecan") or
             std.mem.eql(u8, format, "tillvision") or
             std.mem.eql(u8, format, "flex") or
+            std.mem.eql(u8, format, "fv1000") or
             std.mem.eql(u8, format, "jpx") or
             std.mem.eql(u8, format, "hamamatsuvms") or
             std.mem.eql(u8, format, "zeisstiff") or
