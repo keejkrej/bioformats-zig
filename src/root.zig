@@ -45,6 +45,7 @@ pub const khoros = @import("readers/khoros.zig");
 pub const klb = @import("readers/klb.zig");
 pub const kodak = @import("readers/kodak.zig");
 pub const leo = @import("readers/leo.zig");
+pub const leicascn = @import("readers/leicascn.zig");
 pub const liflim = @import("readers/liflim.zig");
 pub const lim = @import("readers/lim.zig");
 pub const metamorph = @import("readers/metamorph.zig");
@@ -526,6 +527,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "leicascn",
+        .name = "Leica SCN TIFF",
+        .extensions = &.{"scn"},
+        .can_read_pixels = true,
+    },
+    .{
         .id = "liflim",
         .name = "LI-FLIM",
         .extensions = &.{"fli"},
@@ -931,6 +938,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (imod.matches(data)) return "imod";
     if (improvisiontiff.matches(data)) return "improvisiontiff";
     if (leo.matches(data)) return "leo";
+    if (leicascn.matches(data)) return "leicascn";
     if (liflim.matches(data)) return "liflim";
     if (metamorph.matches(data)) return "metamorph";
     if (mias.matches(data)) return "mias";
@@ -1036,6 +1044,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (imod.matches(data)) return imod.readMetadata(data);
     if (improvisiontiff.matches(data)) return improvisiontiff.readMetadata(data);
     if (leo.matches(data)) return leo.readMetadata(data);
+    if (leicascn.matches(data)) return leicascn.readMetadata(data);
     if (liflim.matches(data)) return liflim.readMetadata(data);
     if (metamorph.matches(data)) return metamorph.readMetadata(data);
     if (mias.matches(data)) return mias.readMetadata(data);
@@ -1207,6 +1216,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (imod.matches(data)) return imod.readPlaneIndex(allocator, data, plane_index);
     if (improvisiontiff.matches(data)) return improvisiontiff.readPlaneIndex(allocator, data, plane_index);
     if (leo.matches(data)) return leo.readPlaneIndex(allocator, data, plane_index);
+    if (leicascn.matches(data)) return leicascn.readPlaneIndex(allocator, data, plane_index);
     if (liflim.matches(data)) return liflim.readPlaneIndex(allocator, data, plane_index);
     if (metamorph.matches(data)) return metamorph.readPlaneIndex(allocator, data, plane_index);
     if (mias.matches(data)) return mias.readPlaneIndex(allocator, data, plane_index);
@@ -1261,6 +1271,7 @@ pub fn readPlaneRegionIndex(
     if (imacon.matches(data)) return imacon.readRegionIndex(allocator, data, plane_index, region);
     if (improvisiontiff.matches(data)) return improvisiontiff.readRegionIndex(allocator, data, plane_index, region);
     if (leo.matches(data)) return leo.readRegionIndex(allocator, data, plane_index, region);
+    if (leicascn.matches(data)) return leicascn.readRegionIndex(allocator, data, plane_index, region);
     if (metamorph.matches(data)) return metamorph.readRegionIndex(allocator, data, plane_index, region);
     if (mias.matches(data)) return mias.readRegionIndex(allocator, data, plane_index, region);
     if (mikroscan.matches(data)) return mikroscan.readRegionIndex(allocator, data, plane_index, region);
@@ -1353,6 +1364,7 @@ test {
     _ = klb;
     _ = mrw;
     _ = ndpi;
+    _ = leicascn;
     _ = nikonelements;
     _ = nikontiff;
     _ = omexml;
