@@ -40,6 +40,7 @@ const oxfordinstruments = @import("oxfordinstruments.zig");
 const pcx = @import("pcx.zig");
 const png = @import("png.zig");
 const povray = @import("povray.zig");
+const pqbin = @import("pqbin.zig");
 const psd = @import("psd.zig");
 const quesant = @import("quesant.zig");
 const rhk = @import("rhk.zig");
@@ -69,7 +70,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -155,6 +156,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .pcx => pcx.readMetadata(entry.data),
         .png => png.readMetadata(entry.data),
         .povray => povray.readMetadata(entry.data),
+        .pqbin => pqbin.readMetadata(entry.data),
         .psd => psd.readMetadata(entry.data),
         .quesant => quesant.readMetadata(entry.data),
         .rhk => rhk.readMetadata(entry.data),
@@ -217,6 +219,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .pcx => if (plane_index == 0) pcx.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .png => if (plane_index == 0) png.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .povray => povray.readPlaneIndex(allocator, entry.data, plane_index),
+        .pqbin => pqbin.readPlaneIndex(allocator, entry.data, plane_index),
         .psd => if (plane_index == 0) psd.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .quesant => if (plane_index == 0) quesant.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .rhk => if (plane_index == 0) rhk.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
@@ -333,6 +336,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (pcx.matches(data)) return .pcx;
     if (png.matches(data)) return .png;
     if (hasExtension(filename, ".df3") and povray.matches(data)) return .povray;
+    if (hasExtension(filename, ".bin") and pqbin.matches(data)) return .pqbin;
     if (psd.matches(data)) return .psd;
     if (quesant.matches(data)) return .quesant;
     if (rhk.matches(data)) return .rhk;
@@ -1055,6 +1059,40 @@ test "reads stored povray zip entry through extension-gated inner reader" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 3, 4 }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
+}
+
+test "reads stored picoquant bin zip entry through extension-gated inner reader" {
+    var pqbin_data: std.ArrayList(u8) = .empty;
+    defer pqbin_data.deinit(std.testing.allocator);
+    try pqbin_data.appendNTimes(std.testing.allocator, 0, 20);
+    writeU32(pqbin_data.items, 0, 2);
+    writeU32(pqbin_data.items, 4, 1);
+    writeU32(pqbin_data.items, 12, 2);
+    try appendU32Le(&pqbin_data, 1);
+    try appendU32Le(&pqbin_data, 2);
+    try appendU32Le(&pqbin_data, 3);
+    try appendU32Le(&pqbin_data, 4);
+
+    try std.testing.expectEqual(Entry.Kind.pqbin, detectInner("lifetime.bin", pqbin_data.items).?);
+    try std.testing.expectEqual(null, detectInner("lifetime.dat", pqbin_data.items));
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "lifetime.bin", pqbin_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
+    try std.testing.expectEqual(bio.PixelType.uint32, metadata.pixel_type);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 2, 0, 0, 0, 4, 0, 0, 0 }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
 }
 
