@@ -29,7 +29,7 @@ pub fn readMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const 
     defer allocator.free(image_path);
     const image = try readFile(allocator, io, image_path);
     defer allocator.free(image);
-    var metadata = try bio.tiff.readMetadata(image);
+    var metadata = try bio.readMetadata(image);
     metadata.format = "xlef";
     metadata.image_description = null;
     return metadata;
@@ -46,7 +46,7 @@ pub fn readPlanePathRegionIndex(
     defer allocator.free(image_path);
     const image = try readFile(allocator, io, image_path);
     defer allocator.free(image);
-    var plane = try bio.tiff.readRegionIndex(allocator, image, plane_index, region);
+    var plane = try bio.readPlaneRegionIndex(allocator, image, plane_index, region);
     plane.metadata.format = "xlef";
     plane.metadata.image_description = null;
     return plane;
@@ -82,7 +82,7 @@ fn framePathFromXlif(allocator: std.mem.Allocator, xlif_path: []const u8, xlif: 
     var pos: usize = 0;
     while (nextAttrValue(xlif, "Frame", "File", &pos)) |frame_value| {
         const image_path = try resolveReference(allocator, xlif_path, frame_value);
-        if (hasTiffExtension(image_path)) return image_path;
+        if (hasReadableFrameExtension(image_path)) return image_path;
         allocator.free(image_path);
     }
     return error.InvalidFormat;
@@ -214,8 +214,10 @@ fn readFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
     return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(max_companion_bytes));
 }
 
-fn hasTiffExtension(path: []const u8) bool {
-    return hasExtension(path, "tif") or hasExtension(path, "tiff");
+fn hasReadableFrameExtension(path: []const u8) bool {
+    return hasExtension(path, "tif") or hasExtension(path, "tiff") or
+        hasExtension(path, "jpg") or hasExtension(path, "jpeg") or
+        hasExtension(path, "png") or hasExtension(path, "bmp");
 }
 
 fn hasExtension(path: []const u8, extension: []const u8) bool {
@@ -273,4 +275,30 @@ test "reads xlef metadata through first xlif tiff frame" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("xlef", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{82}, plane.data);
+}
+
+test "reads xlef metadata through xlif jpeg frame" {
+    const root = "xlef-jpeg-test";
+    const metadata_dir = "xlef-jpeg-test/metadata";
+    const xlif_path = "xlef-jpeg-test/metadata/first.xlif";
+    const image_path = "xlef-jpeg-test/image.jpg";
+    std.Io.Dir.cwd().deleteTree(std.testing.io, root) catch {};
+    defer std.Io.Dir.cwd().deleteTree(std.testing.io, root) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root, .default_dir);
+    try std.Io.Dir.cwd().createDir(std.testing.io, metadata_dir, .default_dir);
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = &bio.jpeg.baseline_red_jpeg });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlif_path, .data = "<LMSDataContainerHeader><Element><Memory><Frame File=\"..%5Cimage.jpg\" /></Memory></Element></LMSDataContainerHeader>" });
+
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, xlif_path);
+    try std.testing.expectEqualStrings("xlef", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+
+    const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, xlif_path, 0, .{ .x = 0, .y = 0, .width = 1, .height = 1 });
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("xlef", plane.metadata.format);
+    try std.testing.expect(plane.data[0] > 200);
+    try std.testing.expect(plane.data[1] < 80);
+    try std.testing.expect(plane.data[2] < 80);
 }

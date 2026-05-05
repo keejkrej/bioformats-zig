@@ -2301,6 +2301,44 @@ test "server opens hitachi txt path and reads companion jpeg pixels" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"encoding\":\"base64\"") != null);
 }
 
+test "server opens xlef project path and reads companion jpeg pixels" {
+    const root = "protocol-xlef-jpeg-test";
+    const metadata_dir = "protocol-xlef-jpeg-test/metadata";
+    const xlef_path = "protocol-xlef-jpeg-test/project.xlef";
+    const xlif_path = "protocol-xlef-jpeg-test/metadata/first.xlif";
+    const image_path = "protocol-xlef-jpeg-test/image.jpg";
+    std.Io.Dir.cwd().deleteTree(std.testing.io, root) catch {};
+    defer std.Io.Dir.cwd().deleteTree(std.testing.io, root) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root, .default_dir);
+    try std.Io.Dir.cwd().createDir(std.testing.io, metadata_dir, .default_dir);
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = &bio.jpeg.baseline_red_jpeg });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlif_path, .data = "<LMSDataContainerHeader><Element><Memory><Frame File=\"..%5Cimage.jpg\" /></Memory></Element></LMSDataContainerHeader>" });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlef_path, .data = "<LMSDataContainerHeader><Element><Children><Reference File=\".%5Cmetadata%5Cfirst.xlif\" /></Children></Element></LMSDataContainerHeader>" });
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-xlef-jpeg-test/project.xlef\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"xlef\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"width\":1") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"xlef\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"pixelType\":\"rgb8\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"encoding\":\"base64\"") != null);
+}
+
 test "server opens imagic img path and reads companion pixels" {
     const hed_path = "protocol-imagic-test.hed";
     const img_path = "protocol-imagic-test.img";
