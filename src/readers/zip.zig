@@ -27,6 +27,7 @@ const kodak = @import("kodak.zig");
 const mng = @import("mng.zig");
 const microct = @import("microct.zig");
 const molecularimaging = @import("molecularimaging.zig");
+const mrc = @import("mrc.zig");
 const mrw = @import("mrw.zig");
 const netpbm = @import("netpbm.zig");
 const nifti = @import("nifti.zig");
@@ -63,7 +64,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrw, netpbm, nifti, nrrd, openlabraw, oxfordinstruments, pcx, png, povray, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, openlabraw, oxfordinstruments, pcx, png, povray, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -136,6 +137,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .microct => microct.readMetadata(entry.data),
         .mng => mng.readMetadata(entry.data),
         .molecularimaging => molecularimaging.readMetadata(entry.data),
+        .mrc => mrc.readMetadata(entry.data),
         .mrw => mrw.readMetadata(entry.data),
         .netpbm => netpbm.readMetadata(entry.data),
         .nifti => nifti.readMetadata(entry.data),
@@ -192,6 +194,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .microct => microct.readPlaneIndex(allocator, entry.data, plane_index),
         .mng => mng.readPlaneIndex(allocator, entry.data, plane_index),
         .molecularimaging => molecularimaging.readPlaneIndex(allocator, entry.data, plane_index),
+        .mrc => mrc.readPlaneIndex(allocator, entry.data, plane_index),
         .mrw => mrw.readPlaneIndex(allocator, entry.data, plane_index),
         .netpbm => if (plane_index == 0) netpbm.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .nifti => nifti.readPlaneIndex(allocator, entry.data, plane_index),
@@ -301,6 +304,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (microct.matches(data)) return .microct;
     if (mng.matches(data)) return .mng;
     if (molecularimaging.matches(data)) return .molecularimaging;
+    if (hasMrcExtension(filename) and mrc.matches(data)) return .mrc;
     if (mrw.matches(data)) return .mrw;
     if (netpbm.matches(data)) return .netpbm;
     if (nifti.matches(data)) return .nifti;
@@ -332,6 +336,15 @@ fn hasExtension(filename: []const u8, extension: []const u8) bool {
     if (filename.len < extension.len) return false;
     const suffix = filename[filename.len - extension.len ..];
     return std.ascii.eqlIgnoreCase(suffix, extension);
+}
+
+fn hasMrcExtension(filename: []const u8) bool {
+    return hasExtension(filename, ".mrc") or
+        hasExtension(filename, ".mrcs") or
+        hasExtension(filename, ".st") or
+        hasExtension(filename, ".ali") or
+        hasExtension(filename, ".map") or
+        hasExtension(filename, ".rec");
 }
 
 fn inflateRaw(allocator: std.mem.Allocator, payload: []const u8, uncompressed_size: usize) bio.ReaderError![]u8 {
@@ -1929,6 +1942,34 @@ test "reads stored molecular imaging zip entry through inner reader" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 3, 0, 4, 0 }, plane.data);
+}
+
+test "reads stored mrc zip entry through extension-gated inner reader" {
+    var mrc_data = [_]u8{0} ** (1024 + 4);
+    writeU32(&mrc_data, 0, 2);
+    writeU32(&mrc_data, 4, 2);
+    writeU32(&mrc_data, 8, 1);
+    writeU32(&mrc_data, 12, 0);
+    mrc_data[212] = 68;
+    @memcpy(mrc_data[1024..], &[_]u8{ 1, 2, 3, 4 });
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "stack.MRC", &mrc_data);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 2), metadata.height);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 3, 4, 1, 2 }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
 }
 
 test "reads stored mrw zip entry through inner reader" {
