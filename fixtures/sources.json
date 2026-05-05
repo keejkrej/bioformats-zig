@@ -75,6 +75,7 @@
     "fuji": ["needs-public-sample"],
     "gel": ["needs-public-sample"],
     "gif": ["generated-fixture"],
+    "hamamatsuvms": ["ome_images/Hamamatsu-VMS/"],
     "his": ["needs-public-sample"],
     "hitachi": ["needs-public-sample"],
     "hrdgdf": ["needs-public-sample"],

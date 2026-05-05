@@ -41,6 +41,7 @@ pub const gatan = @import("readers/gatan.zig");
 pub const gatandm2 = @import("readers/gatandm2.zig");
 pub const gel = @import("readers/gel.zig");
 pub const gif = @import("readers/gif.zig");
+pub const hamamatsuvms = @import("readers/hamamatsuvms.zig");
 pub const his = @import("readers/his.zig");
 pub const hitachi = @import("readers/hitachi.zig");
 pub const hrdgdf = @import("readers/hrdgdf.zig");
@@ -555,6 +556,12 @@ pub const formats = [_]FormatDescriptor{
         .name = "GIF87a/GIF89a palette RGB/RGBA planes",
         .extensions = &.{"gif"},
         .can_read_pixels = true,
+    },
+    .{
+        .id = "hamamatsuvms",
+        .name = "Hamamatsu VMS metadata",
+        .extensions = &.{"vms"},
+        .can_read_pixels = false,
     },
     .{
         .id = "his",
@@ -1344,6 +1351,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (gatan.matches(data)) return "gatan";
     if (gatandm2.matches(data)) return "gatandm2";
     if (gel.matches(data)) return "gel";
+    if (hamamatsuvms.matches(data)) return "hamamatsuvms";
     if (imacon.matches(data)) return "imacon";
     if (im3.matches(data)) return "im3";
     if (imaris.matches(data)) return "imaris";
@@ -1486,6 +1494,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (gatan.matches(data)) return gatan.readMetadata(data);
     if (gatandm2.matches(data)) return gatandm2.readMetadata(data);
     if (gel.matches(data)) return gel.readMetadata(data);
+    if (hamamatsuvms.matches(data)) return hamamatsuvms.readMetadata(data);
     if (imacon.matches(data)) return imacon.readMetadata(data);
     if (im3.matches(data)) return im3.readMetadata(data);
     if (imaris.matches(data)) return imaris.readMetadata(data);
@@ -1694,6 +1703,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (gatan.matches(data)) return gatan.readPlaneIndex(allocator, data, plane_index);
     if (gatandm2.matches(data)) return gatandm2.readPlaneIndex(allocator, data, plane_index);
     if (gel.matches(data)) return gel.readPlaneIndex(allocator, data, plane_index);
+    if (hamamatsuvms.matches(data)) return hamamatsuvms.readPlaneIndex(allocator, data, plane_index);
     if (imacon.matches(data)) return imacon.readPlaneIndex(allocator, data, plane_index);
     if (im3.matches(data)) return im3.readPlaneIndex(allocator, data, plane_index);
     if (imaris.matches(data)) return imaris.readPlaneIndex(allocator, data, plane_index);
@@ -1856,6 +1866,7 @@ test {
     _ = gatandm2;
     _ = gel;
     _ = gif;
+    _ = hamamatsuvms;
     _ = imacon;
     _ = im3;
     _ = imagic;
