@@ -25,6 +25,7 @@ const feitiff = @import("feitiff.zig");
 const fits = @import("fits.zig");
 const flowsight = @import("flowsight.zig");
 const fluoview = @import("fluoview.zig");
+const gatan = @import("gatan.zig");
 const gatandm2 = @import("gatandm2.zig");
 const gel = @import("gel.zig");
 const gif = @import("gif.zig");
@@ -123,7 +124,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, flowsight, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, minc, mng, molecularimaging, mrc, mrw, naf, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, prairie, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, sdt, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, veeco, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, flowsight, fluoview, gatan, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, minc, mng, molecularimaging, mrc, mrw, naf, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, prairie, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, sdt, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, veeco, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -194,6 +195,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .fits => fits.readMetadata(entry.data),
         .flowsight => flowsight.readMetadata(entry.data),
         .fluoview => fluoview.readMetadata(entry.data),
+        .gatan => gatan.readMetadata(entry.data),
         .gatandm2 => gatandm2.readMetadata(entry.data),
         .gel => gel.readMetadata(entry.data),
         .gif => gif.readMetadata(entry.data),
@@ -310,6 +312,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .fits => fits.readPlaneIndex(allocator, entry.data, plane_index),
         .flowsight => flowsight.readPlaneIndex(allocator, entry.data, plane_index),
         .fluoview => fluoview.readPlaneIndex(allocator, entry.data, plane_index),
+        .gatan => gatan.readPlaneIndex(allocator, entry.data, plane_index),
         .gatandm2 => gatandm2.readPlaneIndex(allocator, entry.data, plane_index),
         .gel => gel.readPlaneIndex(allocator, entry.data, plane_index),
         .gif => gif.readPlaneIndex(allocator, entry.data, plane_index),
@@ -514,6 +517,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (fits.matches(data)) return .fits;
     if (flowsight.matches(data)) return .flowsight;
     if (fluoview.matches(data)) return .fluoview;
+    if (gatan.matches(data)) return .gatan;
     if (gatandm2.matches(data)) return .gatandm2;
     if (gel.matches(data)) return .gel;
     if (gif.matches(data)) return .gif;

@@ -37,6 +37,7 @@ pub const flex = @import("readers/flex.zig");
 pub const flowsight = @import("readers/flowsight.zig");
 pub const fluoview = @import("readers/fluoview.zig");
 pub const fuji = @import("readers/fuji.zig");
+pub const gatan = @import("readers/gatan.zig");
 pub const gatandm2 = @import("readers/gatandm2.zig");
 pub const gel = @import("readers/gel.zig");
 pub const gif = @import("readers/gif.zig");
@@ -526,6 +527,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "fuji",
         .name = "Fuji LAS 3000",
         .extensions = &.{ "inf", "img" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "gatan",
+        .name = "Gatan Digital Micrograph DM3/DM4",
+        .extensions = &.{ "dm3", "dm4" },
         .can_read_pixels = true,
     },
     .{
@@ -1310,6 +1317,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (canonraw.matches(data)) return "canonraw";
     if (feitiff.matches(data)) return "feitiff";
     if (fluoview.matches(data)) return "fluoview";
+    if (gatan.matches(data)) return "gatan";
     if (gatandm2.matches(data)) return "gatandm2";
     if (gel.matches(data)) return "gel";
     if (imacon.matches(data)) return "imacon";
@@ -1448,6 +1456,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (canonraw.matches(data)) return canonraw.readMetadata(data);
     if (feitiff.matches(data)) return feitiff.readMetadata(data);
     if (fluoview.matches(data)) return fluoview.readMetadata(data);
+    if (gatan.matches(data)) return gatan.readMetadata(data);
     if (gatandm2.matches(data)) return gatandm2.readMetadata(data);
     if (gel.matches(data)) return gel.readMetadata(data);
     if (imacon.matches(data)) return imacon.readMetadata(data);
@@ -1652,6 +1661,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (canonraw.matches(data)) return canonraw.readPlaneIndex(allocator, data, plane_index);
     if (feitiff.matches(data)) return feitiff.readPlaneIndex(allocator, data, plane_index);
     if (fluoview.matches(data)) return fluoview.readPlaneIndex(allocator, data, plane_index);
+    if (gatan.matches(data)) return gatan.readPlaneIndex(allocator, data, plane_index);
     if (gatandm2.matches(data)) return gatandm2.readPlaneIndex(allocator, data, plane_index);
     if (gel.matches(data)) return gel.readPlaneIndex(allocator, data, plane_index);
     if (imacon.matches(data)) return imacon.readPlaneIndex(allocator, data, plane_index);
@@ -1812,6 +1822,7 @@ test {
     _ = flowsight;
     _ = fluoview;
     _ = fuji;
+    _ = gatan;
     _ = gatandm2;
     _ = gel;
     _ = gif;
