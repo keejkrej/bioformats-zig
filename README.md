@@ -56,6 +56,16 @@ checked as embedders will see them:
 ./tools/audit-readers.ps1
 ```
 
+## Protocol Smoke Test
+
+After building the binary, exercise the embedder-facing stdio boundary with both
+line-delimited JSON-RPC and `Content-Length` framing:
+
+```powershell
+zig build
+./tools/smoke-jsonrpc.ps1
+```
+
 ## Fixture Sources
 
 Public fixture discovery is tracked in `fixtures/`. The current catalog points
