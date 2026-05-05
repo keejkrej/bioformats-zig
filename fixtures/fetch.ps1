@@ -1,0 +1,169 @@
+param(
+    [string]$Format,
+    [string]$OutDir = "fixtures/cache",
+    [int]$MaxDepth = 2,
+    [long]$MaxBytes = 209715200,
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|nd2|czi|lif|ics|ids|dv|r3d|mrc|nii|nrrd|vms|ims|ch5|h5|xml)$',
+    [switch]$List
+)
+
+$ErrorActionPreference = "Stop"
+
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$sourcesPath = Join-Path $scriptDir "sources.json"
+$sources = Get-Content $sourcesPath -Raw | ConvertFrom-Json
+
+if ($List) {
+    $sources.implemented_format_sources.PSObject.Properties |
+        Sort-Object Name |
+        ForEach-Object {
+            [PSCustomObject]@{
+                Format = $_.Name
+                Sources = ($_.Value -join ", ")
+            }
+        } |
+        Format-Table -AutoSize
+    exit 0
+}
+
+if ([string]::IsNullOrWhiteSpace($Format)) {
+    throw "Pass -Format <id>, or use -List to inspect available fixture sources."
+}
+
+$formatEntry = $sources.implemented_format_sources.PSObject.Properties |
+    Where-Object { $_.Name -eq $Format } |
+    Select-Object -First 1
+
+if ($null -eq $formatEntry) {
+    throw "No fixture source entry exists for format '$Format'."
+}
+
+function Resolve-SourceUrl {
+    param([string[]]$Entries)
+
+    foreach ($entry in $Entries) {
+        if ($entry -match '^ome_images/(.+)$') {
+            return ($sources.public_roots.ome_images.TrimEnd('/') + '/' + $Matches[1].TrimStart('/'))
+        }
+        if ($entry -match '^https?://') {
+            return $entry
+        }
+    }
+    return $null
+}
+
+function Get-DirectoryLinks {
+    param([string]$Url)
+
+    $response = Invoke-WebRequest -UseBasicParsing -Uri $Url
+    $links = @()
+    foreach ($link in $response.Links) {
+        if ($link.href) {
+            $links += $link.href
+        }
+    }
+    if ($links.Count -eq 0) {
+        foreach ($match in [regex]::Matches($response.Content, 'href="([^"]+)"')) {
+            $links += $match.Groups[1].Value
+        }
+    }
+    return $links
+}
+
+function Resolve-Link {
+    param(
+        [string]$BaseUrl,
+        [string]$Href
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Href)) {
+        return $null
+    }
+    if ($Href.StartsWith("?") -or $Href.StartsWith("#") -or $Href -eq "../") {
+        return $null
+    }
+    return ([Uri]::new([Uri]$BaseUrl, $Href)).AbsoluteUri
+}
+
+function Get-RemoteLength {
+    param([string]$Url)
+
+    try {
+        $head = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $Url
+        $length = $head.Headers["Content-Length"]
+        if ($length) {
+            return [long]$length
+        }
+    }
+    catch {
+        return $null
+    }
+    return $null
+}
+
+function Find-Candidate {
+    param(
+        [string]$Url,
+        [int]$Depth
+    )
+
+    $links = Get-DirectoryLinks $Url
+    foreach ($href in $links) {
+        $resolved = Resolve-Link $Url $href
+        if ($null -eq $resolved) {
+            continue
+        }
+        $leaf = [Uri]::UnescapeDataString(([Uri]$resolved).Segments[-1])
+        if ($leaf -match '/$' -or $resolved.EndsWith('/')) {
+            if ($Depth -gt 0) {
+                $nested = Find-Candidate $resolved ($Depth - 1)
+                if ($nested) {
+                    return $nested
+                }
+            }
+            continue
+        }
+        if ($leaf -notmatch $NamePattern) {
+            continue
+        }
+        $length = Get-RemoteLength $resolved
+        if ($length -ne $null -and $length -gt $MaxBytes) {
+            continue
+        }
+        return $resolved
+    }
+    return $null
+}
+
+$sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
+if ($null -eq $sourceUrl) {
+    throw "Format '$Format' has no direct public URL in sources.json: $($formatEntry.Value -join ', ')"
+}
+
+if (-not $sourceUrl.EndsWith('/')) {
+    $sourceUrl += '/'
+}
+
+$candidate = Find-Candidate $sourceUrl $MaxDepth
+if ($null -eq $candidate) {
+    throw "No downloadable candidate for '$Format' matched pattern '$NamePattern' under $sourceUrl within depth $MaxDepth and size cap $MaxBytes bytes."
+}
+
+$targetRoot = if ([System.IO.Path]::IsPathRooted($OutDir)) {
+    $OutDir
+} else {
+    Join-Path (Get-Location) $OutDir
+}
+$targetDir = Join-Path $targetRoot $Format
+New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+
+$fileName = [Uri]::UnescapeDataString(([Uri]$candidate).Segments[-1])
+$targetPath = Join-Path $targetDir $fileName
+Invoke-WebRequest -UseBasicParsing -Uri $candidate -OutFile $targetPath
+
+[PSCustomObject]@{
+    Format = $Format
+    Source = $candidate
+    Path = $targetPath
+    Bytes = (Get-Item $targetPath).Length
+}

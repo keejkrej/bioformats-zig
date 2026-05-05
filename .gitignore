@@ -3,3 +3,4 @@ zig-out/
 webapp/dist/
 webapp/node_modules/
 webapp/tsconfig.tsbuildinfo
+fixtures/cache/

@@ -27,6 +27,14 @@ because many microscopy datasets are large or have redistribution limits.
    ignored by the user, then run the JSON-RPC binary with `metadata`, `probe`,
    and a small `readPlane` region.
 
+Use the helper script to list known sources or fetch a small public candidate
+from the first direct OME/HTTP source:
+
+```powershell
+./fixtures/fetch.ps1 -List
+./fixtures/fetch.ps1 -Format tiff -MaxBytes 52428800
+```
+
 `implemented_format_sources` tracks formats currently advertised by
 `src/root.zig`. `pending_reader_sources` tracks fixture leads for concrete
 Bio-Formats Java readers that still need Zig implementations; do not count
