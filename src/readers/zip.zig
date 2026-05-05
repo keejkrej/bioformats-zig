@@ -62,6 +62,7 @@ const seiko = @import("seiko.zig");
 const sif = @import("sif.zig");
 const simplepci = @import("simplepci.zig");
 const sis = @import("sis.zig");
+const slidebooktiff = @import("slidebooktiff.zig");
 const smcamera = @import("smcamera.zig");
 const spe = @import("spe.zig");
 const spider = @import("spider.zig");
@@ -90,7 +91,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, metamorph, mias, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, simplepci, sis, smcamera, spe, spider, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, metamorph, mias, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -198,6 +199,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .sif => sif.readMetadata(entry.data),
         .simplepci => simplepci.readMetadata(entry.data),
         .sis => sis.readMetadata(entry.data),
+        .slidebooktiff => slidebooktiff.readMetadata(entry.data),
         .smcamera => smcamera.readMetadata(entry.data),
         .spe => spe.readMetadata(entry.data),
         .spider => spider.readMetadata(entry.data),
@@ -281,6 +283,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .sif => sif.readPlaneIndex(allocator, entry.data, plane_index),
         .simplepci => simplepci.readPlaneIndex(allocator, entry.data, plane_index),
         .sis => sis.readPlaneIndex(allocator, entry.data, plane_index),
+        .slidebooktiff => slidebooktiff.readPlaneIndex(allocator, entry.data, plane_index),
         .smcamera => if (plane_index == 0) smcamera.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .spe => spe.readPlaneIndex(allocator, entry.data, plane_index),
         .spider => spider.readPlaneIndex(allocator, entry.data, plane_index),
@@ -313,6 +316,7 @@ fn readInnerRegionIndex(
     if (entry.kind == .photoshoptiff) return photoshoptiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .simplepci) return simplepci.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .sis) return sis.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .slidebooktiff) return slidebooktiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .vectra) return vectra.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .ventana) return ventana.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .zeisslsm) return zeisslsm.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -425,6 +429,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (sif.matches(data)) return .sif;
     if (simplepci.matches(data)) return .simplepci;
     if (sis.matches(data)) return .sis;
+    if (slidebooktiff.matches(data)) return .slidebooktiff;
     if (smcamera.matches(data)) return .smcamera;
     if (hasExtension(filename, ".spe") and spe.matches(data)) return .spe;
     if (hasExtension(filename, ".spi") and spider.matches(data)) return .spider;
@@ -1633,6 +1638,64 @@ test "reads stored sis zip entry before baseline tiff" {
     defer std.testing.allocator.free(region_plane.data);
     try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{77}, region_plane.data);
+}
+
+test "reads stored slidebook tiff zip entry before baseline tiff" {
+    var slidebook_data: std.ArrayList(u8) = .empty;
+    defer slidebook_data.deinit(std.testing.allocator);
+
+    try slidebook_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&slidebook_data, 42);
+    try appendU32Le(&slidebook_data, 8);
+
+    const entry_count = 11;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const software = "SlideBook\x00";
+    const software_offset = ifd_end;
+    const pixel_offset = software_offset + software.len;
+
+    try appendU16Le(&slidebook_data, entry_count);
+    try appendTiffEntry(&slidebook_data, 256, 4, 1, 1);
+    try appendTiffEntry(&slidebook_data, 257, 4, 1, 1);
+    try appendTiffEntry(&slidebook_data, 258, 3, 1, 8);
+    try appendTiffEntry(&slidebook_data, 259, 3, 1, 1);
+    try appendTiffEntry(&slidebook_data, 262, 3, 1, 1);
+    try appendTiffEntry(&slidebook_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&slidebook_data, 277, 3, 1, 1);
+    try appendTiffEntry(&slidebook_data, 278, 4, 1, 1);
+    try appendTiffEntry(&slidebook_data, 279, 4, 1, 1);
+    try appendTiffEntry(&slidebook_data, 305, 2, software.len, @intCast(software_offset));
+    try appendTiffEntry(&slidebook_data, 65004, 2, 2, 0);
+    try appendU32Le(&slidebook_data, 0);
+    try slidebook_data.appendSlice(std.testing.allocator, software);
+    try slidebook_data.append(std.testing.allocator, 91);
+
+    try std.testing.expectEqual(Entry.Kind.slidebooktiff, detectInner("image.tif", slidebook_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.tif", slidebook_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{91}, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{91}, region_plane.data);
 }
 
 test "reads stored spe zip entry through extension-gated inner reader" {
