@@ -239,7 +239,8 @@ fn parseU16(text: []const u8) bio.ReaderError!u16 {
 }
 
 fn parseBool(text: []const u8) bool {
-    return std.ascii.eqlIgnoreCase(text, "true") or std.mem.eql(u8, text, "1");
+    const value = std.mem.trim(u8, text, " \t\r\n");
+    return std.ascii.eqlIgnoreCase(value, "true") or std.mem.eql(u8, value, "1") or std.ascii.startsWithIgnoreCase(value, "t");
 }
 
 fn decodeBase64(allocator: std.mem.Allocator, encoded: []const u8) bio.ReaderError![]u8 {
@@ -356,6 +357,21 @@ test "ome xml bindata big endian overrides pixels endian" {
     const plane = try readPlaneIndex(std.testing.allocator, data, 0);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expect(!plane.metadata.little_endian);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, plane.data);
+}
+
+test "ome xml accepts t f big endian values" {
+    const data =
+        \\<?xml version="1.0"?>
+        \\<OME><Image ID="Image:0"><Pixels DimensionOrder="XYZCT" Type="uint16" SizeX="1" SizeY="1" SizeZ="1" SizeC="1" SizeT="1" BigEndian="t"><BinData Compression="none" BigEndian="f">AQI=</BinData></Pixels></Image></OME>
+    ;
+
+    const metadata = try readMetadata(data);
+    try std.testing.expect(!metadata.little_endian);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expect(plane.metadata.little_endian);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, plane.data);
 }
 
