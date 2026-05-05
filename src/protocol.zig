@@ -2266,6 +2266,41 @@ test "server opens hitachi txt path and reads companion bmp pixels" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"ZG54KDI8\"") != null);
 }
 
+test "server opens hitachi txt path and reads companion jpeg pixels" {
+    const txt_path = "protocol-hitachi-jpeg-test.txt";
+    const jpg_path = "protocol-hitachi-jpeg-test.jpg";
+    const sidecar =
+        "[SemImageFile]\n" ++
+        "ImageName=protocol-hitachi-jpeg-test.jpg\n";
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = txt_path, .data = sidecar });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, txt_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = jpg_path, .data = &bio.jpeg.baseline_red_jpeg });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, jpg_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-hitachi-jpeg-test.txt\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"hitachi\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"width\":1") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"hitachi\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"pixelType\":\"rgb8\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"encoding\":\"base64\"") != null);
+}
+
 test "server opens imagic img path and reads companion pixels" {
     const hed_path = "protocol-imagic-test.hed";
     const img_path = "protocol-imagic-test.img";

@@ -239,6 +239,36 @@ test "reads hitachi delegated bmp pixels with crop" {
     try std.testing.expectEqualSlices(u8, &.{ 100, 110, 120, 40, 50, 60 }, plane.data);
 }
 
+test "reads hitachi delegated jpeg pixels" {
+    const txt_path = "hitachi-jpeg-test.txt";
+    const jpg_path = "hitachi-jpeg-test.jpg";
+    const sidecar =
+        "[SemImageFile]\n" ++
+        "ImageName=hitachi-jpeg-test.jpg\n";
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = txt_path, .data = sidecar });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, txt_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = jpg_path, .data = &bio.jpeg.baseline_red_jpeg });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, jpg_path) catch {};
+
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, txt_path);
+    try std.testing.expectEqualStrings("hitachi", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+
+    const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, txt_path, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("hitachi", plane.metadata.format);
+    try std.testing.expect(plane.data[0] > 200);
+    try std.testing.expect(plane.data[1] < 80);
+    try std.testing.expect(plane.data[2] < 80);
+}
+
 test "rejects missing hitachi companion image" {
     const txt_path = "hitachi-missing-test.txt";
     const sidecar =
