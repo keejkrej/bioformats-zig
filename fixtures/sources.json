@@ -24,7 +24,7 @@
     "dcimg": ["ome_images/DCIMG/", "zenodo/10.5281/zenodo.16875377"],
     "deltavision": ["ome_images/DV/"],
     "dicom": ["ome_images/DICOM/"],
-    "ecat7": ["ome_images/ECAT7/"],
+    "ecat7": ["ome_images/ECAT7/torsten/", "ome_images/ECAT7/"],
     "gatan": ["ome_images/Gatan/"],
     "gatandm2": ["ome_images/Gatan/"],
     "ics": ["ome_images/ICS/jan/", "ome_images/ICS/"],

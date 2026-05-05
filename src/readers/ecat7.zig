@@ -2,6 +2,7 @@ const std = @import("std");
 const bio = @import("../root.zig");
 
 const magic = "MATRIX72v";
+const matrix70_magic = "MATRIX70v";
 const header_size = 1536;
 
 const Offset = struct {
@@ -56,7 +57,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
 
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (data.len < header_size) return error.TruncatedData;
-    if (!std.mem.eql(u8, data[0..magic.len], magic)) return error.InvalidFormat;
+    if (!hasMagic(data)) return error.InvalidFormat;
     const data_type = readU16(data, Offset.data_type);
     if (data_type != 6) return error.UnsupportedVariant;
     const width = readU16(data, Offset.size_x);
@@ -86,6 +87,11 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     const last_offset = try planeOffset(metadata, metadata.plane_count - 1, plane_len);
     if (last_offset > data.len or data.len - last_offset < plane_len) return error.TruncatedData;
     return header;
+}
+
+fn hasMagic(data: []const u8) bool {
+    return std.mem.startsWith(u8, data, magic) or
+        std.mem.startsWith(u8, data, matrix70_magic);
 }
 
 fn planeOffset(metadata: bio.Metadata, plane_index: u32, plane_len: usize) bio.ReaderError!usize {
@@ -142,6 +148,25 @@ test "reads ecat7 uint16 planes with frame padding" {
     const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 0xab, 0xcd }, plane.data);
+}
+
+test "accepts matrix70 ecat7 header variant" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendNTimes(std.testing.allocator, 0, header_size + 2);
+    @memcpy(data.items[0..matrix70_magic.len], matrix70_magic);
+    writeU16(data.items, Offset.size_z, 1);
+    writeU16(data.items, Offset.size_t, 1);
+    writeU16(data.items, Offset.data_type, 6);
+    writeU16(data.items, Offset.dimensions, 3);
+    writeU16(data.items, Offset.size_x, 1);
+    writeU16(data.items, Offset.size_y, 1);
+
+    try std.testing.expect(matches(data.items));
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
 }
 
 test "rejects unsupported ecat7 datatype" {

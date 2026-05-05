@@ -39,6 +39,7 @@ const Header = struct {
 
 pub fn matches(data: []const u8) bool {
     if (data.len < header_len) return false;
+    if (looksLikeEcat7(data)) return false;
     const stamp = data[endian_stamp_offset];
     if (stamp == 68) return candidateValid(data, .little);
     if (stamp == 17) return candidateValid(data, .big);
@@ -83,6 +84,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
 
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (data.len < header_len) return error.InvalidFormat;
+    if (looksLikeEcat7(data)) return error.InvalidFormat;
     const stamp = data[endian_stamp_offset];
     const order: ByteOrder = if (stamp == 68)
         .little
@@ -107,6 +109,11 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
         .mode = readI32(order, data[12..16]),
         .pixel_offset = pixel_offset,
     };
+}
+
+fn looksLikeEcat7(data: []const u8) bool {
+    return std.mem.startsWith(u8, data, "MATRIX70v") or
+        std.mem.startsWith(u8, data, "MATRIX72v");
 }
 
 fn candidateValid(data: []const u8, order: ByteOrder) bool {
@@ -193,4 +200,12 @@ test "reads rgb mrc metadata and pixels" {
     try std.testing.expectEqual(bio.PixelType.rgb8, plane.metadata.pixel_type);
     try std.testing.expectEqual(@as(u16, 3), plane.metadata.samples_per_pixel);
     try std.testing.expectEqualSlices(u8, &.{ 10, 20, 30 }, plane.data);
+}
+
+test "rejects ecat7 matrix headers as mrc candidates" {
+    var data = [_]u8{0} ** header_len;
+    @memcpy(data[0.."MATRIX70v".len], "MATRIX70v");
+
+    try std.testing.expect(!matches(&data));
+    try std.testing.expectError(error.InvalidFormat, readMetadata(&data));
 }

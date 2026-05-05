@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|dng|lsm|oir|vsi|ets|nd2|czi|lif|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|dcm|dicom|ima|vms|ims|ch5|h5|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|dng|lsm|oir|vsi|ets|nd2|czi|lif|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|xml)$',
     [switch]$List
 )
 
@@ -116,6 +116,7 @@ function Preferred-NamePattern {
     param([string]$Format)
 
     switch ($Format) {
+        "ecat7" { return '\.v$' }
         "hamamatsuvms" { return '\.vms$' }
         "mrc" { return '\.(mrc|map)$' }
         "nifti" { return '\.nii$' }
