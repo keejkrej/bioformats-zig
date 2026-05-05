@@ -619,6 +619,9 @@ pub const Server = struct {
             if (bio.analyze.isPath(path)) {
                 if (bio.analyze.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
             }
+            if (bio.nrrd.isPath(path)) {
+                if (bio.nrrd.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+            }
             if (bio.pds.isPath(path)) {
                 if (bio.pds.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
             }
@@ -775,6 +778,9 @@ pub const Server = struct {
         if (bio.analyze.isPath(path)) {
             if (bio.analyze.readMetadataPath(self.allocator, self.io, path)) |_| return "analyze" else |_| {}
         }
+        if (bio.nrrd.isPath(path)) {
+            if (bio.nrrd.readMetadataPath(self.allocator, self.io, path)) |_| return "nrrd" else |_| {}
+        }
         if (bio.pds.isPath(path)) {
             if (bio.pds.readMetadataPath(self.allocator, self.io, path)) |_| return "pds" else |_| {}
         }
@@ -811,6 +817,9 @@ pub const Server = struct {
     ) !bio.Plane {
         if (std.mem.eql(u8, format, "analyze")) {
             return bio.analyze.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
+        if (std.mem.eql(u8, format, "nrrd")) {
+            return bio.nrrd.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
         if (std.mem.eql(u8, format, "afi")) {
             return bio.afi.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
@@ -962,6 +971,7 @@ pub const Server = struct {
 
     fn isCompanionFormat(format: []const u8) bool {
         return std.mem.eql(u8, format, "analyze") or
+            std.mem.eql(u8, format, "nrrd") or
             std.mem.eql(u8, format, "afi") or
             std.mem.eql(u8, format, "apl") or
             std.mem.eql(u8, format, "pds") or

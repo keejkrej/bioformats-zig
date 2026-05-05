@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|dng|lsm|oir|vsi|ets|nd2|czi|lif|ics|ids|dv|r3d|mrc|map|nii|nrrd|dcm|dicom|ima|vms|ims|ch5|h5|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|dng|lsm|oir|vsi|ets|nd2|czi|lif|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|dcm|dicom|ima|vms|ims|ch5|h5|xml)$',
     [switch]$List
 )
 
@@ -119,6 +119,7 @@ function Preferred-NamePattern {
         "hamamatsuvms" { return '\.vms$' }
         "mrc" { return '\.(mrc|map)$' }
         "nifti" { return '\.nii$' }
+        "nrrd" { return '\.(nrrd|nhdr)$' }
         default { return $null }
     }
 }
@@ -251,6 +252,26 @@ function Download-HamamatsuVmsCompanions {
     }
 }
 
+function Download-NrrdCompanions {
+    param(
+        [string]$HeaderSource,
+        [string]$HeaderPath,
+        [string]$TargetDir
+    )
+
+    $content = Get-Content -LiteralPath $HeaderPath -Raw
+    $match = [regex]::Match($content, "(?im)^\s*data\s*file\s*:\s*(.+?)\s*$|^\s*datafile\s*:\s*(.+?)\s*$")
+    if (-not $match.Success) {
+        return
+    }
+    $name = if ($match.Groups[1].Success) { $match.Groups[1].Value.Trim() } else { $match.Groups[2].Value.Trim() }
+    if ([string]::IsNullOrWhiteSpace($name) -or $name -match '\s') {
+        return
+    }
+    $baseUrl = [Uri]::new([Uri]$HeaderSource, ".").AbsoluteUri
+    Download-Companion $baseUrl $name $TargetDir
+}
+
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
 $zenodoRecordId = Resolve-ZenodoRecordId ([string[]]$formatEntry.Value)
 if ($null -eq $sourceUrl -and $null -eq $zenodoRecordId) {
@@ -298,4 +319,7 @@ Invoke-WebRequest -UseBasicParsing -Uri $candidate.Url -OutFile $targetPath
 
 if ($Format -eq "hamamatsuvms") {
     Download-HamamatsuVmsCompanions $candidate.Url $targetPath $targetDir
+}
+if ($Format -eq "nrrd") {
+    Download-NrrdCompanions $candidate.Url $targetPath $targetDir
 }
