@@ -196,6 +196,7 @@ try {
     Assert-True ($initialize.result.protocol -eq "json-rpc-2.0-stdio") "Unexpected initialize protocol."
     Assert-True ([bool]$initialize.result.capabilities.contentLengthFraming) "Content-Length framing was not advertised."
     Assert-True ([bool]$initialize.result.capabilities.inlineData) "Inline data was not advertised."
+    Assert-True ([bool]$initialize.result.capabilities.handles) "Reader handles were not advertised."
     Assert-True ([bool]$initialize.result.capabilities.batch) "Batch requests were not advertised."
     Assert-True ([bool]$initialize.result.capabilities.notifications) "Notifications were not advertised."
 
@@ -207,17 +208,49 @@ try {
         [System.Text.Encoding]::ASCII.GetBytes("P6`n1 1`n255`n") +
         [byte[]](10, 20, 30)
     )
+    $ppmBase64 = [Convert]::ToBase64String($ppmBytes)
     $plane = Invoke-LineRequest $lineProcess @{
         jsonrpc = "2.0"
         id = 3
         method = "readPlane"
         params = @{
-            data = [Convert]::ToBase64String($ppmBytes)
+            data = $ppmBase64
         }
     }
     Assert-True ($plane.result.metadata.format -eq "netpbm") "Inline readPlane did not return netpbm metadata."
     Assert-True ($plane.result.metadata.width -eq 1 -and $plane.result.metadata.height -eq 1) "Inline readPlane returned unexpected dimensions."
     Assert-True ($plane.result.data -eq "ChQe") "Inline readPlane returned unexpected pixel payload."
+
+    $open = Invoke-LineRequest $lineProcess @{
+        jsonrpc = "2.0"
+        id = 6
+        method = "open"
+        params = @{
+            data = $ppmBase64
+        }
+    }
+    Assert-True ($open.result.handle -gt 0) "Open did not return a positive reader handle."
+    Assert-True ($open.result.metadata.format -eq "netpbm") "Open did not return netpbm metadata."
+
+    $handlePlane = Invoke-LineRequest $lineProcess @{
+        jsonrpc = "2.0"
+        id = 7
+        method = "readPlane"
+        params = @{
+            handle = $open.result.handle
+        }
+    }
+    Assert-True ($handlePlane.result.data -eq "ChQe") "Handle readPlane returned unexpected pixel payload."
+
+    $close = Invoke-LineRequest $lineProcess @{
+        jsonrpc = "2.0"
+        id = 8
+        method = "close"
+        params = @{
+            handle = $open.result.handle
+        }
+    }
+    Assert-True ([bool]$close.result) "Close did not return true."
 
     $batch = @(Invoke-LineMessage -Process $lineProcess -Message @(
         @{ jsonrpc = "2.0"; method = "formats" }
@@ -233,6 +266,7 @@ try {
         Status = "ok"
         Formats = $formats.result.Count
         InlinePixels = $plane.result.data
+        HandlePixels = $handlePlane.result.data
         BatchResponses = $batch.Count
     }
 }
@@ -256,7 +290,7 @@ try {
         id = 5
         method = "readPlane"
         params = @{
-            data = [Convert]::ToBase64String($ppmBytes)
+            data = $ppmBase64
         }
     }
     Assert-True ($plane.result.metadata.format -eq "netpbm") "Framed readPlane did not return netpbm metadata."
