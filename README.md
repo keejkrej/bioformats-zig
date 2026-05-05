@@ -305,7 +305,7 @@ plane, which can differ from logical OME `sizeC`.
 
 Bio-Formats Java reader-name aliases currently advertised by `formats` include
 `bd`, `ionpathmibitiff`, `metamorphtiff`, `metaxpresstiff`,
-`mikroscantiff`, `nikonelementstiff`, `simplepcitiff`, and `targa`.
+`mikroscantiff`, `nikonelementstiff`, `pgm`, `simplepcitiff`, and `targa`.
 
 This is not a complete Bio-Formats replacement yet. The repository now has the
 embedding boundary and reader shape needed to port additional `FormatReader`

@@ -121,6 +121,7 @@
     "mrw": ["needs-public-sample"],
     "naf": ["needs-public-sample"],
     "netpbm": ["generated-fixture"],
+    "pgm": ["alias-of-netpbm"],
     "nikon": ["needs-public-sample"],
     "ndpis": ["ome_images/Hamamatsu-NDPI/"],
     "nikonelements": ["needs-public-sample"],

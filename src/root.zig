@@ -393,6 +393,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "pgm",
+        .name = "Portable Any Map",
+        .extensions = &.{ "pbm", "pgm", "ppm" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "bmp",
         .name = "Windows BMP 1/4/8/16/24/32-bit",
         .extensions = &.{"bmp"},
