@@ -504,6 +504,9 @@ pub const Server = struct {
             if (bio.fuji.isPath(path)) {
                 if (bio.fuji.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
             }
+            if (bio.hitachi.isPath(path)) {
+                if (bio.hitachi.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+            }
             if (bio.imagic.isPath(path)) {
                 if (bio.imagic.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
             }
@@ -529,6 +532,9 @@ pub const Server = struct {
         }
         if (bio.fuji.isPath(path)) {
             if (bio.fuji.readMetadataPath(self.allocator, self.io, path)) |_| return "fuji" else |_| {}
+        }
+        if (bio.hitachi.isPath(path)) {
+            if (bio.hitachi.readMetadataPath(self.allocator, self.io, path)) |_| return "hitachi" else |_| {}
         }
         if (bio.imagic.isPath(path)) {
             if (bio.imagic.readMetadataPath(self.allocator, self.io, path)) |_| return "imagic" else |_| {}
@@ -561,6 +567,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "fuji")) {
             return bio.fuji.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "hitachi")) {
+            return bio.hitachi.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "imagic")) {
             return bio.imagic.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -582,6 +591,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "pds") or
             std.mem.eql(u8, format, "inveon") or
             std.mem.eql(u8, format, "fuji") or
+            std.mem.eql(u8, format, "hitachi") or
             std.mem.eql(u8, format, "imagic") or
             std.mem.eql(u8, format, "ics") or
             std.mem.eql(u8, format, "unisoku");
@@ -1138,6 +1148,7 @@ test "formats response includes expanded readers" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"gel\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"gif\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"his\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"hitachi\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"hrdgdf\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"i2i\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imacon\"") != null);
@@ -1389,6 +1400,47 @@ test "server opens fuji img path and reads companion pixels" {
     );
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"region\":{\"x\":1,\"y\":0,\"width\":1,\"height\":2}") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AgAEAA==\"") != null);
+}
+
+test "server opens hitachi txt path and reads companion bmp pixels" {
+    const txt_path = "protocol-hitachi-test.txt";
+    const bmp_path = "protocol-hitachi-test.bmp";
+    const sidecar =
+        "[SemImageFile]\n" ++
+        "SampleName=Hitachi sample\n" ++
+        "ImageName=protocol-hitachi-test.bmp\n";
+    const bmp = [_]u8{
+        'B', 'M', 70, 0,  0, 0, 0,  0,  0,  0,   54,  0,   0,  0,
+        40,  0,   0,  0,  2, 0, 0,  0,  2,  0,   0,   0,   1,  0,
+        24,  0,   0,  0,  0, 0, 16, 0,  0,  0,   0,   0,   0,  0,
+        0,   0,   0,  0,  0, 0, 0,  0,  0,  0,   0,   0,   30, 20,
+        10,  60,  50, 40, 0, 0, 90, 80, 70, 120, 110, 100, 0,  0,
+    };
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = txt_path, .data = sidecar });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, txt_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = bmp_path, .data = &bmp });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, bmp_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-hitachi-test.txt\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"hitachi\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":1,\"y\":0,\"width\":1,\"height\":2}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"region\":{\"x\":1,\"y\":0,\"width\":1,\"height\":2}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"ZG54KDI8\"") != null);
 }
 
 test "server opens imagic img path and reads companion pixels" {

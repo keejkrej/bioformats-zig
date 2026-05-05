@@ -31,6 +31,7 @@ pub const gatandm2 = @import("readers/gatandm2.zig");
 pub const gel = @import("readers/gel.zig");
 pub const gif = @import("readers/gif.zig");
 pub const his = @import("readers/his.zig");
+pub const hitachi = @import("readers/hitachi.zig");
 pub const hrdgdf = @import("readers/hrdgdf.zig");
 pub const i2i = @import("readers/i2i.zig");
 pub const imacon = @import("readers/imacon.zig");
@@ -453,6 +454,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "his",
         .name = "Hamamatsu HIS single-series image",
         .extensions = &.{"his"},
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "hitachi",
+        .name = "Hitachi S-4800",
+        .extensions = &.{"txt"},
         .can_read_pixels = true,
     },
     .{
@@ -981,6 +988,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (fuji.matches(data)) return "fuji";
     if (gif.matches(data)) return "gif";
     if (his.matches(data)) return "his";
+    if (hitachi.matches(data)) return "hitachi";
     if (i2i.matches(data)) return "i2i";
     if (ics.matches(data)) return "ics";
     if (inr.matches(data)) return "inr";
@@ -1100,6 +1108,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (fuji.matches(data)) return fuji.readMetadata(data);
     if (gif.matches(data)) return gif.readMetadata(data);
     if (his.matches(data)) return his.readMetadata(data);
+    if (hitachi.matches(data)) return hitachi.readMetadata(data);
     if (i2i.matches(data)) return i2i.readMetadata(data);
     if (ics.matches(data)) return ics.readMetadata(data);
     if (inr.matches(data)) return inr.readMetadata(data);
@@ -1243,6 +1252,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return his.readPlane(allocator, data);
     }
+    if (hitachi.matches(data)) return hitachi.readPlaneIndex(allocator, data, plane_index);
     if (i2i.matches(data)) return i2i.readPlaneIndex(allocator, data, plane_index);
     if (ics.matches(data)) return ics.readPlaneIndex(allocator, data, plane_index);
     if (inr.matches(data)) return inr.readPlaneIndex(allocator, data, plane_index);
