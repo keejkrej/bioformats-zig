@@ -68,6 +68,7 @@ pub const netpbm = @import("readers/netpbm.zig");
 pub const mrw = @import("readers/mrw.zig");
 pub const mrc = @import("readers/mrc.zig");
 pub const ndpi = @import("readers/ndpi.zig");
+pub const ndpis = @import("readers/ndpis.zig");
 pub const nifti = @import("readers/nifti.zig");
 pub const nikon = @import("readers/nikon.zig");
 pub const nikonelements = @import("readers/nikonelements.zig");
@@ -746,6 +747,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "ndpi",
         .name = "Hamamatsu NDPI TIFF",
         .extensions = &.{"ndpi"},
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "ndpis",
+        .name = "Hamamatsu NDPIS",
+        .extensions = &.{"ndpis"},
         .can_read_pixels = true,
     },
     .{

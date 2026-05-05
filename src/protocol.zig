@@ -507,12 +507,18 @@ pub const Server = struct {
         if (bio.rcpnl.isPath(path)) {
             if (bio.rcpnl.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.ndpis.isPath(path)) {
+            if (bio.ndpis.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         return bio.readMetadata(bytes) catch |err| {
             if (bio.analyze.isPath(path)) {
                 if (bio.analyze.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
             }
             if (bio.pds.isPath(path)) {
                 if (bio.pds.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+            }
+            if (bio.ndpis.isPath(path)) {
+                if (bio.ndpis.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
             }
             if (bio.inveon.isPath(path)) {
                 if (bio.inveon.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
@@ -549,6 +555,9 @@ pub const Server = struct {
         if (bio.rcpnl.isPath(path)) {
             if (bio.rcpnl.readMetadataPath(self.allocator, self.io, path)) |_| return "rcpnl" else |_| {}
         }
+        if (bio.ndpis.isPath(path)) {
+            if (bio.ndpis.readMetadataPath(self.allocator, self.io, path)) |_| return "ndpis" else |_| {}
+        }
         return null;
     }
 
@@ -558,6 +567,9 @@ pub const Server = struct {
         }
         if (bio.pds.isPath(path)) {
             if (bio.pds.readMetadataPath(self.allocator, self.io, path)) |_| return "pds" else |_| {}
+        }
+        if (bio.ndpis.isPath(path)) {
+            if (bio.ndpis.readMetadataPath(self.allocator, self.io, path)) |_| return "ndpis" else |_| {}
         }
         if (bio.inveon.isPath(path)) {
             if (bio.inveon.readMetadataPath(self.allocator, self.io, path)) |_| return "inveon" else |_| {}
@@ -592,6 +604,9 @@ pub const Server = struct {
         }
         if (std.mem.eql(u8, format, "pds")) {
             return bio.pds.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
+        if (std.mem.eql(u8, format, "ndpis")) {
+            return bio.ndpis.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
         if (std.mem.eql(u8, format, "pcoraw")) {
             return bio.pcoraw.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
@@ -633,6 +648,7 @@ pub const Server = struct {
     fn isCompanionFormat(format: []const u8) bool {
         return std.mem.eql(u8, format, "analyze") or
             std.mem.eql(u8, format, "pds") or
+            std.mem.eql(u8, format, "ndpis") or
             std.mem.eql(u8, format, "pcoraw") or
             std.mem.eql(u8, format, "jpk") or
             std.mem.eql(u8, format, "imaristiff") or
@@ -1223,6 +1239,7 @@ test "formats response includes expanded readers" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"molecularimaging\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"mrc\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"nifti\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"ndpis\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"nikonelements\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"nikontiff\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"nrrd\"") != null);
@@ -1409,6 +1426,57 @@ test "server opens pds img path and reads companion pixels" {
     );
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"region\":{\"x\":1,\"y\":0,\"width\":1,\"height\":2}") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AgAEAA==\"") != null);
+}
+
+test "server opens ndpis sidecar and reads first ndpi pixels" {
+    const sidecar_path = "protocol-ndpis-test.ndpis";
+    const image_path = "protocol-ndpis-test-0.ndpi";
+    const sidecar = "NoImages=1\r\nImage0=protocol-ndpis-test-0.ndpi\r\n";
+    const image = [_]u8{
+        'I', 'I', 42,  0,   8,   0,   0,   0,
+        10,  0,   0,   1,   4,   0,   1,   0,
+        0,   0,   1,   0,   0,   0,   1,   1,
+        4,   0,   1,   0,   0,   0,   1,   0,
+        0,   0,   2,   1,   3,   0,   1,   0,
+        0,   0,   8,   0,   0,   0,   3,   1,
+        3,   0,   1,   0,   0,   0,   1,   0,
+        0,   0,   6,   1,   3,   0,   1,   0,
+        0,   0,   1,   0,   0,   0,   17,  1,
+        4,   0,   1,   0,   0,   0,   146, 0,
+        0,   0,   21,  1,   3,   0,   1,   0,
+        0,   0,   1,   0,   0,   0,   22,  1,
+        4,   0,   1,   0,   0,   0,   1,   0,
+        0,   0,   23,  1,   4,   0,   1,   0,
+        0,   0,   1,   0,   0,   0,   146, 255,
+        2,   0,   12,  0,   0,   0,   134, 0,
+        0,   0,   0,   0,   0,   0,   'N', 'D',
+        'P', 'I', '_', 'M', 'A', 'R', 'K', 'E',
+        'R', 0,   77,
+    };
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = sidecar_path, .data = sidecar });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, sidecar_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = &image });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-ndpis-test.ndpis\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"ndpis\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
 }
 
 test "server opens pcoraw rec path and reads tiff pixels" {

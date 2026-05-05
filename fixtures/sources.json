@@ -92,6 +92,7 @@
     "mrw": ["needs-public-sample"],
     "netpbm": ["generated-fixture"],
     "nikon": ["needs-public-sample"],
+    "ndpis": ["ome_images/Hamamatsu-NDPI/"],
     "nikonelements": ["needs-public-sample"],
     "nikontiff": ["needs-public-sample"],
     "openlabraw": ["needs-public-sample"],

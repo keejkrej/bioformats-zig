@@ -202,6 +202,7 @@ plane, which can differ from logical OME `sizeC`.
 - PNG 1/2/4/8-bit grayscale/indexed color, 8/16-bit grayscale and grayscale-alpha/RGB/RGBA, optional tRNS transparency, standard scanline filters, and Adam7 interlace.
 - MRC microscopy volumes with 8-bit unsigned, 16-bit signed/unsigned, 32-bit floating-point, and RGB byte modes; Z slices are exposed as planes and row order is normalized to top-down output.
 - Hamamatsu NDPI TIFF files identified by Hamamatsu private NDPI tags, decoded through the TIFF pixel path for TIFF-readable planes; JPEG tile acceleration, high-byte offset tags, pyramid/label/macro series mapping, and NDPI metadata expansion are not yet handled.
+- Hamamatsu NDPIS `.ndpis` sidecars that list neighboring `.ndpi` files, delegated through the first referenced NDPI image; multi-NDPI channel merging, emission wavelengths, and shading metadata are not yet modeled.
 - NIfTI single-file `.nii` images with inline 8/16/32-bit integer and 32/64-bit floating-point planes, plus RGB/RGBA byte samples; `.hdr/.img` pairs and `.nii.gz` are not yet handled.
 - Nikon NEF/TIFF files identified by TIFF-EP tags or Nikon Make tags, decoded through the TIFF pixel path when the stored image is directly TIFF-readable; Nikon compressed RAW decompression, maker-note metadata, CFA/white-balance expansion, and NEF subIFD handling are not yet handled.
 - Nikon Elements TIFF files identified by Nikon XML private metadata tags, decoded through the TIFF pixel path.
