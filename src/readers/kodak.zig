@@ -33,6 +33,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
         .height = header.height,
         .size_c = 1,
         .samples_per_pixel = 1,
+        .dimension_order = "XYCZT",
         .pixel_type = .float32,
         .little_endian = false,
     };
@@ -98,6 +99,7 @@ test "reads kodak bip float32 plane" {
     const metadata = try readMetadata(data.items);
     try std.testing.expectEqual(@as(u32, 2), metadata.width);
     try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
     try std.testing.expectEqual(bio.PixelType.float32, metadata.pixel_type);
     try std.testing.expect(!metadata.little_endian);
 
