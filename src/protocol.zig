@@ -1182,7 +1182,7 @@ fn endMessage(writer: *std.Io.Writer) !void {
 fn writeInitialize(writer: *std.Io.Writer, id: std.json.Value) !void {
     try beginResult(writer, id);
     try writer.writeAll(
-        \\{"server":"bioformats-zig","protocol":"json-rpc-2.0-line-delimited","methods":["initialize","formats","probe","open","close","metadata","readPlane","shutdown"],"capabilities":{"metadata":true,"pixels":true,"handles":true,"batch":true,"notifications":true,"planeEncoding":"base64","regions":true,"zctCoordinates":true,"inlineData":true}}
+        \\{"server":"bioformats-zig","protocol":"json-rpc-2.0-stdio","framing":["line-delimited","content-length"],"methods":["initialize","formats","probe","open","close","metadata","readPlane","shutdown"],"capabilities":{"metadata":true,"pixels":true,"handles":true,"batch":true,"notifications":true,"planeEncoding":"base64","regions":true,"zctCoordinates":true,"inlineData":true,"contentLengthFraming":true}}
     );
     try endMessage(writer);
 }
@@ -1328,6 +1328,7 @@ test "initialize response is json-rpc" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"regions\":true") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"zctCoordinates\":true") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"inlineData\":true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"contentLengthFraming\":true") != null);
 }
 
 test "server handles json-rpc batch requests" {

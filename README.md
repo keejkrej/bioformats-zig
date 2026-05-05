@@ -3,12 +3,13 @@
 Experimental Zig reimplementation slice of Bio-Formats focused on embedding through
 a small stdio JSON-RPC process.
 
-The current binary is line-delimited JSON-RPC 2.0 over stdin/stdout. Each request
-is one JSON object or JSON-RPC batch array followed by `\n`; each response is one
-JSON object or batch response array followed by `\n`. Requests must include
-`"jsonrpc":"2.0"`. Request IDs may be strings, numbers, or `null`.
-Request lines may be up to 768 MiB, which allows large inline base64 image
-inputs without being constrained by the process' stdin buffer size.
+The current binary is JSON-RPC 2.0 over stdin/stdout. It accepts either
+line-delimited messages, where each request is one JSON object or JSON-RPC batch
+array followed by `\n`, or `Content-Length: N\r\n\r\n...` framed messages.
+Responses use the same framing style as the request. Requests must include
+`"jsonrpc":"2.0"`. Request IDs may be strings, numbers, or `null`. Request
+lines or framed bodies may be up to 768 MiB, which allows large inline base64
+image inputs without being constrained by the process' stdin buffer size.
 
 Some `formats` entries are Bio-Formats Java reader-name aliases for canonical
 Zig readers. For example, `targa` is advertised as an alias of `tga`, and
@@ -95,6 +96,15 @@ Batch requests are supported on a single line:
 
 ```json
 [{"jsonrpc":"2.0","id":1,"method":"initialize"},{"jsonrpc":"2.0","id":2,"method":"formats"}]
+```
+
+Hosts that already use Language Server Protocol style stdio framing can send the
+same JSON body with a `Content-Length` header:
+
+```text
+Content-Length: 46
+
+{"jsonrpc":"2.0","id":1,"method":"initialize"}
 ```
 
 `readPlane` returns raw plane bytes as base64:
