@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("build_options");
 
 pub const afi = @import("readers/afi.zig");
 pub const aim = @import("readers/aim.zig");
@@ -783,9 +784,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "jpeg2000",
-        .name = "JPEG-2000 metadata",
+        .name = "JPEG-2000 via OpenJPEG",
         .extensions = &.{ "jp2", "j2k", "jpf" },
-        .can_read_pixels = false,
+        .can_read_pixels = build_options.has_openjpeg,
     },
     .{
         .id = "jpk",
@@ -795,9 +796,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "jpx",
-        .name = "JPX metadata",
+        .name = "JPX via OpenJPEG",
         .extensions = &.{"jpx"},
-        .can_read_pixels = false,
+        .can_read_pixels = build_options.has_openjpeg,
     },
     .{
         .id = "khoros",

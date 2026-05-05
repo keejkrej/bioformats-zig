@@ -128,10 +128,11 @@ if (-not (Test-Path -LiteralPath $BioformatsPath)) {
 
 $rootPath = Join-Path (Get-Location) "src/root.zig"
 $root = Get-Content $rootPath -Raw
-$formatMatches = [regex]::Matches($root, '(?s)\.id = "([^"]+)".*?\.can_read_pixels = (true|false)')
+$formatMatches = [regex]::Matches($root, '(?s)\.\{\s*\.id = "([^"]+)".*?\.can_read_pixels = ([^,\r\n]+),\s*\}')
 $zigFormats = @{}
 foreach ($match in $formatMatches) {
-    $zigFormats[$match.Groups[1].Value] = [bool]::Parse($match.Groups[2].Value)
+    $canReadPixels = $match.Groups[2].Value.Trim()
+    $zigFormats[$match.Groups[1].Value] = $canReadPixels -ne "false"
 }
 
 $readerFiles = @(Get-ChildItem -LiteralPath $BioformatsPath -Recurse -Filter "*Reader.java" -File)

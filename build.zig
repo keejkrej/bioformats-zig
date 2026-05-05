@@ -3,11 +3,28 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const openjpeg_root = b.option([]const u8, "openjpeg-root", "OpenJPEG/vcpkg installed root") orelse findOpenJpegRoot(b);
+    const has_openjpeg = openjpeg_root != null;
+
+    const options = b.addOptions();
+    options.addOption(bool, "has_openjpeg", has_openjpeg);
 
     const mod = b.addModule("bioformats", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
+    mod.addOptions("build_options", options);
+    if (openjpeg_root) |root| {
+        const include_dir = b.pathJoin(&.{ root, "include", "openjpeg-2.5" });
+        const lib_dir = b.pathJoin(&.{ root, "lib" });
+        const dll_path = b.pathJoin(&.{ root, "bin", "openjp2.dll" });
+        mod.addIncludePath(.{ .cwd_relative = include_dir });
+        mod.addLibraryPath(.{ .cwd_relative = lib_dir });
+        mod.linkSystemLibrary("openjp2", .{});
+        mod.linkSystemLibrary("c", .{});
+        mod.addCSourceFile(.{ .file = b.path("src/openjpeg_bridge.c"), .flags = &.{} });
+        b.getInstallStep().dependOn(&b.addInstallBinFile(.{ .cwd_relative = dll_path }, "openjp2.dll").step);
+    }
 
     const exe = b.addExecutable(.{
         .name = "bioformats-zig",
@@ -25,6 +42,7 @@ pub fn build(b: *std.Build) void {
 
     const run_cmd = b.addRunArtifact(exe);
     run_cmd.step.dependOn(b.getInstallStep());
+    if (openjpeg_root) |root| run_cmd.addPathDir(b.pathJoin(&.{ root, "bin" }));
     if (b.args) |args| run_cmd.addArgs(args);
 
     const run_step = b.step("run", "Run the JSON-RPC server");
@@ -34,13 +52,30 @@ pub fn build(b: *std.Build) void {
         .root_module = mod,
     });
     const run_mod_tests = b.addRunArtifact(mod_tests);
+    if (openjpeg_root) |root| run_mod_tests.addPathDir(b.pathJoin(&.{ root, "bin" }));
 
     const exe_tests = b.addTest(.{
         .root_module = exe.root_module,
     });
     const run_exe_tests = b.addRunArtifact(exe_tests);
+    if (openjpeg_root) |root| run_exe_tests.addPathDir(b.pathJoin(&.{ root, "bin" }));
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
+}
+
+fn findOpenJpegRoot(b: *std.Build) ?[]const u8 {
+    const candidates = [_][]const u8{
+        "C:\\Users\\ctyja\\scoop\\persist\\vcpkg\\installed\\x64-windows",
+        "C:\\Users\\ctyja\\vcpkg\\installed\\x64-windows",
+    };
+    for (candidates) |candidate| {
+        const header = b.pathJoin(&.{ candidate, "include", "openjpeg-2.5", "openjpeg.h" });
+        const lib = b.pathJoin(&.{ candidate, "lib", "openjp2.lib" });
+        std.Io.Dir.accessAbsolute(b.graph.io, header, .{}) catch continue;
+        std.Io.Dir.accessAbsolute(b.graph.io, lib, .{}) catch continue;
+        return candidate;
+    }
+    return null;
 }
