@@ -25,6 +25,7 @@ const i2i = @import("i2i.zig");
 const imaris = @import("imaris.zig");
 const imod = @import("imod.zig");
 const inr = @import("inr.zig");
+const iplab = @import("iplab.zig");
 const jeol = @import("jeol.zig");
 const khoros = @import("khoros.zig");
 const klb = @import("klb.zig");
@@ -75,7 +76,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, jeol, khoros, klb, kodak, lim, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, jeol, khoros, klb, kodak, lim, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -146,6 +147,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .imaris => imaris.readMetadata(entry.data),
         .imod => imod.readMetadata(entry.data),
         .inr => inr.readMetadata(entry.data),
+        .iplab => iplab.readMetadata(entry.data),
         .jeol => jeol.readMetadata(entry.data),
         .khoros => khoros.readMetadata(entry.data),
         .klb => klb.readMetadata(entry.data),
@@ -214,6 +216,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .imaris => imaris.readPlaneIndex(allocator, entry.data, plane_index),
         .imod => imod.readPlaneIndex(allocator, entry.data, plane_index),
         .inr => inr.readPlaneIndex(allocator, entry.data, plane_index),
+        .iplab => iplab.readPlaneIndex(allocator, entry.data, plane_index),
         .jeol => if (plane_index == 0) jeol.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .khoros => khoros.readPlaneIndex(allocator, entry.data, plane_index),
         .klb => klb.readPlaneIndex(allocator, entry.data, plane_index),
@@ -336,6 +339,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (imaris.matches(data)) return .imaris;
     if (imod.matches(data)) return .imod;
     if (inr.matches(data)) return .inr;
+    if (hasExtension(filename, ".ipl") and iplab.matches(data)) return .iplab;
     if (jeol.matches(data)) return .jeol;
     if (hasExtension(filename, ".xv") and khoros.matches(data)) return .khoros;
     if (klb.matches(data)) return .klb;
@@ -2015,6 +2019,44 @@ test "reads stored inr zip entry through inner reader" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 0, 3 }, plane.data);
+}
+
+test "reads stored iplab zip entry through extension-gated inner reader" {
+    var iplab_data: std.ArrayList(u8) = .empty;
+    defer iplab_data.deinit(std.testing.allocator);
+    try iplab_data.appendNTimes(std.testing.allocator, 0, 44);
+    @memcpy(iplab_data.items[0..4], "iiii");
+    writeU32(iplab_data.items, 4, 4);
+    writeU32(iplab_data.items, 8, 0x100e);
+    writeU32(iplab_data.items, 16, 28);
+    writeU32(iplab_data.items, 20, 2);
+    writeU32(iplab_data.items, 24, 1);
+    writeU32(iplab_data.items, 28, 1);
+    writeU32(iplab_data.items, 32, 2);
+    writeU32(iplab_data.items, 36, 1);
+    writeU32(iplab_data.items, 40, 0);
+    try iplab_data.appendSlice(std.testing.allocator, &.{ 1, 2, 3, 4 });
+
+    try std.testing.expectEqual(Entry.Kind.iplab, detectInner("stack.IPL", iplab_data.items).?);
+    try std.testing.expectEqual(null, detectInner("stack.dat", iplab_data.items));
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "stack.ipl", iplab_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_z);
+    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 3, 4 }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
 }
 
 test "reads stored jeol mg zip entry through inner reader" {
