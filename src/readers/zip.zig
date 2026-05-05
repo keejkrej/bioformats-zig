@@ -6,6 +6,7 @@ const amira = @import("amira.zig");
 const apng = @import("apng.zig");
 const arf = @import("arf.zig");
 const avi = @import("avi.zig");
+const bdpathway = @import("bdpathway.zig");
 const biorad = @import("biorad.zig");
 const bioradgel = @import("bioradgel.zig");
 const bioradscn = @import("bioradscn.zig");
@@ -100,7 +101,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imacon, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imacon, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -152,6 +153,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .apng => apng.readMetadata(entry.data),
         .arf => arf.readMetadata(entry.data),
         .avi => avi.readMetadata(entry.data),
+        .bdpathway => bdpathway.readMetadata(entry.data),
         .biorad => biorad.readMetadata(entry.data),
         .bioradgel => bioradgel.readMetadata(entry.data),
         .bioradscn => bioradscn.readMetadata(entry.data),
@@ -245,6 +247,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .apng => apng.readPlaneIndex(allocator, entry.data, plane_index),
         .arf => arf.readPlaneIndex(allocator, entry.data, plane_index),
         .avi => avi.readPlaneIndex(allocator, entry.data, plane_index),
+        .bdpathway => bdpathway.readPlaneIndex(allocator, entry.data, plane_index),
         .biorad => biorad.readPlaneIndex(allocator, entry.data, plane_index),
         .bioradgel => bioradgel.readPlaneIndex(allocator, entry.data, plane_index),
         .bioradscn => bioradscn.readPlaneIndex(allocator, entry.data, plane_index),
@@ -337,6 +340,7 @@ fn readInnerRegionIndex(
     region: bio.Region,
 ) bio.ReaderError!bio.Plane {
     if (entry.kind == .ometiff) return ometiff.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .bdpathway) return bdpathway.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .imacon) return imacon.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .improvisiontiff) return improvisiontiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .ionpathmibi) return ionpathmibi.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -411,6 +415,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (apng.matches(data)) return .apng;
     if (arf.matches(data)) return .arf;
     if (avi.matches(data)) return .avi;
+    if (bdpathway.matches(data)) return .bdpathway;
     if (biorad.matches(data)) return .biorad;
     if (bioradgel.matches(data)) return .bioradgel;
     if (bioradscn.matches(data)) return .bioradscn;
@@ -969,6 +974,63 @@ test "reads stored avi zip entry through inner reader" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 4 }, plane.data);
+}
+
+test "reads stored bd pathway zip entry before baseline tiff" {
+    var bd_data: std.ArrayList(u8) = .empty;
+    defer bd_data.deinit(std.testing.allocator);
+
+    try bd_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&bd_data, 42);
+    try appendU32Le(&bd_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const software = "  MATROX Imaging Library 8.0\x00";
+    const software_offset = ifd_end;
+    const pixel_offset = software_offset + software.len;
+
+    try appendU16Le(&bd_data, entry_count);
+    try appendTiffEntry(&bd_data, 256, 4, 1, 1);
+    try appendTiffEntry(&bd_data, 257, 4, 1, 1);
+    try appendTiffEntry(&bd_data, 258, 3, 1, 8);
+    try appendTiffEntry(&bd_data, 259, 3, 1, 1);
+    try appendTiffEntry(&bd_data, 262, 3, 1, 1);
+    try appendTiffEntry(&bd_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&bd_data, 277, 3, 1, 1);
+    try appendTiffEntry(&bd_data, 278, 4, 1, 1);
+    try appendTiffEntry(&bd_data, 279, 4, 1, 1);
+    try appendTiffEntry(&bd_data, 305, 2, software.len, @intCast(software_offset));
+    try appendU32Le(&bd_data, 0);
+    try bd_data.appendSlice(std.testing.allocator, software);
+    try bd_data.append(std.testing.allocator, 99);
+
+    try std.testing.expectEqual(Entry.Kind.bdpathway, detectInner("image.tif", bd_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.tif", bd_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{99}, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{99}, region_plane.data);
 }
 
 test "reads stored dicom zip entry through inner reader" {
