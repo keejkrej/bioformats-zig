@@ -31,6 +31,7 @@ const his = @import("his.zig");
 const hrdgdf = @import("hrdgdf.zig");
 const i2i = @import("i2i.zig");
 const imacon = @import("imacon.zig");
+const im3 = @import("im3.zig");
 const incell3000 = @import("incell3000.zig");
 const imaris = @import("imaris.zig");
 const imod = @import("imod.zig");
@@ -113,7 +114,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -190,6 +191,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .hrdgdf => hrdgdf.readMetadata(entry.data),
         .i2i => i2i.readMetadata(entry.data),
         .imacon => imacon.readMetadata(entry.data),
+        .im3 => im3.readMetadata(entry.data),
         .incell3000 => incell3000.readMetadata(entry.data),
         .imaris => imaris.readMetadata(entry.data),
         .imod => imod.readMetadata(entry.data),
@@ -296,6 +298,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .hrdgdf => hrdgdf.readPlaneIndex(allocator, entry.data, plane_index),
         .i2i => i2i.readPlaneIndex(allocator, entry.data, plane_index),
         .imacon => imacon.readPlaneIndex(allocator, entry.data, plane_index),
+        .im3 => im3.readPlaneIndex(allocator, entry.data, plane_index),
         .incell3000 => if (plane_index == 0) incell3000.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .imaris => imaris.readPlaneIndex(allocator, entry.data, plane_index),
         .imod => imod.readPlaneIndex(allocator, entry.data, plane_index),
@@ -382,6 +385,7 @@ fn readInnerRegionIndex(
     if (entry.kind == .fluoview) return fluoview.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .gel) return gel.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .imacon) return imacon.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .im3) return im3.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .improvisiontiff) return improvisiontiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .ionpathmibi) return ionpathmibi.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .leo) return leo.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -484,6 +488,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (hrdgdf.matches(data)) return .hrdgdf;
     if (hasExtension(filename, ".i2i") and i2i.matches(data)) return .i2i;
     if (imacon.matches(data)) return .imacon;
+    if (im3.matches(data)) return .im3;
     if (hasExtension(filename, ".frm") and incell3000.matches(data)) return .incell3000;
     if (imaris.matches(data)) return .imaris;
     if (imod.matches(data)) return .imod;
@@ -670,6 +675,61 @@ fn appendTiffEntry(list: *std.ArrayList(u8), tag: u16, field_type: u16, count: u
     try appendU16Le(list, field_type);
     try appendU32Le(list, count);
     try appendU32Le(list, value);
+}
+
+fn appendIm3RecordHeader(list: *std.ArrayList(u8), name: []const u8, rec_type: u32, content_len: usize) !void {
+    try appendU32Le(list, @intCast(name.len));
+    try list.appendSlice(std.testing.allocator, name);
+    try appendU32Le(list, @intCast(content_len + 8));
+    try appendU32Le(list, rec_type);
+}
+
+fn appendIm3IntArrayRecord(list: *std.ArrayList(u8), name: []const u8, values: []const u32) !void {
+    try appendIm3RecordHeader(list, name, 6, 8 + values.len * 4);
+    try appendU32Le(list, 1);
+    try appendU32Le(list, @intCast(values.len));
+    for (values) |value| try appendU32Le(list, value);
+}
+
+fn appendIm3ImageRecord(list: *std.ArrayList(u8), name: []const u8, width: u32, height: u32, channels: u32, pixels: []const u8) !void {
+    try appendIm3RecordHeader(list, name, 1, 16 + pixels.len);
+    try appendU32Le(list, 0);
+    try appendU32Le(list, width);
+    try appendU32Le(list, height);
+    try appendU32Le(list, channels);
+    try list.appendSlice(std.testing.allocator, pixels);
+}
+
+fn appendIm3ContainerRecord(list: *std.ArrayList(u8), name: []const u8, payload: []const u8) !void {
+    try appendIm3RecordHeader(list, name, 0, 8 + payload.len);
+    try list.appendNTimes(std.testing.allocator, 0, 8);
+    try list.appendSlice(std.testing.allocator, payload);
+}
+
+fn appendTinyIm3(list: *std.ArrayList(u8)) !void {
+    try appendU32Le(list, 1985);
+
+    var dataset_payload: std.ArrayList(u8) = .empty;
+    defer dataset_payload.deinit(std.testing.allocator);
+    try appendIm3IntArrayRecord(&dataset_payload, "Shape", &.{ 2, 1, 2 });
+    try appendIm3ImageRecord(&dataset_payload, "Data", 2, 1, 2, &.{
+        1, 0, 10, 0,
+        2, 0, 20, 0,
+    });
+
+    var unnamed_dataset: std.ArrayList(u8) = .empty;
+    defer unnamed_dataset.deinit(std.testing.allocator);
+    try appendIm3ContainerRecord(&unnamed_dataset, "", dataset_payload.items);
+
+    var data_set_payload: std.ArrayList(u8) = .empty;
+    defer data_set_payload.deinit(std.testing.allocator);
+    try data_set_payload.appendSlice(std.testing.allocator, unnamed_dataset.items);
+
+    var top_payload: std.ArrayList(u8) = .empty;
+    defer top_payload.deinit(std.testing.allocator);
+    try appendIm3ContainerRecord(&top_payload, "DataSet", data_set_payload.items);
+
+    try appendIm3ContainerRecord(list, "", top_payload.items);
 }
 
 fn appendU64Le(list: *std.ArrayList(u8), value: u64) !void {
@@ -1640,6 +1700,42 @@ test "reads stored i2i zip entry through extension-gated inner reader" {
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 0x40, 0, 0, 0 }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 4));
+}
+
+test "reads stored im3 zip entry through inner reader" {
+    var im3_data: std.ArrayList(u8) = .empty;
+    defer im3_data.deinit(std.testing.allocator);
+    try appendTinyIm3(&im3_data);
+
+    try std.testing.expectEqual(Entry.Kind.im3, detectInner("image.im3", im3_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.im3", im3_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
+    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 10, 0, 20, 0 }, plane.data);
+
+    const region = try readRegionIndex(std.testing.allocator, data.items, 1, .{
+        .x = 1,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqualStrings("zip", region.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 20, 0 }, region.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
 }
 
 test "reads stored tiff zip entry through inner reader" {

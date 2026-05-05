@@ -31,6 +31,7 @@ pub const his = @import("readers/his.zig");
 pub const hrdgdf = @import("readers/hrdgdf.zig");
 pub const i2i = @import("readers/i2i.zig");
 pub const imacon = @import("readers/imacon.zig");
+pub const im3 = @import("readers/im3.zig");
 pub const incell3000 = @import("readers/incell3000.zig");
 pub const imaris = @import("readers/imaris.zig");
 pub const imod = @import("readers/imod.zig");
@@ -440,6 +441,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "imacon",
         .name = "Imacon TIFF",
         .extensions = &.{"fff"},
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "im3",
+        .name = "PerkinElmer Nuance IM3",
+        .extensions = &.{"im3"},
         .can_read_pixels = true,
     },
     .{
@@ -934,6 +941,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (gatandm2.matches(data)) return "gatandm2";
     if (gel.matches(data)) return "gel";
     if (imacon.matches(data)) return "imacon";
+    if (im3.matches(data)) return "im3";
     if (imaris.matches(data)) return "imaris";
     if (imod.matches(data)) return "imod";
     if (improvisiontiff.matches(data)) return "improvisiontiff";
@@ -1040,6 +1048,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (gatandm2.matches(data)) return gatandm2.readMetadata(data);
     if (gel.matches(data)) return gel.readMetadata(data);
     if (imacon.matches(data)) return imacon.readMetadata(data);
+    if (im3.matches(data)) return im3.readMetadata(data);
     if (imaris.matches(data)) return imaris.readMetadata(data);
     if (imod.matches(data)) return imod.readMetadata(data);
     if (improvisiontiff.matches(data)) return improvisiontiff.readMetadata(data);
@@ -1212,6 +1221,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (gatandm2.matches(data)) return gatandm2.readPlaneIndex(allocator, data, plane_index);
     if (gel.matches(data)) return gel.readPlaneIndex(allocator, data, plane_index);
     if (imacon.matches(data)) return imacon.readPlaneIndex(allocator, data, plane_index);
+    if (im3.matches(data)) return im3.readPlaneIndex(allocator, data, plane_index);
     if (imaris.matches(data)) return imaris.readPlaneIndex(allocator, data, plane_index);
     if (imod.matches(data)) return imod.readPlaneIndex(allocator, data, plane_index);
     if (improvisiontiff.matches(data)) return improvisiontiff.readPlaneIndex(allocator, data, plane_index);
@@ -1269,6 +1279,7 @@ pub fn readPlaneRegionIndex(
     if (fluoview.matches(data)) return fluoview.readRegionIndex(allocator, data, plane_index, region);
     if (gel.matches(data)) return gel.readRegionIndex(allocator, data, plane_index, region);
     if (imacon.matches(data)) return imacon.readRegionIndex(allocator, data, plane_index, region);
+    if (im3.matches(data)) return im3.readRegionIndex(allocator, data, plane_index, region);
     if (improvisiontiff.matches(data)) return improvisiontiff.readRegionIndex(allocator, data, plane_index, region);
     if (leo.matches(data)) return leo.readRegionIndex(allocator, data, plane_index, region);
     if (leicascn.matches(data)) return leicascn.readRegionIndex(allocator, data, plane_index, region);
@@ -1346,6 +1357,7 @@ test {
     _ = gel;
     _ = gif;
     _ = imacon;
+    _ = im3;
     _ = incell3000;
     _ = imaris;
     _ = imod;
