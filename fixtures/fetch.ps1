@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|nd2|czi|lif|ics|ids|dv|r3d|mrc|nii|nrrd|vms|ims|ch5|h5|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|dng|lsm|oir|vsi|ets|nd2|czi|lif|ics|ids|dv|r3d|mrc|nii|nrrd|vms|ims|ch5|h5|xml)$',
     [switch]$List
 )
 
@@ -47,6 +47,17 @@ function Resolve-SourceUrl {
         }
         if ($entry -match '^https?://') {
             return $entry
+        }
+    }
+    return $null
+}
+
+function Resolve-ZenodoRecordId {
+    param([string[]]$Entries)
+
+    foreach ($entry in $Entries) {
+        if ($entry -match '^zenodo/10\.5281/zenodo\.(\d+)$') {
+            return $Matches[1]
         }
     }
     return $null
@@ -151,6 +162,27 @@ function Find-Candidate {
     return $fallback
 }
 
+function Find-ZenodoCandidate {
+    param([string]$RecordId)
+
+    $record = Invoke-RestMethod -UseBasicParsing -Uri "https://zenodo.org/api/records/$RecordId"
+    foreach ($file in @($record.files)) {
+        $name = [string]$file.key
+        if ($name -notmatch $NamePattern) {
+            continue
+        }
+        $length = [long]$file.size
+        if ($length -gt $MaxBytes) {
+            continue
+        }
+        return [PSCustomObject]@{
+            Url = [string]$file.links.self
+            FileName = $name
+        }
+    }
+    return $null
+}
+
 function Get-IniValue {
     param(
         [string]$Content,
@@ -218,18 +250,30 @@ function Download-HamamatsuVmsCompanions {
 }
 
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
-if ($null -eq $sourceUrl) {
-    throw "Format '$Format' has no direct public URL in sources.json: $($formatEntry.Value -join ', ')"
+$zenodoRecordId = Resolve-ZenodoRecordId ([string[]]$formatEntry.Value)
+if ($null -eq $sourceUrl -and $null -eq $zenodoRecordId) {
+    throw "Format '$Format' has no direct public URL or Zenodo record in sources.json: $($formatEntry.Value -join ', ')"
 }
 
-if (-not $sourceUrl.EndsWith('/')) {
-    $sourceUrl += '/'
+$candidate = $null
+if ($sourceUrl) {
+    if (-not $sourceUrl.EndsWith('/')) {
+        $sourceUrl += '/'
+    }
+    $preferredPattern = Preferred-NamePattern $Format
+    $candidateUrl = Find-Candidate $sourceUrl $MaxDepth $preferredPattern
+    if ($candidateUrl) {
+        $candidate = [PSCustomObject]@{
+            Url = $candidateUrl
+            FileName = [Uri]::UnescapeDataString(([Uri]$candidateUrl).Segments[-1])
+        }
+    }
 }
-
-$preferredPattern = Preferred-NamePattern $Format
-$candidate = Find-Candidate $sourceUrl $MaxDepth $preferredPattern
+if ($null -eq $candidate -and $zenodoRecordId) {
+    $candidate = Find-ZenodoCandidate $zenodoRecordId
+}
 if ($null -eq $candidate) {
-    throw "No downloadable candidate for '$Format' matched pattern '$NamePattern' under $sourceUrl within depth $MaxDepth and size cap $MaxBytes bytes."
+    throw "No downloadable candidate for '$Format' matched pattern '$NamePattern' within depth $MaxDepth and size cap $MaxBytes bytes."
 }
 
 $targetRoot = if ([System.IO.Path]::IsPathRooted($OutDir)) {
@@ -240,17 +284,16 @@ $targetRoot = if ([System.IO.Path]::IsPathRooted($OutDir)) {
 $targetDir = Join-Path $targetRoot $Format
 New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
 
-$fileName = [Uri]::UnescapeDataString(([Uri]$candidate).Segments[-1])
-$targetPath = Join-Path $targetDir $fileName
-Invoke-WebRequest -UseBasicParsing -Uri $candidate -OutFile $targetPath
+$targetPath = Join-Path $targetDir $candidate.FileName
+Invoke-WebRequest -UseBasicParsing -Uri $candidate.Url -OutFile $targetPath
 
 [PSCustomObject]@{
     Format = $Format
-    Source = $candidate
+    Source = $candidate.Url
     Path = $targetPath
     Bytes = (Get-Item $targetPath).Length
 }
 
 if ($Format -eq "hamamatsuvms") {
-    Download-HamamatsuVmsCompanions $candidate $targetPath $targetDir
+    Download-HamamatsuVmsCompanions $candidate.Url $targetPath $targetDir
 }

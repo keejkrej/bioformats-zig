@@ -12,8 +12,9 @@ because many microscopy datasets are large or have redistribution limits.
   through Zenodo when files can be public.
 - OpenSlide publishes whole-slide test data for some Bio-Formats-overlapping
   formats, including Hamamatsu VMS.
-- The checked-out `../bioformats` source tree does not include the actual public
-  test image corpus; it only includes source and a small logo PNG.
+- The checked-out `../bioformats` source tree does not include the full public
+  test image corpus; it only includes source, OME-XML schema samples, and a
+  small logo PNG.
 - For Openlab LIFF/RAW specifically, Bio-Formats documentation says OME has
   datasets internally, but the public OME image index has no Openlab directory
   and the 2026-05-05 Zenodo/web search did not turn up a small public download.
@@ -30,7 +31,7 @@ because many microscopy datasets are large or have redistribution limits.
    and a small `readPlane` region.
 
 Use the helper script to list known sources or fetch a small public candidate
-from the first direct OME/HTTP source:
+from the first direct OME/HTTP directory or Zenodo record source:
 
 ```powershell
 ./fixtures/audit.ps1

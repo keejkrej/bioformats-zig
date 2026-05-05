@@ -34,6 +34,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
         .height = header.height,
         .size_c = header.samples,
         .samples_per_pixel = header.samples,
+        .dimension_order = "XYZCT",
         .pixel_type = header.pixel_type,
         .little_endian = true,
     };
@@ -52,6 +53,7 @@ pub fn readPlane(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError
 
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (data.len < 8) return error.TruncatedData;
+    if (isTiffHeader(data)) return error.InvalidFormat;
     const width = readU16(data[0..2]) & 0x7fff;
     const height = readU16(data[2..4]);
     var bits = readU16(data[4..6]);
@@ -95,6 +97,12 @@ fn readU16(bytes: []const u8) u16 {
     return std.mem.readInt(u16, bytes[0..2], .little);
 }
 
+fn isTiffHeader(data: []const u8) bool {
+    return data.len >= 4 and
+        (std.mem.eql(u8, data[0..4], &.{ 'I', 'I', 42, 0 }) or
+        std.mem.eql(u8, data[0..4], &.{ 'M', 'M', 0, 42 }));
+}
+
 fn writeU16(bytes: []u8, offset: usize, value: u16) void {
     std.mem.writeInt(u16, bytes[offset..][0..2], value, .little);
 }
@@ -123,6 +131,7 @@ test "reads lim uint16 grayscale plane" {
     try std.testing.expectEqual(@as(u32, 2), metadata.width);
     try std.testing.expectEqual(@as(u32, 1), metadata.height);
     try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqualStrings("XYZCT", metadata.dimension_order.?);
     try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
     try std.testing.expect(metadata.little_endian);
 
@@ -163,4 +172,11 @@ test "lim detector rejects overflowing bit depth" {
 
     try std.testing.expect(!matches(data.items));
     try std.testing.expectError(error.UnsupportedVariant, readMetadata(data.items));
+}
+
+test "lim detector rejects tiff headers" {
+    const data = [_]u8{ 'I', 'I', 42, 0, 8, 0, 0, 0, 0, 0, 0, 0 };
+
+    try std.testing.expect(!matches(&data));
+    try std.testing.expectError(error.InvalidFormat, readMetadata(&data));
 }
