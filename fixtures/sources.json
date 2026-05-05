@@ -139,6 +139,7 @@
     "watop": ["needs-public-sample"],
     "zeisslms": ["needs-public-sample"],
     "zeisslsm": ["needs-public-sample"],
+    "zeisstiff": ["ome_images/Zeiss-AxioVision-TIFF/"],
     "zip": ["generated-fixture"]
   }
 }

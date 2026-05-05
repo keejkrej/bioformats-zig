@@ -128,6 +128,7 @@ pub const volocityclipping = @import("readers/volocityclipping.zig");
 pub const watop = @import("readers/watop.zig");
 pub const zeisslms = @import("readers/zeisslms.zig");
 pub const zeisslsm = @import("readers/zeisslsm.zig");
+pub const zeisstiff = @import("readers/zeisstiff.zig");
 pub const zip = @import("readers/zip.zig");
 
 pub const ReaderError = error{
@@ -1046,6 +1047,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "zeisstiff",
+        .name = "Zeiss AxioVision TIFF",
+        .extensions = &.{ "tif", "tiff", "xml" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "zip",
         .name = "ZIP archive first stored image entry",
         .extensions = &.{"zip"},
@@ -1658,6 +1665,7 @@ test {
     _ = volocityclipping;
     _ = zeisslms;
     _ = zeisslsm;
+    _ = zeisstiff;
     _ = zip;
 }
 
