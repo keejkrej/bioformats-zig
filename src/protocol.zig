@@ -519,6 +519,9 @@ pub const Server = struct {
         if (bio.olympustile.isPath(path)) {
             if (bio.olympustile.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.slidebook7.isPath(path)) {
+            if (bio.slidebook7.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.cellvoyager.isPath(path)) {
             if (bio.cellvoyager.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -653,6 +656,9 @@ pub const Server = struct {
         }
         if (bio.olympustile.isPath(path)) {
             if (bio.olympustile.readMetadataPath(self.allocator, self.io, path)) |_| return "olympustile" else |_| {}
+        }
+        if (bio.slidebook7.isPath(path)) {
+            if (bio.slidebook7.readMetadataPath(self.allocator, self.io, path)) |_| return "slidebook7" else |_| {}
         }
         if (bio.cellvoyager.isPath(path)) {
             if (bio.cellvoyager.readMetadataPath(self.allocator, self.io, path)) |_| return "cellvoyager" else |_| {}

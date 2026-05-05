@@ -138,6 +138,7 @@ pub const sif = @import("readers/sif.zig");
 pub const simplepci = @import("readers/simplepci.zig");
 pub const sis = @import("readers/sis.zig");
 pub const slidebook = @import("readers/slidebook.zig");
+pub const slidebook7 = @import("readers/slidebook7.zig");
 pub const slidebooktiff = @import("readers/slidebooktiff.zig");
 pub const spider = @import("readers/spider.zig");
 pub const spe = @import("readers/spe.zig");
@@ -1195,6 +1196,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = false,
     },
     .{
+        .id = "slidebook7",
+        .name = "SlideBook 7 metadata",
+        .extensions = &.{ "sldy", "sldyz" },
+        .can_read_pixels = false,
+    },
+    .{
         .id = "slidebooktiff",
         .name = "Slidebook TIFF",
         .extensions = &.{ "tif", "tiff" },
@@ -1535,6 +1542,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (simplepci.matches(data)) return "simplepci";
     if (sis.matches(data)) return "sis";
     if (slidebook.matches(data)) return "slidebook";
+    if (slidebook7.matches(data)) return "slidebook7";
     if (slidebooktiff.matches(data)) return "slidebooktiff";
     if (svs.matches(data)) return "svs";
     if (tcs.matches(data)) return "tcs";
@@ -1697,6 +1705,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (simplepci.matches(data)) return simplepci.readMetadata(data);
     if (sis.matches(data)) return sis.readMetadata(data);
     if (slidebook.matches(data)) return slidebook.readMetadata(data);
+    if (slidebook7.matches(data)) return slidebook7.readMetadata(data);
     if (slidebooktiff.matches(data)) return slidebooktiff.readMetadata(data);
     if (svs.matches(data)) return svs.readMetadata(data);
     if (tcs.matches(data)) return tcs.readMetadata(data);
@@ -1925,6 +1934,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (simplepci.matches(data)) return simplepci.readPlaneIndex(allocator, data, plane_index);
     if (sis.matches(data)) return sis.readPlaneIndex(allocator, data, plane_index);
     if (slidebook.matches(data)) return slidebook.readPlaneIndex(allocator, data, plane_index);
+    if (slidebook7.matches(data)) return slidebook7.readPlaneIndex(allocator, data, plane_index);
     if (slidebooktiff.matches(data)) return slidebooktiff.readPlaneIndex(allocator, data, plane_index);
     if (svs.matches(data)) return svs.readPlaneIndex(allocator, data, plane_index);
     if (tcs.matches(data)) return tcs.readPlaneIndex(allocator, data, plane_index);
@@ -2134,6 +2144,7 @@ test {
     _ = simplepci;
     _ = sis;
     _ = slidebook;
+    _ = slidebook7;
     _ = slidebooktiff;
     _ = spc;
     _ = svs;
