@@ -54,6 +54,11 @@ Supported methods:
 - `readPlane` with `{"path":"image.ext"}`, `{"data":"base64..."}`, or `{"handle":1}`
 - `shutdown`
 
+For companion-file formats, path-based requests may use neighboring files. For
+example, Unisoku STM `.HDR`/`.DAT` datasets can be opened by selecting either
+file; inline `data` can identify the `.HDR` header but cannot provide the
+paired pixel file.
+
 Example:
 
 ```json
@@ -216,6 +221,7 @@ plane, which can differ from logical OME `sizeC`.
 - TopoMetrix `.tfr/.ffr/.zfr/.zfp/.2fl` files with little-endian 16-bit grayscale planes.
 - Trestle TIFF files identified by Trestle copyright tags, decoded through the TIFF pixel path; companion `.sld/.slx/.ROI` grouping, overlap handling, and ROI metadata are not yet handled.
 - UBM `.pr3` files with little-endian 32-bit unsigned grayscale planes and per-row padding.
+- Unisoku STM `.HDR`/`.DAT` pairs with text headers and little-endian scalar pixel data; path-based JSON-RPC requests can open either companion file, while inline header data is metadata-only.
 - Varian FDF single-file images with 8/16/32-bit unsigned and 32-bit floating-point raw planes; rows are normalized to top-down output. Directory-based multifile FDF grouping is not yet handled.
 - PerkinElmer Vectra/QPTIFF files identified by QPI software tags, decoded through the TIFF pixel path; profile XML, annotation companion files, subresolution modeling, and Vectra channel metadata parsing are not yet handled.
 - Ventana BIF TIFF files identified by iScan XML private metadata, decoded through the TIFF pixel path; tile stitching, split-tile mode, subresolution mapping, and Ventana XML metadata extraction are not yet handled.

@@ -99,6 +99,7 @@ pub const tiff = @import("readers/tiff.zig");
 pub const topometrix = @import("readers/topometrix.zig");
 pub const trestle = @import("readers/trestle.zig");
 pub const ubm = @import("readers/ubm.zig");
+pub const unisoku = @import("readers/unisoku.zig");
 pub const varianfdf = @import("readers/varianfdf.zig");
 pub const vectra = @import("readers/vectra.zig");
 pub const ventana = @import("readers/ventana.zig");
@@ -851,6 +852,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "unisoku",
+        .name = "Unisoku STM",
+        .extensions = &.{ "hdr", "dat" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "varianfdf",
         .name = "Varian FDF",
         .extensions = &.{"fdf"},
@@ -1014,6 +1021,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (topometrix.matches(data)) return "topometrix";
     if (seiko.matches(data)) return "seiko";
     if (ubm.matches(data)) return "ubm";
+    if (unisoku.matches(data)) return "unisoku";
     return null;
 }
 
@@ -1126,6 +1134,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (topometrix.matches(data)) return topometrix.readMetadata(data);
     if (seiko.matches(data)) return seiko.readMetadata(data);
     if (ubm.matches(data)) return ubm.readMetadata(data);
+    if (unisoku.matches(data)) return unisoku.readMetadata(data);
     return error.UnsupportedFormat;
 }
 
@@ -1313,6 +1322,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return ubm.readPlane(allocator, data);
     }
+    if (unisoku.matches(data)) return unisoku.readPlaneIndex(allocator, data, plane_index);
     return error.UnsupportedFormat;
 }
 
@@ -1455,6 +1465,7 @@ test {
     _ = tga;
     _ = tiff;
     _ = trestle;
+    _ = unisoku;
     _ = vectra;
     _ = ventana;
     _ = volocityclipping;
