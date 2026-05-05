@@ -15,6 +15,7 @@ const bgr_float = 8;
 const bgra_8 = 9;
 const gray32 = 12;
 const gray_double = 13;
+const uncompressed = 0;
 
 const Scan = struct {
     width: u32 = 0,
@@ -51,11 +52,30 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    _ = allocator;
-    _ = data;
-    _ = plane_index;
-    return error.UnsupportedVariant;
+    const metadata = try readMetadata(data);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
+    const block = try findSubBlock(data, plane_index);
+    if (block.compression != uncompressed) return error.UnsupportedVariant;
+    if (block.width != metadata.width or block.height != metadata.height) return error.UnsupportedVariant;
+    if (metadata.samples_per_pixel != 1) return error.UnsupportedVariant;
+
+    const plane_len = try planeByteCount(metadata);
+    if (block.data_size < plane_len) return error.TruncatedData;
+    if (block.data_size != plane_len) return error.UnsupportedVariant;
+    if (block.data_offset > data.len or data.len - block.data_offset < plane_len) return error.TruncatedData;
+    const out = try allocator.alloc(u8, plane_len);
+    errdefer allocator.free(out);
+    @memcpy(out, data[block.data_offset..][0..plane_len]);
+    return .{ .metadata = metadata, .data = out };
 }
+
+const SubBlockRef = struct {
+    data_offset: usize,
+    data_size: usize,
+    compression: u32,
+    width: u32,
+    height: u32,
+};
 
 fn scanSegments(data: []const u8) bio.ReaderError!Scan {
     var scan = Scan{};
@@ -105,8 +125,63 @@ fn parseSubBlock(payload: []const u8, scan: *Scan) bio.ReaderError!void {
     scan.plane_count += 1;
 }
 
+fn findSubBlock(data: []const u8, plane_index: u32) bio.ReaderError!SubBlockRef {
+    var pos: usize = 0;
+    var count: u32 = 0;
+    while (pos + segment_header_size <= data.len) {
+        pos = alignForward(pos);
+        if (pos + segment_header_size > data.len) break;
+        const id = trimSegmentId(data[pos..][0..16]);
+        const allocated = try checkedUsize(leU64(data[pos + 16 ..][0..8]));
+        const used = try checkedUsize(leU64(data[pos + 24 ..][0..8]));
+        const payload_len = if (used == 0) allocated else used;
+        const payload_start = pos + segment_header_size;
+        const payload_end = std.math.add(usize, payload_start, payload_len) catch return error.UnsupportedVariant;
+        if (payload_end > data.len) return error.TruncatedData;
+
+        if (std.mem.eql(u8, id, subblock_id)) {
+            if (count == plane_index) return try parseSubBlockRef(data[payload_start..payload_end], payload_start);
+            count += 1;
+        }
+
+        const next = std.math.add(usize, payload_start, allocated) catch return error.UnsupportedVariant;
+        if (next <= pos) return error.InvalidFormat;
+        pos = next;
+    }
+    return error.InvalidPlaneIndex;
+}
+
+fn parseSubBlockRef(payload: []const u8, payload_start: usize) bio.ReaderError!SubBlockRef {
+    if (payload.len < 256) return error.TruncatedData;
+    const metadata_size = try checkedUsize(leU32(payload[0..4]));
+    const data_size = try checkedUsize(leU64(payload[8..16]));
+    const entry = try parseDirectoryEntry(payload[16..]);
+    var width: u32 = 0;
+    var height: u32 = 0;
+    for (entry.dimensions.items()) |dimension| {
+        switch (dimension.name) {
+            'X' => width = dimension.size,
+            'Y' => height = dimension.size,
+            else => {},
+        }
+    }
+    if (width == 0 or height == 0) return error.InvalidFormat;
+    const data_base = std.math.add(usize, payload_start, 256) catch return error.UnsupportedVariant;
+    const data_offset = std.math.add(usize, data_base, metadata_size) catch return error.UnsupportedVariant;
+    const payload_end = std.math.add(usize, payload_start, payload.len) catch return error.UnsupportedVariant;
+    if (data_offset > payload_end or payload_end - data_offset < data_size) return error.TruncatedData;
+    return .{
+        .data_offset = data_offset,
+        .data_size = data_size,
+        .compression = entry.compression,
+        .width = width,
+        .height = height,
+    };
+}
+
 const DirectoryEntry = struct {
     pixel_type: u32,
+    compression: u32,
     dimensions: DimensionList,
 };
 
@@ -134,6 +209,7 @@ const Dimension = struct {
 fn parseDirectoryEntry(data: []const u8) bio.ReaderError!DirectoryEntry {
     if (data.len < 32) return error.TruncatedData;
     const pixel_type = leU32(data[2..6]);
+    const compression = leU32(data[18..22]);
     const dimension_count = leU32(data[28..32]);
     if (dimension_count == 0 or dimension_count > 16) return error.UnsupportedVariant;
     if (data.len < 32 + @as(usize, dimension_count) * 20) return error.TruncatedData;
@@ -152,7 +228,7 @@ fn parseDirectoryEntry(data: []const u8) bio.ReaderError!DirectoryEntry {
         }
         pos += 20;
     }
-    return .{ .pixel_type = pixel_type, .dimensions = dimensions };
+    return .{ .pixel_type = pixel_type, .compression = compression, .dimensions = dimensions };
 }
 
 const Pixel = struct {
@@ -202,6 +278,11 @@ fn checkedUsize(value: anytype) bio.ReaderError!usize {
     return std.math.cast(usize, value) orelse error.UnsupportedVariant;
 }
 
+fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
+    const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
+    return std.math.mul(usize, pixels, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
+}
+
 fn appendSegment(allocator: std.mem.Allocator, out: *std.ArrayList(u8), id: []const u8, payload: []const u8) !void {
     while (out.items.len % alignment != 0) try out.append(allocator, 0);
     var id_bytes: [16]u8 = @splat(0);
@@ -240,6 +321,14 @@ fn appendZeros(allocator: std.mem.Allocator, out: *std.ArrayList(u8), count: usi
 }
 
 fn minimalCzi(allocator: std.mem.Allocator, pixel_type: u32) ![]u8 {
+    return minimalCziWithPixelsAndDims(allocator, pixel_type, &.{}, 2, 3, 4);
+}
+
+fn minimalCziWithPixels(allocator: std.mem.Allocator, pixel_type: u32, pixels: []const u8) ![]u8 {
+    return minimalCziWithPixelsAndDims(allocator, pixel_type, pixels, 1, 1, 1);
+}
+
+fn minimalCziWithPixelsAndDims(allocator: std.mem.Allocator, pixel_type: u32, pixels: []const u8, size_c: u32, size_z: u32, size_t: u32) ![]u8 {
     var out: std.ArrayList(u8) = .empty;
     errdefer out.deinit(allocator);
     try appendSegment(allocator, &out, czi_magic, &.{});
@@ -248,7 +337,7 @@ fn minimalCzi(allocator: std.mem.Allocator, pixel_type: u32) ![]u8 {
     defer sub.deinit(allocator);
     try appendU32Le(allocator, &sub, 0);
     try appendU32Le(allocator, &sub, 0);
-    try appendU64Le(allocator, &sub, 0);
+    try appendU64Le(allocator, &sub, @intCast(pixels.len));
     try sub.appendSlice(allocator, "DV");
     try appendU32Le(allocator, &sub, pixel_type);
     try appendU64Le(allocator, &sub, 0);
@@ -260,10 +349,11 @@ fn minimalCzi(allocator: std.mem.Allocator, pixel_type: u32) ![]u8 {
     try appendU32Le(allocator, &sub, 5);
     try appendDimension(allocator, &sub, "X", 0, 11);
     try appendDimension(allocator, &sub, "Y", 0, 7);
-    try appendDimension(allocator, &sub, "C", 0, 2);
-    try appendDimension(allocator, &sub, "Z", 0, 3);
-    try appendDimension(allocator, &sub, "T", 0, 4);
+    try appendDimension(allocator, &sub, "C", 0, size_c);
+    try appendDimension(allocator, &sub, "Z", 0, size_z);
+    try appendDimension(allocator, &sub, "T", 0, size_t);
     if (sub.items.len < 256) try appendZeros(allocator, &sub, 256 - sub.items.len);
+    try sub.appendSlice(allocator, pixels);
     try appendSegment(allocator, &out, subblock_id, sub.items);
     return out.toOwnedSlice(allocator);
 }
@@ -290,4 +380,17 @@ test "reports bgr czi as rgb metadata" {
     const metadata = try readMetadata(data);
     try std.testing.expectEqual(@as(u16, 3), metadata.samples_per_pixel);
     try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+}
+
+test "reads uncompressed zeiss czi subblock plane" {
+    const pixels = [_]u8{ 1, 0 } ** (11 * 7);
+    const data = try minimalCziWithPixels(std.testing.allocator, gray16, &pixels);
+    defer std.testing.allocator.free(data);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zeissczi", plane.metadata.format);
+    try std.testing.expectEqual(bio.PixelType.uint16, plane.metadata.pixel_type);
+    try std.testing.expectEqualSlices(u8, &pixels, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data, 1));
 }

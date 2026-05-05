@@ -1401,9 +1401,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "zeissczi",
-        .name = "Zeiss CZI metadata",
+        .name = "Zeiss CZI raw subblocks",
         .extensions = &.{"czi"},
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "zeisslms",
