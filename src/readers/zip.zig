@@ -21,6 +21,7 @@ const gatandm2 = @import("gatandm2.zig");
 const gif = @import("gif.zig");
 const his = @import("his.zig");
 const hrdgdf = @import("hrdgdf.zig");
+const i2i = @import("i2i.zig");
 const imaris = @import("imaris.zig");
 const imod = @import("imod.zig");
 const inr = @import("inr.zig");
@@ -72,7 +73,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -139,6 +140,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .gif => gif.readMetadata(entry.data),
         .his => his.readMetadata(entry.data),
         .hrdgdf => hrdgdf.readMetadata(entry.data),
+        .i2i => i2i.readMetadata(entry.data),
         .imaris => imaris.readMetadata(entry.data),
         .imod => imod.readMetadata(entry.data),
         .inr => inr.readMetadata(entry.data),
@@ -204,6 +206,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .gif => gif.readPlaneIndex(allocator, entry.data, plane_index),
         .his => if (plane_index == 0) his.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .hrdgdf => hrdgdf.readPlaneIndex(allocator, entry.data, plane_index),
+        .i2i => i2i.readPlaneIndex(allocator, entry.data, plane_index),
         .imaris => imaris.readPlaneIndex(allocator, entry.data, plane_index),
         .imod => imod.readPlaneIndex(allocator, entry.data, plane_index),
         .inr => inr.readPlaneIndex(allocator, entry.data, plane_index),
@@ -323,6 +326,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (gif.matches(data)) return .gif;
     if (his.matches(data)) return .his;
     if (hrdgdf.matches(data)) return .hrdgdf;
+    if (hasExtension(filename, ".i2i") and i2i.matches(data)) return .i2i;
     if (imaris.matches(data)) return .imaris;
     if (imod.matches(data)) return .imod;
     if (inr.matches(data)) return .inr;
@@ -933,6 +937,43 @@ test "reads stored hrd gdf zip entry through inner reader" {
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqual(@as(u64, @bitCast(@as(f64, 2.5))), std.mem.readInt(u64, plane.data[0..8], .big));
     try std.testing.expectEqual(@as(u64, @bitCast(@as(f64, 8.5))), std.mem.readInt(u64, plane.data[24..32], .big));
+}
+
+test "reads stored i2i zip entry through extension-gated inner reader" {
+    var i2i_data: std.ArrayList(u8) = .empty;
+    defer i2i_data.deinit(std.testing.allocator);
+    try i2i_data.appendNTimes(std.testing.allocator, ' ', 1024);
+    i2i_data.items[0] = 'R';
+    i2i_data.items[1] = ' ';
+    i2i_data.items[2] = '1';
+    i2i_data.items[8] = '1';
+    i2i_data.items[14] = '4';
+    i2i_data.items[20] = 'B';
+    std.mem.writeInt(u16, i2i_data.items[29..31], 2, .big);
+    try i2i_data.appendSlice(std.testing.allocator, &.{ 0x3f, 0x80, 0, 0, 0x40, 0, 0, 0, 0x40, 0x40, 0, 0, 0x40, 0x80, 0, 0 });
+
+    try std.testing.expectEqual(Entry.Kind.i2i, detectInner("stack.I2I", i2i_data.items).?);
+    try std.testing.expectEqual(null, detectInner("stack.dat", i2i_data.items));
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "stack.i2i", i2i_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 4), metadata.plane_count);
+    try std.testing.expectEqual(bio.PixelType.float32, metadata.pixel_type);
+    try std.testing.expect(!metadata.little_endian);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 0x40, 0, 0, 0 }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 4));
 }
 
 test "reads stored tiff zip entry through inner reader" {
