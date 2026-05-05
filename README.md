@@ -216,6 +216,7 @@ plane, which can differ from logical OME `sizeC`.
 - JEOL `MG`/`IM` single-file images with little-endian metadata and 8-bit grayscale pixels; companion `.par` metadata grouping is not yet handled.
 - JPEG files are detected from SOI/SOF markers and reported as metadata-only `jpeg` with grayscale or RGB dimensions; entropy decoding, EXIF orientation/color metadata, CMYK/YCCK handling, and pixel reads are not yet implemented.
 - JPEG-2000 raw codestreams and JP2 boxed files are detected from SOC/SIZ or JP2 `ihdr` headers and reported as metadata-only `jpeg2000`; wavelet decompression, JPX multi-codestream/timepoint handling, lookup tables, comments, resolution pyramids, and pixel reads are not yet implemented.
+- JPX `.jpx` path requests reuse the JPEG-2000 header parser and report metadata-only `jpx`; multiple codestream/timepoint offsets and pixel reads are not yet implemented.
 - JPK Instruments `.jpk` TIFF files delegated through the TIFF pixel path and reported as `jpk`; multi-series JPK TIFF splitting and private tag metadata are not yet modeled.
 - Khoros XV raw rasters with 8/16-bit grayscale or RGB samples and 8-bit indexed LUT images expanded to RGB.
 - KLB single-file volumes with uncompressed single-block 8/16/32-bit integer or 32/64-bit floating-point scalar pixels, exposing Z slices as planes; block tiling, bzip2/zlib compression, grouped time/channel folders, projections, and physical-size metadata are not yet handled.

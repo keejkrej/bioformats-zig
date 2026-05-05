@@ -100,6 +100,7 @@
     "jpeg": ["generated-fixture"],
     "jpeg2000": ["generated-fixture", "bioformats-docs/jpeg2000-reader-uses-jai-image-io"],
     "jpk": ["needs-public-sample"],
+    "jpx": ["generated-fixture", "alias-parser-of-jpeg2000"],
     "khoros": ["needs-public-sample"],
     "kodak": ["needs-public-sample"],
     "l2d": ["needs-public-sample"],

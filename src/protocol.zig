@@ -552,6 +552,9 @@ pub const Server = struct {
         if (bio.flex.isPath(path)) {
             if (bio.flex.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.jpx.isPath(path)) {
+            if (bio.jpx.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.hamamatsuvms.isPath(path)) {
             if (bio.hamamatsuvms.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -671,6 +674,9 @@ pub const Server = struct {
         }
         if (bio.flex.isPath(path)) {
             if (bio.flex.readMetadataPath(self.allocator, self.io, path)) |_| return "flex" else |_| {}
+        }
+        if (bio.jpx.isPath(path)) {
+            if (bio.jpx.readMetadataPath(self.allocator, self.io, path)) |_| return "jpx" else |_| {}
         }
         if (bio.hamamatsuvms.isPath(path)) {
             if (bio.hamamatsuvms.readMetadataPath(self.allocator, self.io, path)) |_| return "hamamatsuvms" else |_| {}
@@ -818,6 +824,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "flex")) {
             return bio.flex.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "jpx")) {
+            return bio.jpx.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "hamamatsuvms")) {
             return bio.hamamatsuvms.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -887,6 +896,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "tecan") or
             std.mem.eql(u8, format, "tillvision") or
             std.mem.eql(u8, format, "flex") or
+            std.mem.eql(u8, format, "jpx") or
             std.mem.eql(u8, format, "hamamatsuvms") or
             std.mem.eql(u8, format, "zeisstiff") or
             std.mem.eql(u8, format, "imaristiff") or

@@ -15,10 +15,14 @@ pub fn matches(data: []const u8) bool {
 }
 
 pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
+    return readMetadataAs(data, "jpeg2000");
+}
+
+pub fn readMetadataAs(data: []const u8, format: []const u8) bio.ReaderError!bio.Metadata {
     const info = imageInfo(data) catch return error.InvalidFormat;
     const pixel_type = pixelType(info.bits_per_sample, info.signed);
     return .{
-        .format = "jpeg2000",
+        .format = format,
         .width = info.width,
         .height = info.height,
         .size_c = info.components,
