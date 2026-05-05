@@ -73,6 +73,7 @@ const pcx = @import("pcx.zig");
 const photoshoptiff = @import("photoshoptiff.zig");
 const png = @import("png.zig");
 const povray = @import("povray.zig");
+const prairie = @import("prairie.zig");
 const pqbin = @import("pqbin.zig");
 const psd = @import("psd.zig");
 const pyramidtiff = @import("pyramidtiff.zig");
@@ -117,7 +118,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, prairie, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -236,6 +237,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .photoshoptiff => photoshoptiff.readMetadata(entry.data),
         .png => png.readMetadata(entry.data),
         .povray => povray.readMetadata(entry.data),
+        .prairie => prairie.readMetadata(entry.data),
         .pqbin => pqbin.readMetadata(entry.data),
         .psd => psd.readMetadata(entry.data),
         .pyramidtiff => pyramidtiff.readMetadata(entry.data),
@@ -346,6 +348,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .photoshoptiff => photoshoptiff.readPlaneIndex(allocator, entry.data, plane_index),
         .png => if (plane_index == 0) png.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .povray => povray.readPlaneIndex(allocator, entry.data, plane_index),
+        .prairie => prairie.readPlaneIndex(allocator, entry.data, plane_index),
         .pqbin => pqbin.readPlaneIndex(allocator, entry.data, plane_index),
         .psd => if (plane_index == 0) psd.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .pyramidtiff => pyramidtiff.readPlaneIndex(allocator, entry.data, plane_index),
@@ -400,6 +403,7 @@ fn readInnerRegionIndex(
     if (entry.kind == .ionpathmibi) return ionpathmibi.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .leo) return leo.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .leicascn) return leicascn.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .prairie) return prairie.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .metamorph) return metamorph.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .mias) return mias.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .mikroscan) return mikroscan.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -540,6 +544,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (png.matches(data)) return .png;
     if (photoshoptiff.matches(data)) return .photoshoptiff;
     if (hasExtension(filename, ".df3") and povray.matches(data)) return .povray;
+    if (prairie.matches(data)) return .prairie;
     if (hasExtension(filename, ".bin") and pqbin.matches(data)) return .pqbin;
     if (psd.matches(data)) return .psd;
     if (pyramidtiff.matches(data)) return .pyramidtiff;
@@ -1318,6 +1323,66 @@ test "reads stored pyramid tiff zip entry before baseline tiff" {
     defer std.testing.allocator.free(region_plane.data);
     try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{123}, region_plane.data);
+}
+
+test "reads stored prairie zip entry before metamorph and baseline tiff" {
+    var prairie_data: std.ArrayList(u8) = .empty;
+    defer prairie_data.deinit(std.testing.allocator);
+
+    try prairie_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&prairie_data, 42);
+    try appendU32Le(&prairie_data, 8);
+
+    const entry_count = 13;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const software = "Prairie View 5\x00";
+    const software_offset = ifd_end;
+    const pixel_offset = software_offset + software.len;
+
+    try appendU16Le(&prairie_data, entry_count);
+    try appendTiffEntry(&prairie_data, 256, 4, 1, 2);
+    try appendTiffEntry(&prairie_data, 257, 4, 1, 1);
+    try appendTiffEntry(&prairie_data, 258, 3, 1, 8);
+    try appendTiffEntry(&prairie_data, 259, 3, 1, 1);
+    try appendTiffEntry(&prairie_data, 262, 3, 1, 1);
+    try appendTiffEntry(&prairie_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&prairie_data, 277, 3, 1, 1);
+    try appendTiffEntry(&prairie_data, 278, 4, 1, 1);
+    try appendTiffEntry(&prairie_data, 279, 4, 1, 2);
+    try appendTiffEntry(&prairie_data, 305, 2, software.len, @intCast(software_offset));
+    try appendTiffEntry(&prairie_data, 33628, 4, 1, 0);
+    try appendTiffEntry(&prairie_data, 33629, 4, 1, 0);
+    try appendTiffEntry(&prairie_data, 33630, 4, 1, 0);
+    try appendU32Le(&prairie_data, 0);
+    try prairie_data.appendSlice(std.testing.allocator, software);
+    try prairie_data.appendSlice(std.testing.allocator, &.{ 91, 92 });
+
+    try std.testing.expectEqual(Entry.Kind.prairie, detectInner("image.tif", prairie_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.tif", prairie_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 91, 92 }, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 1,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{92}, region_plane.data);
 }
 
 test "reads stored amersham gel zip entry before baseline tiff" {

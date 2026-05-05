@@ -73,6 +73,7 @@ pub const pcx = @import("readers/pcx.zig");
 pub const photoshoptiff = @import("readers/photoshoptiff.zig");
 pub const png = @import("readers/png.zig");
 pub const povray = @import("readers/povray.zig");
+pub const prairie = @import("readers/prairie.zig");
 pub const pqbin = @import("readers/pqbin.zig");
 pub const psd = @import("readers/psd.zig");
 pub const pyramidtiff = @import("readers/pyramidtiff.zig");
@@ -627,6 +628,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "prairie",
+        .name = "Prairie TIFF",
+        .extensions = &.{ "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "sbig",
         .name = "SBIG astronomy image",
         .extensions = &.{},
@@ -955,6 +962,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (watop.matches(data)) return "watop";
     if (zeisslms.matches(data)) return "zeisslms";
     if (povray.matches(data)) return "povray";
+    if (prairie.matches(data)) return "prairie";
     if (incell3000.matches(data)) return "incell3000";
     if (tga.matches(data)) return "tga";
     if (dng.matches(data)) return "dng";
@@ -1065,6 +1073,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (watop.matches(data)) return watop.readMetadata(data);
     if (zeisslms.matches(data)) return zeisslms.readMetadata(data);
     if (povray.matches(data)) return povray.readMetadata(data);
+    if (prairie.matches(data)) return prairie.readMetadata(data);
     if (incell3000.matches(data)) return incell3000.readMetadata(data);
     if (tga.matches(data)) return tga.readMetadata(data);
     if (dng.matches(data)) return dng.readMetadata(data);
@@ -1235,6 +1244,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     }
     if (zeisslms.matches(data)) return zeisslms.readPlaneIndex(allocator, data, plane_index);
     if (povray.matches(data)) return povray.readPlaneIndex(allocator, data, plane_index);
+    if (prairie.matches(data)) return prairie.readPlaneIndex(allocator, data, plane_index);
     if (incell3000.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return incell3000.readPlane(allocator, data);
@@ -1313,6 +1323,7 @@ pub fn readPlaneRegionIndex(
     if (improvisiontiff.matches(data)) return improvisiontiff.readRegionIndex(allocator, data, plane_index, region);
     if (leo.matches(data)) return leo.readRegionIndex(allocator, data, plane_index, region);
     if (leicascn.matches(data)) return leicascn.readRegionIndex(allocator, data, plane_index, region);
+    if (prairie.matches(data)) return prairie.readRegionIndex(allocator, data, plane_index, region);
     if (metamorph.matches(data)) return metamorph.readRegionIndex(allocator, data, plane_index, region);
     if (mias.matches(data)) return mias.readRegionIndex(allocator, data, plane_index, region);
     if (mikroscan.matches(data)) return mikroscan.readRegionIndex(allocator, data, plane_index, region);
@@ -1419,6 +1430,7 @@ test {
     _ = oxfordinstruments;
     _ = photoshoptiff;
     _ = png;
+    _ = prairie;
     _ = psd;
     _ = pyramidtiff;
     _ = scanr;
