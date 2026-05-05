@@ -183,6 +183,7 @@ plane, which can differ from logical OME `sizeC`.
 - Image-Pro Workspace `.ipw` OLE containers with regular FAT `ImageTIFF` streams decoded through the TIFF pixel path; mini-stream embedded TIFFs and non-TIFF workspace objects are not yet handled.
 - IVision `.ipm` files with big-endian inline 8/16/32-bit scalar pixels plus padded RGB8 and RGB16 planes; 16-bit color compaction, square-root encoding, XML metadata, LUT extraction, and acquisition metadata are not yet handled.
 - JEOL `MG`/`IM` single-file images with little-endian metadata and 8-bit grayscale pixels; companion `.par` metadata grouping is not yet handled.
+- JPK Instruments `.jpk` TIFF files delegated through the TIFF pixel path and reported as `jpk`; multi-series JPK TIFF splitting and private tag metadata are not yet modeled.
 - Khoros XV raw rasters with 8/16-bit grayscale or RGB samples and 8-bit indexed LUT images expanded to RGB.
 - KLB single-file volumes with uncompressed single-block 8/16/32-bit integer or 32/64-bit floating-point scalar pixels, exposing Z slices as planes; block tiling, bzip2/zlib compression, grouped time/channel folders, projections, and physical-size metadata are not yet handled.
 - Kodak Molecular Imaging BIP files with big-endian 32-bit floating-point grayscale planes.

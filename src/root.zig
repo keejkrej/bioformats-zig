@@ -49,6 +49,7 @@ pub const iplab = @import("readers/iplab.zig");
 pub const ipw = @import("readers/ipw.zig");
 pub const ivision = @import("readers/ivision.zig");
 pub const jeol = @import("readers/jeol.zig");
+pub const jpk = @import("readers/jpk.zig");
 pub const khoros = @import("readers/khoros.zig");
 pub const klb = @import("readers/klb.zig");
 pub const kodak = @import("readers/kodak.zig");
@@ -564,6 +565,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "jeol",
         .name = "JEOL single-file image",
         .extensions = &.{ "dat", "img" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "jpk",
+        .name = "JPK Instruments TIFF",
+        .extensions = &.{"jpk"},
         .can_read_pixels = true,
     },
     .{

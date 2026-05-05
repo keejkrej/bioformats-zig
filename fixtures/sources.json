@@ -77,6 +77,7 @@
     "ipw": ["needs-public-sample"],
     "ivision": ["needs-public-sample"],
     "jeol": ["needs-public-sample"],
+    "jpk": ["needs-public-sample"],
     "khoros": ["needs-public-sample"],
     "kodak": ["needs-public-sample"],
     "liflim": ["needs-public-sample"],
