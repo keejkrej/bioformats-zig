@@ -133,6 +133,7 @@
     "pcx": ["generated-fixture"],
     "pds": ["needs-public-sample"],
     "perkinelmer": ["needs-public-sample"],
+    "pict": ["generated-fixture"],
     "photoshoptiff": ["needs-public-sample"],
     "pqbin": ["needs-public-sample"],
     "povray": ["generated-fixture"],
