@@ -54,6 +54,7 @@ const metamorph = @import("metamorph.zig");
 const mng = @import("mng.zig");
 const microct = @import("microct.zig");
 const mikroscan = @import("mikroscan.zig");
+const minc = @import("minc.zig");
 const mias = @import("mias.zig");
 const molecularimaging = @import("molecularimaging.zig");
 const mrc = @import("mrc.zig");
@@ -121,7 +122,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, flowsight, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, naf, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, prairie, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, sdt, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, flowsight, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, minc, mng, molecularimaging, mrc, mrw, naf, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, prairie, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, sdt, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -221,6 +222,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .mias => mias.readMetadata(entry.data),
         .microct => microct.readMetadata(entry.data),
         .mikroscan => mikroscan.readMetadata(entry.data),
+        .minc => minc.readMetadata(entry.data),
         .mng => mng.readMetadata(entry.data),
         .molecularimaging => molecularimaging.readMetadata(entry.data),
         .mrc => mrc.readMetadata(entry.data),
@@ -335,6 +337,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .mias => mias.readPlaneIndex(allocator, entry.data, plane_index),
         .microct => microct.readPlaneIndex(allocator, entry.data, plane_index),
         .mikroscan => mikroscan.readPlaneIndex(allocator, entry.data, plane_index),
+        .minc => minc.readPlaneIndex(allocator, entry.data, plane_index),
         .mng => mng.readPlaneIndex(allocator, entry.data, plane_index),
         .molecularimaging => molecularimaging.readPlaneIndex(allocator, entry.data, plane_index),
         .mrc => mrc.readPlaneIndex(allocator, entry.data, plane_index),
@@ -535,6 +538,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (hasExtension(filename, ".lim") and lim.matches(data)) return .lim;
     if (microct.matches(data)) return .microct;
     if (mikroscan.matches(data)) return .mikroscan;
+    if (hasExtension(filename, ".mnc") and minc.matches(data)) return .minc;
     if (mng.matches(data)) return .mng;
     if (molecularimaging.matches(data)) return .molecularimaging;
     if (hasMrcExtension(filename) and mrc.matches(data)) return .mrc;

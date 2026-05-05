@@ -3,7 +3,8 @@
   "checked": "2026-05-05",
   "public_roots": {
     "ome_images": "https://downloads.openmicroscopy.org/images/",
-    "bioformats_zenodo_community": "https://zenodo.org/communities/bio-formats"
+    "bioformats_zenodo_community": "https://zenodo.org/communities/bio-formats",
+    "figshare": "https://figshare.com/"
   },
   "notes": [
     "Use OME image downloads first; Bio-Formats documentation describes these as the public examples OME has permission to redistribute.",
@@ -93,6 +94,7 @@
     "mias": ["needs-public-sample"],
     "microct": ["needs-public-sample"],
     "mikroscan": ["needs-public-sample"],
+    "minc": ["figshare/articles/dataset/Brain_MRI_Dataset_MINC_files_mnc_/4764853"],
     "mng": ["generated-fixture"],
     "molecularimaging": ["needs-public-sample"],
     "mrw": ["needs-public-sample"],

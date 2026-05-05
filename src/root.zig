@@ -67,6 +67,7 @@ pub const metamorph = @import("readers/metamorph.zig");
 pub const mias = @import("readers/mias.zig");
 pub const microct = @import("readers/microct.zig");
 pub const mikroscan = @import("readers/mikroscan.zig");
+pub const minc = @import("readers/minc.zig");
 pub const molecularimaging = @import("readers/molecularimaging.zig");
 pub const mng = @import("readers/mng.zig");
 pub const netpbm = @import("readers/netpbm.zig");
@@ -688,6 +689,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "minc",
+        .name = "MINC MRI NetCDF classic",
+        .extensions = &.{"mnc"},
+        .can_read_pixels = true,
+    },
+    .{
         .id = "molecularimaging",
         .name = "Molecular Imaging STP",
         .extensions = &.{"stp"},
@@ -1163,6 +1170,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (mias.matches(data)) return "mias";
     if (microct.matches(data)) return "microct";
     if (mikroscan.matches(data)) return "mikroscan";
+    if (minc.matches(data)) return "minc";
     if (mrw.matches(data)) return "mrw";
     if (nikonelements.matches(data)) return "nikonelements";
     if (nikontiff.matches(data)) return "nikontiff";
@@ -1288,6 +1296,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (mias.matches(data)) return mias.readMetadata(data);
     if (microct.matches(data)) return microct.readMetadata(data);
     if (mikroscan.matches(data)) return mikroscan.readMetadata(data);
+    if (minc.matches(data)) return minc.readMetadata(data);
     if (mrw.matches(data)) return mrw.readMetadata(data);
     if (nikonelements.matches(data)) return nikonelements.readMetadata(data);
     if (nikontiff.matches(data)) return nikontiff.readMetadata(data);
@@ -1479,6 +1488,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (mias.matches(data)) return mias.readPlaneIndex(allocator, data, plane_index);
     if (microct.matches(data)) return microct.readPlaneIndex(allocator, data, plane_index);
     if (mikroscan.matches(data)) return mikroscan.readPlaneIndex(allocator, data, plane_index);
+    if (minc.matches(data)) return minc.readPlaneIndex(allocator, data, plane_index);
     if (mrw.matches(data)) return mrw.readPlaneIndex(allocator, data, plane_index);
     if (nikonelements.matches(data)) return nikonelements.readPlaneIndex(allocator, data, plane_index);
     if (nikontiff.matches(data)) return nikontiff.readPlaneIndex(allocator, data, plane_index);
@@ -1635,6 +1645,7 @@ test {
     _ = mias;
     _ = microct;
     _ = mikroscan;
+    _ = minc;
     _ = mng;
     _ = netpbm;
     _ = klb;
