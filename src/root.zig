@@ -13,6 +13,7 @@ pub const biorad = @import("readers/biorad.zig");
 pub const bioradgel = @import("readers/bioradgel.zig");
 pub const bioradscn = @import("readers/bioradscn.zig");
 pub const bmp = @import("readers/bmp.zig");
+pub const bruker = @import("readers/bruker.zig");
 pub const burleigh = @import("readers/burleigh.zig");
 pub const canonraw = @import("readers/canonraw.zig");
 pub const cellomics = @import("readers/cellomics.zig");
@@ -357,6 +358,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "bmp",
         .name = "Windows BMP 1/4/8/16/24/32-bit",
         .extensions = &.{"bmp"},
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "bruker",
+        .name = "Bruker MRI",
+        .extensions = &.{ "acqp", "fid", "reco", "2dseq" },
         .can_read_pixels = true,
     },
     .{
@@ -1569,6 +1576,7 @@ test {
     _ = bmp;
     _ = bioradgel;
     _ = bioradscn;
+    _ = bruker;
     _ = canonraw;
     _ = cellomics;
     _ = dcimg;

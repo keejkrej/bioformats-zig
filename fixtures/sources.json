@@ -50,6 +50,7 @@
     "bioradgel": ["needs-public-sample"],
     "bioradscn": ["needs-public-sample"],
     "bmp": ["generated-fixture"],
+    "bruker": ["needs-public-sample"],
     "burleigh": ["needs-public-sample"],
     "canonraw": ["needs-public-sample"],
     "dng": ["needs-public-sample"],
