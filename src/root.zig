@@ -843,9 +843,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "lif",
-        .name = "Leica LIF metadata",
+        .name = "Leica LIF raw memory",
         .extensions = &.{"lif"},
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "liflim",
