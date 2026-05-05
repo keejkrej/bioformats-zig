@@ -179,6 +179,7 @@
     "zeisslms": ["needs-public-sample"],
     "zeisslsm": ["needs-public-sample"],
     "zeisstiff": ["ome_images/Zeiss-AxioVision-TIFF/"],
+    "zeissxrm": ["needs-public-sample"],
     "zip": ["generated-fixture"]
   }
 }
