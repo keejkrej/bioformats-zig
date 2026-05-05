@@ -174,7 +174,7 @@
     "slidebooktiff": ["needs-public-sample"],
     "smcamera": ["needs-public-sample"],
     "spe": ["needs-public-sample"],
-    "spc": ["ome_images/SPC-FIFO/"],
+    "spc": ["ome_images/SPC-FIFO/biofisika/", "ome_images/SPC-FIFO/"],
     "spider": ["needs-public-sample"],
     "tcs": ["needs-public-sample"],
     "tecan": ["needs-public-sample"],

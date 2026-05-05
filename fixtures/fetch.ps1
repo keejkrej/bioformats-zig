@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|lof|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|lof|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|xml)$',
     [switch]$List
 )
 
@@ -133,6 +133,7 @@ function Preferred-NamePattern {
         "nifti" { return '\.nii$' }
         "nrrd" { return '\.(nrrd|nhdr)$' }
         "obf" { return 'uncompressed\.obf$' }
+        "spc" { return '\.set$' }
         default { return $null }
     }
 }
@@ -309,6 +310,22 @@ function Download-IcsCompanions {
     Download-Companion $baseUrl $name $TargetDir
 }
 
+function Download-SpcCompanions {
+    param(
+        [string]$Source,
+        [string]$TargetDir
+    )
+
+    $leaf = [Uri]::UnescapeDataString(([Uri]$Source).Segments[-1])
+    $companion = if ($leaf -match '(?i)\.set$') {
+        [System.IO.Path]::ChangeExtension($leaf, ".spc")
+    } else {
+        [System.IO.Path]::ChangeExtension($leaf, ".set")
+    }
+    $baseUrl = [Uri]::new([Uri]$Source, ".").AbsoluteUri
+    Download-Companion $baseUrl $companion $TargetDir
+}
+
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
 $zenodoRecordId = Resolve-ZenodoRecordId ([string[]]$formatEntry.Value)
 if ($null -eq $sourceUrl -and $null -eq $zenodoRecordId) {
@@ -362,4 +379,7 @@ if ($Format -eq "nrrd") {
 }
 if ($Format -eq "ics") {
     Download-IcsCompanions $candidate.Url $targetPath $targetDir
+}
+if ($Format -eq "spc") {
+    Download-SpcCompanions $candidate.Url $targetDir
 }
