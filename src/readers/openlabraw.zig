@@ -62,11 +62,11 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     const planes = readU32(data[8..12]);
     if (planes == 0) return error.InvalidFormat;
     const block = data[first_block_offset..][0..block_header_len];
-    const width = readU32(block[16..20]);
-    const height = readU32(block[20..24]);
+    const width = readU32(block[8..12]);
+    const height = readU32(block[12..16]);
     if (width == 0 or height == 0) return error.InvalidFormat;
-    const channel_marker = block[25];
-    const source_bytes_per_pixel = block[26];
+    const channel_marker = block[17];
+    const source_bytes_per_pixel = block[18];
     if (source_bytes_per_pixel == 0) return error.InvalidFormat;
     const channels: u16 = if (channel_marker <= 1) 1 else 3;
     return .{
@@ -122,10 +122,10 @@ fn appendFileHeader(list: *std.ArrayList(u8), planes: u32) !void {
 fn appendBlockHeader(list: *std.ArrayList(u8), width: u32, height: u32, channel_marker: u8, bytes_per_pixel: u8) !void {
     const start = list.items.len;
     try list.appendNTimes(std.testing.allocator, 0, block_header_len);
-    writeU32(list.items[start..][0..block_header_len], 16, width);
-    writeU32(list.items[start..][0..block_header_len], 20, height);
-    list.items[start + 25] = channel_marker;
-    list.items[start + 26] = bytes_per_pixel;
+    writeU32(list.items[start..][0..block_header_len], 8, width);
+    writeU32(list.items[start..][0..block_header_len], 12, height);
+    list.items[start + 17] = channel_marker;
+    list.items[start + 18] = bytes_per_pixel;
 }
 
 fn appendU32Be(list: *std.ArrayList(u8), value: u32) !void {

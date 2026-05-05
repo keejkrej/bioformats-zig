@@ -2959,17 +2959,17 @@ test "reads stored openlab raw zip entry through inner reader" {
     try raw_data.appendNTimes(std.testing.allocator, 0, 4);
     try appendU32Be(&raw_data, 2);
     try raw_data.appendNTimes(std.testing.allocator, 0, 288);
-    std.mem.writeInt(u32, raw_data.items[12 + 16 ..][0..4], 1, .big);
-    std.mem.writeInt(u32, raw_data.items[12 + 20 ..][0..4], 1, .big);
-    raw_data.items[12 + 25] = 1;
-    raw_data.items[12 + 26] = 2;
+    std.mem.writeInt(u32, raw_data.items[12 + 8 ..][0..4], 1, .big);
+    std.mem.writeInt(u32, raw_data.items[12 + 12 ..][0..4], 1, .big);
+    raw_data.items[12 + 17] = 1;
+    raw_data.items[12 + 18] = 2;
     try raw_data.appendSlice(std.testing.allocator, &.{ 0x12, 0x34 });
     try raw_data.appendNTimes(std.testing.allocator, 0, 288);
     const second_block = raw_data.items.len - 288;
-    std.mem.writeInt(u32, raw_data.items[second_block + 16 ..][0..4], 1, .big);
-    std.mem.writeInt(u32, raw_data.items[second_block + 20 ..][0..4], 1, .big);
-    raw_data.items[second_block + 25] = 1;
-    raw_data.items[second_block + 26] = 2;
+    std.mem.writeInt(u32, raw_data.items[second_block + 8 ..][0..4], 1, .big);
+    std.mem.writeInt(u32, raw_data.items[second_block + 12 ..][0..4], 1, .big);
+    raw_data.items[second_block + 17] = 1;
+    raw_data.items[second_block + 18] = 2;
     try raw_data.appendSlice(std.testing.allocator, &.{ 0xab, 0xcd });
 
     var data: std.ArrayList(u8) = .empty;
