@@ -110,6 +110,7 @@ fn metadataFromHeader(header: Header) bio.Metadata {
 
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (data.len < header_len) return error.TruncatedData;
+    if (isNiftiHeader(data)) return error.InvalidFormat;
     const little_size = std.mem.readInt(i32, data[0..4], .little);
     const big_size = std.mem.readInt(i32, data[0..4], .big);
     const little = if (little_size == magic)
@@ -149,6 +150,11 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
         .image_name = optionalTrim(data[14..][0..18]),
         .description = optionalTrim(data[148..][0..80]),
     };
+}
+
+fn isNiftiHeader(data: []const u8) bool {
+    return data.len >= 348 and
+        (std.mem.eql(u8, data[344..][0..3], "n+1") or std.mem.eql(u8, data[344..][0..3], "ni1"));
 }
 
 const PixelInfo = struct {
@@ -302,4 +308,12 @@ test "reads analyze big-endian rgb metadata" {
     try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
     try std.testing.expectEqual(@as(u16, 3), metadata.size_c);
     try std.testing.expectEqual(@as(u16, 3), metadata.samples_per_pixel);
+}
+
+test "rejects nifti magic header" {
+    var header = makeHeader(.little, 1, 1, 1, 1, 2, 352);
+    @memcpy(header[344..][0..4], "n+1\x00");
+
+    try std.testing.expect(!matches(&header));
+    try std.testing.expectError(error.InvalidFormat, readMetadata(&header));
 }

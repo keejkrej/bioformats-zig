@@ -117,6 +117,7 @@ function Preferred-NamePattern {
 
     switch ($Format) {
         "hamamatsuvms" { return '\.vms$' }
+        "nifti" { return '\.nii$' }
         default { return $null }
     }
 }
