@@ -20,7 +20,7 @@
     "bdv": ["ome_images/BDV/"],
     "bd": ["alias-of-bdpathway"],
     "cellh5": ["ome_images/CellH5/samples/reduced/", "bioformats-docs/cellh5-public-sample-images"],
-    "cellomics": ["ome_images/Cellomics/"],
+    "cellomics": ["ome_images/Cellomics/BBBC001/", "ome_images/Cellomics/"],
     "dcimg": ["ome_images/DCIMG/", "zenodo/10.5281/zenodo.16875377"],
     "deltavision": ["ome_images/DV/"],
     "dicom": ["ome_images/DICOM/"],

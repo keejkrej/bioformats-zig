@@ -1,7 +1,8 @@
 const std = @import("std");
 const bio = @import("../root.zig");
 
-const magic: u32 = 16;
+const c01_header_size: u32 = 16;
+const dib_header_size: u32 = 40;
 const pixel_offset = 52;
 
 const Header = struct {
@@ -40,7 +41,8 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
 
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (data.len < pixel_offset) return error.TruncatedData;
-    if (std.mem.readInt(u32, data[0..4], .little) != magic) return error.InvalidFormat;
+    const header_size = std.mem.readInt(u32, data[0..4], .little);
+    if (header_size != c01_header_size and header_size != dib_header_size) return error.InvalidFormat;
     const width = std.mem.readInt(u32, data[4..8], .little);
     const height = std.mem.readInt(u32, data[8..12], .little);
     const planes = std.mem.readInt(u16, data[12..14], .little);
@@ -98,7 +100,7 @@ test "reads uncompressed cellomics planes" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
 
-    try appendU32Le(&data, magic);
+    try appendU32Le(&data, c01_header_size);
     try appendU32Le(&data, 2);
     try appendU32Le(&data, 1);
     try appendU16Le(&data, 2);
@@ -121,7 +123,7 @@ test "reads uncompressed cellomics planes" {
 
 test "rejects compressed cellomics stream" {
     var data: [pixel_offset + 1]u8 = [_]u8{0} ** (pixel_offset + 1);
-    std.mem.writeInt(u32, data[0..4], magic, .little);
+    std.mem.writeInt(u32, data[0..4], c01_header_size, .little);
     std.mem.writeInt(u32, data[4..8], 1, .little);
     std.mem.writeInt(u32, data[8..12], 1, .little);
     std.mem.writeInt(u16, data[12..14], 1, .little);
@@ -130,4 +132,28 @@ test "rejects compressed cellomics stream" {
 
     try std.testing.expect(!matches(&data));
     try std.testing.expectError(error.UnsupportedVariant, readMetadata(&data));
+}
+
+test "reads cellomics dib header variant" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    try appendU32Le(&data, dib_header_size);
+    try appendU32Le(&data, 1);
+    try appendU32Le(&data, 1);
+    try appendU16Le(&data, 1);
+    try appendU16Le(&data, 16);
+    try appendU32Le(&data, 0);
+    while (data.items.len < pixel_offset) try data.append(std.testing.allocator, 0);
+    try data.appendSlice(std.testing.allocator, &.{ 0x34, 0x12 });
+
+    try std.testing.expect(matches(data.items));
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("cellomics", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x12 }, plane.data);
 }
