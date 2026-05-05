@@ -114,29 +114,19 @@ fn readDatasetInfo(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !
 }
 
 fn datasetRoot(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
-    const start = if (hasExtension(path, "tif") or hasExtension(path, "tiff"))
-        try parentPath(allocator, path)
-    else
-        try parentPath(allocator, path);
-    defer allocator.free(start);
-
-    var current = try allocator.dupe(u8, start);
-    errdefer allocator.free(current);
+    var current = parentSlice(path);
     var depth: usize = 0;
     while (depth < 8) : (depth += 1) {
         const mlf = try joinPath(allocator, current, measurement_file);
         defer allocator.free(mlf);
-        if (existsFile(io, mlf)) return current;
+        if (existsFile(io, mlf)) return dupeBytes(allocator, current);
 
-        const next = try parentPath(allocator, current);
+        const next = parentSlice(current);
         if (std.mem.eql(u8, next, current)) {
-            allocator.free(next);
             break;
         }
-        allocator.free(current);
         current = next;
     }
-    allocator.free(current);
     return error.FileNotFound;
 }
 
@@ -269,13 +259,17 @@ fn existsFile(io: std.Io, path: []const u8) bool {
 }
 
 fn parentPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    const sep = lastSeparator(path) orelse return allocator.dupe(u8, ".");
-    if (sep == 0) return allocator.dupe(u8, path[0..1]);
-    return allocator.dupe(u8, path[0..sep]);
+    return dupeBytes(allocator, parentSlice(path));
+}
+
+fn parentSlice(path: []const u8) []const u8 {
+    const sep = lastSeparator(path) orelse return ".";
+    if (sep == 0) return path[0..1];
+    return path[0..sep];
 }
 
 fn joinPath(allocator: std.mem.Allocator, base: []const u8, name: []const u8) ![]u8 {
-    if (isAbsolutePath(name)) return allocator.dupe(u8, name);
+    if (isAbsolutePath(name)) return dupeBytes(allocator, name);
     const sep: u8 = if (std.mem.indexOfScalar(u8, base, '\\') != null) '\\' else '/';
     const needs_sep = base.len != 0 and base[base.len - 1] != '/' and base[base.len - 1] != '\\';
     const extra: usize = if (needs_sep) 1 else 0;
@@ -283,6 +277,12 @@ fn joinPath(allocator: std.mem.Allocator, base: []const u8, name: []const u8) ![
     @memcpy(out[0..base.len], base);
     if (needs_sep) out[base.len] = sep;
     @memcpy(out[base.len + extra ..], name);
+    return out;
+}
+
+fn dupeBytes(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
+    const out = try allocator.alloc(u8, bytes.len);
+    std.mem.copyForwards(u8, out, bytes);
     return out;
 }
 
@@ -323,6 +323,10 @@ const mlf_fixture =
 test "detects cv7000 measurement xml" {
     try std.testing.expect(matches(mlf_fixture));
     try std.testing.expect(!matches("<xml/>"));
+}
+
+test "cv7000 path probe rejects unrelated tiff without panicking" {
+    try std.testing.expectError(error.FileNotFound, readMetadataPath(std.testing.allocator, std.testing.io, "unrelated/path/sample.tif"));
 }
 
 test "reads cv7000 mlf delegated tiff plane" {
