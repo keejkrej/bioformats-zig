@@ -6,6 +6,7 @@ const Header = struct {
     height: u32,
     size_z: u16,
     size_c: u16,
+    samples_per_pixel: u16,
     size_t: u16,
     pixel_type: bio.PixelType,
     little_endian: bool,
@@ -32,7 +33,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
         .width = header.width,
         .height = header.height,
         .size_c = header.size_c,
-        .samples_per_pixel = 1,
+        .samples_per_pixel = header.samples_per_pixel,
         .size_z = header.size_z,
         .size_t = header.size_t,
         .pixel_type = header.pixel_type,
@@ -79,15 +80,18 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     const size_x = try parseU32(attr(pixels, "SizeX") orelse return error.InvalidFormat);
     const size_y = try parseU32(attr(pixels, "SizeY") orelse return error.InvalidFormat);
     const size_z = try parseU16(attr(pixels, "SizeZ") orelse "1");
-    const size_c = try parseU16(attr(pixels, "SizeC") orelse "1");
+    const stored_size_c = try parseU16(attr(pixels, "SizeC") orelse "1");
     const size_t = try parseU16(attr(pixels, "SizeT") orelse "1");
-    if (size_x == 0 or size_y == 0 or size_z == 0 or size_c == 0 or size_t == 0) return error.InvalidFormat;
+    const samples_per_pixel = try parseSamplesPerPixel(data);
+    if (size_x == 0 or size_y == 0 or size_z == 0 or stored_size_c == 0 or size_t == 0 or samples_per_pixel == 0) return error.InvalidFormat;
+    if (stored_size_c % samples_per_pixel != 0) return error.UnsupportedVariant;
     const big_endian = parseBool(attr(pixels, "BigEndian") orelse "false");
     return .{
         .width = size_x,
         .height = size_y,
         .size_z = size_z,
-        .size_c = size_c,
+        .size_c = stored_size_c / samples_per_pixel,
+        .samples_per_pixel = samples_per_pixel,
         .size_t = size_t,
         .pixel_type = try parsePixelType(type_name),
         .little_endian = !big_endian,
@@ -243,6 +247,11 @@ fn parseBool(text: []const u8) bool {
     return std.ascii.eqlIgnoreCase(value, "true") or std.mem.eql(u8, value, "1") or std.ascii.startsWithIgnoreCase(value, "t");
 }
 
+fn parseSamplesPerPixel(data: []const u8) bio.ReaderError!u16 {
+    const channel = findTag(data, "Channel") orelse return 1;
+    return parseU16(attr(channel, "SamplesPerPixel") orelse "1");
+}
+
 fn isRawCompression(text: []const u8) bool {
     const value = std.mem.trim(u8, text, " \t\r\n");
     return value.len == 0 or std.ascii.eqlIgnoreCase(value, "none") or std.ascii.eqlIgnoreCase(value, "uncompressed");
@@ -273,7 +282,7 @@ fn decodeZlib(src: []const u8, dst: []u8) bio.ReaderError!void {
 
 fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
     const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
-    return std.math.mul(usize, pixels, metadata.pixel_type.bytesPerSample()) catch return error.UnsupportedVariant;
+    return std.math.mul(usize, pixels, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
 }
 
 test "reads uncompressed ome xml bindata plane" {
@@ -330,6 +339,23 @@ test "reads uncompressed named ome xml bindata plane" {
     const plane = try readPlaneIndex(std.testing.allocator, data, 0);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, plane.data);
+}
+
+test "ome xml channel samples per pixel expands plane bytes" {
+    const data =
+        \\<?xml version="1.0"?>
+        \\<OME><Image ID="Image:0"><Pixels DimensionOrder="XYZCT" Type="uint8" SizeX="1" SizeY="1" SizeZ="1" SizeC="3" SizeT="1"><Channel ID="Channel:0" SamplesPerPixel="3"/><BinData>AQID</BinData></Pixels></Image></OME>
+    ;
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 3), metadata.samples_per_pixel);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(@as(usize, 3), plane.data.len);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3 }, plane.data);
 }
 
 test "ome xml without bindata returns blank plane" {
