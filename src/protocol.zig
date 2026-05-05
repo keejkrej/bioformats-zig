@@ -570,6 +570,9 @@ pub const Server = struct {
         if (bio.jpx.isPath(path)) {
             if (bio.jpx.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.tilejpeg.isPath(path)) {
+            if (bio.tilejpeg.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.hamamatsuvms.isPath(path)) {
             if (bio.hamamatsuvms.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -710,6 +713,9 @@ pub const Server = struct {
         }
         if (bio.jpx.isPath(path)) {
             if (bio.jpx.readMetadataPath(self.allocator, self.io, path)) |_| return "jpx" else |_| {}
+        }
+        if (bio.tilejpeg.isPath(path)) {
+            if (bio.tilejpeg.readMetadataPath(self.allocator, self.io, path)) |_| return "tilejpeg" else |_| {}
         }
         if (bio.hamamatsuvms.isPath(path)) {
             if (bio.hamamatsuvms.readMetadataPath(self.allocator, self.io, path)) |_| return "hamamatsuvms" else |_| {}
@@ -872,6 +878,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "jpx")) {
             return bio.jpx.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "tilejpeg")) {
+            return bio.tilejpeg.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "hamamatsuvms")) {
             return bio.hamamatsuvms.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -948,6 +957,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "flex") or
             std.mem.eql(u8, format, "fv1000") or
             std.mem.eql(u8, format, "jpx") or
+            std.mem.eql(u8, format, "tilejpeg") or
             std.mem.eql(u8, format, "hamamatsuvms") or
             std.mem.eql(u8, format, "zeisstiff") or
             std.mem.eql(u8, format, "imaristiff") or
@@ -1870,6 +1880,47 @@ test "server probes and opens jpk path through tiff delegate" {
     );
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"jpk\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
+}
+
+test "server probes jpeg path as tilejpeg path reader" {
+    const file_path = "protocol-tilejpeg-test.jpg";
+    const image = [_]u8{
+        0xff, 0xd8,
+        0xff, 0xc0,
+        0x00, 0x11,
+        0x08, 0x00,
+        0x02, 0x00,
+        0x03, 0x03,
+        0x01, 0x11,
+        0x00, 0x02,
+        0x11, 0x00,
+        0x03, 0x11,
+        0x00, 0xff,
+        0xd9,
+    };
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = file_path, .data = &image });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, file_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"probe\",\"params\":{\"path\":\"protocol-tilejpeg-test.jpg\"}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"tilejpeg\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"metadata\",\"params\":{\"path\":\"protocol-tilejpeg-test.jpg\"}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"tilejpeg\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"width\":3") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"height\":2") != null);
 }
 
 test "server probes imaris tiff ims path before raw imaris" {

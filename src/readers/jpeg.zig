@@ -7,13 +7,17 @@ pub fn matches(data: []const u8) bool {
 }
 
 pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
+    return readMetadataAs(data, "jpeg");
+}
+
+pub fn readMetadataAs(data: []const u8, format: []const u8) bio.ReaderError!bio.Metadata {
     const info = jpegInfo(data) catch return error.InvalidFormat;
     const samples = @as(u16, info.components);
     const pixel_type: bio.PixelType = if (info.precision <= 8)
         if (samples == 1) .uint8 else .rgb8
     else if (samples == 1) .uint16 else .rgb16;
     return .{
-        .format = "jpeg",
+        .format = format,
         .width = info.width,
         .height = info.height,
         .size_c = samples,

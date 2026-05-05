@@ -151,6 +151,7 @@ pub const tecan = @import("readers/tecan.zig");
 pub const tga = @import("readers/tga.zig");
 pub const text = @import("readers/text.zig");
 pub const tiff = @import("readers/tiff.zig");
+pub const tilejpeg = @import("readers/tilejpeg.zig");
 pub const tillvision = @import("readers/tillvision.zig");
 pub const topometrix = @import("readers/topometrix.zig");
 pub const trestle = @import("readers/trestle.zig");
@@ -757,6 +758,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "jpeg",
         .name = "JPEG metadata",
         .extensions = &.{ "jpg", "jpeg", "jpe" },
+        .can_read_pixels = false,
+    },
+    .{
+        .id = "tilejpeg",
+        .name = "Tile JPEG metadata",
+        .extensions = &.{ "jpg", "jpeg" },
         .can_read_pixels = false,
     },
     .{
@@ -1461,6 +1468,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (jdce.matches(data)) return "jdce";
     if (jeol.matches(data)) return "jeol";
     if (jpeg.matches(data)) return "jpeg";
+    if (tilejpeg.matches(data)) return "tilejpeg";
     if (jpeg2000.matches(data)) return "jpeg2000";
     if (jpx.matches(data)) return "jpx";
     if (khoros.matches(data)) return "khoros";
@@ -1626,6 +1634,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (jdce.matches(data)) return jdce.readMetadata(data);
     if (jeol.matches(data)) return jeol.readMetadata(data);
     if (jpeg.matches(data)) return jpeg.readMetadata(data);
+    if (tilejpeg.matches(data)) return tilejpeg.readMetadata(data);
     if (jpeg2000.matches(data)) return jpeg2000.readMetadata(data);
     if (jpx.matches(data)) return jpx.readMetadata(data);
     if (khoros.matches(data)) return khoros.readMetadata(data);
@@ -1818,6 +1827,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return jeol.readPlane(allocator, data);
     }
     if (jpeg.matches(data)) return jpeg.readPlaneIndex(allocator, data, plane_index);
+    if (tilejpeg.matches(data)) return tilejpeg.readPlaneIndex(allocator, data, plane_index);
     if (jpeg2000.matches(data)) return jpeg2000.readPlaneIndex(allocator, data, plane_index);
     if (jpx.matches(data)) return jpx.readPlaneIndex(allocator, data, plane_index);
     if (khoros.matches(data)) return khoros.readPlaneIndex(allocator, data, plane_index);
@@ -2173,6 +2183,7 @@ test {
     _ = tcs;
     _ = tecan;
     _ = tga;
+    _ = tilejpeg;
     _ = tillvision;
     _ = tiff;
     _ = trestle;
