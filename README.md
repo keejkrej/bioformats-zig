@@ -72,9 +72,9 @@ example, Analyze 7.5 `.hdr`/`.img`, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`,
 Columbus `MeasurementIndex.ColumbusIDX.xml` plus TIFF planes, Fuji LAS 3000
 `.inf`/`.img`, Inveon `.hdr`/data pairs, MetaXpress `.htd` plus neighboring
 TIFF planes, Micro-Manager `metadata.txt` plus TIFF planes, PerkinElmer `.htm`
-plus TIFF planes, Perkin Elmer Densitometer `.hdr`/`.img`, Hitachi S-4800
-`.txt` plus neighboring TIFF/BMP, PCO-RAW `.pcoraw`/`.rec`, and Unisoku STM
-`.HDR`/`.DAT` datasets can be opened
+plus TIFF planes, JDCE `.jdce`/CSV datasets plus TIFF planes, Perkin Elmer
+Densitometer `.hdr`/`.img`, Hitachi S-4800 `.txt` plus neighboring TIFF/BMP,
+PCO-RAW `.pcoraw`/`.rec`, and Unisoku STM `.HDR`/`.DAT` datasets can be opened
 by selecting either file; inline `data` can identify the header but cannot
 provide the paired pixel file.
 
@@ -195,6 +195,7 @@ plane, which can differ from logical OME `sizeC`.
 - Ionpath MIBI TIFF files identified by IonpathMIBI software tags, decoded through the TIFF pixel path; SIMS series grouping and channel metadata parsing are not yet handled.
 - IPLab files with 8/16/32-bit integer and 32/64-bit floating-point raw planes; Z/T images are exposed as planes.
 - Image-Pro Workspace `.ipw` OLE containers with regular FAT `ImageTIFF` streams decoded through the TIFF pixel path; mini-stream embedded TIFFs and non-TIFF workspace objects are not yet handled.
+- Molecular Devices JDCE `.jdce` datasets delegated through CSV-listed TIFF planes and reported as `jdce`; full HCS plate/well/field metadata, plane timing/positions, wavelengths, and multi-series mapping are not yet surfaced.
 - IVision `.ipm` files with big-endian inline 8/16/32-bit scalar pixels plus padded RGB8 and RGB16 planes; 16-bit color compaction, square-root encoding, XML metadata, LUT extraction, and acquisition metadata are not yet handled.
 - JEOL `MG`/`IM` single-file images with little-endian metadata and 8-bit grayscale pixels; companion `.par` metadata grouping is not yet handled.
 - JPK Instruments `.jpk` TIFF files delegated through the TIFF pixel path and reported as `jpk`; multi-series JPK TIFF splitting and private tag metadata are not yet modeled.

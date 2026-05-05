@@ -507,6 +507,9 @@ pub const Server = struct {
         if (bio.columbus.isPath(path)) {
             if (bio.columbus.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.jdce.isPath(path)) {
+            if (bio.jdce.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.metaxpress.isPath(path)) {
             if (bio.metaxpress.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -590,6 +593,9 @@ pub const Server = struct {
         }
         if (bio.columbus.isPath(path)) {
             if (bio.columbus.readMetadataPath(self.allocator, self.io, path)) |_| return "columbus" else |_| {}
+        }
+        if (bio.jdce.isPath(path)) {
+            if (bio.jdce.readMetadataPath(self.allocator, self.io, path)) |_| return "jdce" else |_| {}
         }
         if (bio.metaxpress.isPath(path)) {
             if (bio.metaxpress.readMetadataPath(self.allocator, self.io, path)) |_| return "metaxpress" else |_| {}
@@ -701,6 +707,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "columbus")) {
             return bio.columbus.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "jdce")) {
+            return bio.jdce.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "metaxpress")) {
             return bio.metaxpress.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -764,6 +773,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "l2d") or
             std.mem.eql(u8, format, "bdpathway") or
             std.mem.eql(u8, format, "columbus") or
+            std.mem.eql(u8, format, "jdce") or
             std.mem.eql(u8, format, "metaxpress") or
             std.mem.eql(u8, format, "micromanager") or
             std.mem.eql(u8, format, "fake") or

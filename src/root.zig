@@ -54,6 +54,7 @@ pub const ionpathmibi = @import("readers/ionpathmibi.zig");
 pub const iplab = @import("readers/iplab.zig");
 pub const ipw = @import("readers/ipw.zig");
 pub const ivision = @import("readers/ivision.zig");
+pub const jdce = @import("readers/jdce.zig");
 pub const jeol = @import("readers/jeol.zig");
 pub const jpk = @import("readers/jpk.zig");
 pub const khoros = @import("readers/khoros.zig");
@@ -628,6 +629,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "jdce",
+        .name = "Molecular Devices JDCE TIFF dataset",
+        .extensions = &.{ "jdce", "csv", "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "jeol",
         .name = "JEOL single-file image",
         .extensions = &.{ "dat", "img" },
@@ -1193,6 +1200,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (iplab.matches(data)) return "iplab";
     if (ipw.matches(data)) return "ipw";
     if (ivision.matches(data)) return "ivision";
+    if (jdce.matches(data)) return "jdce";
     if (jeol.matches(data)) return "jeol";
     if (khoros.matches(data)) return "khoros";
     if (klb.matches(data)) return "klb";
@@ -1323,6 +1331,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (iplab.matches(data)) return iplab.readMetadata(data);
     if (ipw.matches(data)) return ipw.readMetadata(data);
     if (ivision.matches(data)) return ivision.readMetadata(data);
+    if (jdce.matches(data)) return jdce.readMetadata(data);
     if (jeol.matches(data)) return jeol.readMetadata(data);
     if (khoros.matches(data)) return khoros.readMetadata(data);
     if (klb.matches(data)) return klb.readMetadata(data);
@@ -1477,6 +1486,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (iplab.matches(data)) return iplab.readPlaneIndex(allocator, data, plane_index);
     if (ipw.matches(data)) return ipw.readPlaneIndex(allocator, data, plane_index);
     if (ivision.matches(data)) return ivision.readPlaneIndex(allocator, data, plane_index);
+    if (jdce.matches(data)) return jdce.readPlaneIndex(allocator, data, plane_index);
     if (jeol.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return jeol.readPlane(allocator, data);
@@ -1735,6 +1745,7 @@ test {
     _ = ionpathmibi;
     _ = ivision;
     _ = ipw;
+    _ = jdce;
     _ = leo;
     _ = liflim;
     _ = metamorph;
