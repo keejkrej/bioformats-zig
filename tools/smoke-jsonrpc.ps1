@@ -197,6 +197,7 @@ try {
     Assert-True ([bool]$initialize.result.capabilities.contentLengthFraming) "Content-Length framing was not advertised."
     Assert-True ([bool]$initialize.result.capabilities.inlineData) "Inline data was not advertised."
     Assert-True ([bool]$initialize.result.capabilities.handles) "Reader handles were not advertised."
+    Assert-True ([bool]$initialize.result.capabilities.regions) "Region reads were not advertised."
     Assert-True ([bool]$initialize.result.capabilities.batch) "Batch requests were not advertised."
     Assert-True ([bool]$initialize.result.capabilities.notifications) "Notifications were not advertised."
 
@@ -242,6 +243,26 @@ try {
     }
     Assert-True ($handlePlane.result.data -eq "ChQe") "Handle readPlane returned unexpected pixel payload."
 
+    $pgmBytes = [byte[]](
+        [System.Text.Encoding]::ASCII.GetBytes("P5`n2 2`n255`n") +
+        [byte[]](1, 2, 3, 4)
+    )
+    $regionPlane = Invoke-LineRequest $lineProcess @{
+        jsonrpc = "2.0"
+        id = 9
+        method = "readPlane"
+        params = @{
+            data = [Convert]::ToBase64String($pgmBytes)
+            x = 1
+            y = 0
+            width = 1
+            height = 2
+        }
+    }
+    Assert-True ($regionPlane.result.data -eq "AgQ=") "Region readPlane returned unexpected cropped pixel payload."
+    Assert-True ($regionPlane.result.region.x -eq 1 -and $regionPlane.result.region.y -eq 0) "Region readPlane returned unexpected region origin."
+    Assert-True ($regionPlane.result.region.width -eq 1 -and $regionPlane.result.region.height -eq 2) "Region readPlane returned unexpected region size."
+
     $close = Invoke-LineRequest $lineProcess @{
         jsonrpc = "2.0"
         id = 8
@@ -267,6 +288,7 @@ try {
         Formats = $formats.result.Count
         InlinePixels = $plane.result.data
         HandlePixels = $handlePlane.result.data
+        RegionPixels = $regionPlane.result.data
         BatchResponses = $batch.Count
     }
 }
