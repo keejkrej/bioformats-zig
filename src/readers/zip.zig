@@ -70,6 +70,7 @@ const varianfdf = @import("varianfdf.zig");
 const vgsam = @import("vgsam.zig");
 const watop = @import("watop.zig");
 const zeisslms = @import("zeisslms.zig");
+const zeisslsm = @import("zeisslsm.zig");
 
 const local_sig = [_]u8{ 'P', 'K', 3, 4 };
 const method_store: u16 = 0;
@@ -82,7 +83,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vgsam, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -198,6 +199,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .vgsam => vgsam.readMetadata(entry.data),
         .watop => watop.readMetadata(entry.data),
         .zeisslms => zeisslms.readMetadata(entry.data),
+        .zeisslsm => zeisslsm.readMetadata(entry.data),
     };
 }
 
@@ -273,6 +275,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .vgsam => if (plane_index == 0) vgsam.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .watop => if (plane_index == 0) watop.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .zeisslms => zeisslms.readPlaneIndex(allocator, entry.data, plane_index),
+        .zeisslsm => zeisslsm.readPlaneIndex(allocator, entry.data, plane_index),
     };
 }
 
@@ -284,6 +287,7 @@ fn readInnerRegionIndex(
 ) bio.ReaderError!bio.Plane {
     if (entry.kind == .ometiff) return ometiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .trestle) return trestle.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .zeisslsm) return zeisslsm.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .tiff) return tiff.readRegionIndex(allocator, entry.data, plane_index, region);
 
     const plane = try readInnerPlaneIndex(allocator, entry, plane_index);
@@ -396,6 +400,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (text.matches(data)) return .text;
     if (hasExtension(filename, ".tga") and tga.matches(data)) return .tga;
     if (trestle.matches(data)) return .trestle;
+    if (zeisslsm.matches(data)) return .zeisslsm;
     if (tiff.matches(data)) return .tiff;
     if (topometrix.matches(data)) return .topometrix;
     if (hasExtension(filename, ".pr3") and ubm.matches(data)) return .ubm;
@@ -2910,6 +2915,63 @@ test "reads stored zeiss lms zip entry through inner reader" {
     try std.testing.expectEqual(@as(usize, plane_len), plane.data.len);
     try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x12 }, plane.data[0..2]);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
+}
+
+test "reads stored zeiss lsm zip entry before baseline tiff" {
+    var lsm_data: std.ArrayList(u8) = .empty;
+    defer lsm_data.deinit(std.testing.allocator);
+
+    try lsm_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&lsm_data, 42);
+    try appendU32Le(&lsm_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const lsm_offset = ifd_end;
+    const lsm_bytes = 32;
+    const pixel_offset = lsm_offset + lsm_bytes;
+
+    try appendU16Le(&lsm_data, entry_count);
+    try appendTiffEntry(&lsm_data, 256, 4, 1, 1);
+    try appendTiffEntry(&lsm_data, 257, 4, 1, 1);
+    try appendTiffEntry(&lsm_data, 258, 3, 1, 8);
+    try appendTiffEntry(&lsm_data, 259, 3, 1, 1);
+    try appendTiffEntry(&lsm_data, 262, 3, 1, 1);
+    try appendTiffEntry(&lsm_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&lsm_data, 277, 3, 1, 1);
+    try appendTiffEntry(&lsm_data, 278, 4, 1, 1);
+    try appendTiffEntry(&lsm_data, 279, 4, 1, 1);
+    try appendTiffEntry(&lsm_data, 34412, 1, lsm_bytes, @intCast(lsm_offset));
+    try appendU32Le(&lsm_data, 0);
+    try lsm_data.appendNTimes(std.testing.allocator, 0, lsm_bytes);
+    try lsm_data.append(std.testing.allocator, 0x5a);
+
+    try std.testing.expectEqual(Entry.Kind.zeisslsm, detectInner("image.lsm", lsm_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.lsm", lsm_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{0x5a}, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{0x5a}, region_plane.data);
 }
 
 test "rejects unsupported zip compression methods" {
