@@ -189,6 +189,7 @@ function Assert-True {
 }
 
 $binaryPath = Resolve-RepoPath $Binary
+$fakePath = Join-Path ([System.IO.Path]::GetTempPath()) "bioformats-zig-smoke&sizeX=60&sizeY=1&sizeZ=2&sizeC=3&sizeT=4.fake"
 
 $lineProcess = Start-BioformatsProcess $binaryPath
 try {
@@ -198,6 +199,7 @@ try {
     Assert-True ([bool]$initialize.result.capabilities.inlineData) "Inline data was not advertised."
     Assert-True ([bool]$initialize.result.capabilities.handles) "Reader handles were not advertised."
     Assert-True ([bool]$initialize.result.capabilities.regions) "Region reads were not advertised."
+    Assert-True ([bool]$initialize.result.capabilities.zctCoordinates) "Z/C/T coordinate reads were not advertised."
     Assert-True ([bool]$initialize.result.capabilities.batch) "Batch requests were not advertised."
     Assert-True ([bool]$initialize.result.capabilities.notifications) "Notifications were not advertised."
 
@@ -263,6 +265,26 @@ try {
     Assert-True ($regionPlane.result.region.x -eq 1 -and $regionPlane.result.region.y -eq 0) "Region readPlane returned unexpected region origin."
     Assert-True ($regionPlane.result.region.width -eq 1 -and $regionPlane.result.region.height -eq 2) "Region readPlane returned unexpected region size."
 
+    [System.IO.File]::WriteAllBytes($fakePath, [byte[]]::new(0))
+    $zctPlane = Invoke-LineRequest $lineProcess @{
+        jsonrpc = "2.0"
+        id = 10
+        method = "readPlane"
+        params = @{
+            path = $fakePath
+            z = 1
+            c = 2
+            t = 3
+            x = 10
+            y = 0
+            width = 31
+            height = 1
+        }
+    }
+    $zctBytes = [Convert]::FromBase64String($zctPlane.result.data)
+    Assert-True ($zctPlane.result.metadata.format -eq "fake") "Z/C/T readPlane did not return fake metadata."
+    Assert-True ($zctBytes[0] -eq 23 -and $zctBytes[10] -eq 1 -and $zctBytes[20] -eq 2 -and $zctBytes[30] -eq 3) "Z/C/T readPlane returned unexpected marker pixels."
+
     $close = Invoke-LineRequest $lineProcess @{
         jsonrpc = "2.0"
         id = 8
@@ -289,10 +311,12 @@ try {
         InlinePixels = $plane.result.data
         HandlePixels = $handlePlane.result.data
         RegionPixels = $regionPlane.result.data
+        ZctMarkers = "$($zctBytes[0])/$($zctBytes[10])/$($zctBytes[20])/$($zctBytes[30])"
         BatchResponses = $batch.Count
     }
 }
 finally {
+    Remove-Item -LiteralPath $fakePath -Force -ErrorAction SilentlyContinue
     Stop-BioformatsProcess $lineProcess
     $stderr = $lineProcess.StandardError.ReadToEnd()
     if (-not [string]::IsNullOrWhiteSpace($stderr)) {
