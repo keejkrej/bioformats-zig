@@ -67,6 +67,7 @@ const topometrix = @import("topometrix.zig");
 const trestle = @import("trestle.zig");
 const ubm = @import("ubm.zig");
 const varianfdf = @import("varianfdf.zig");
+const vectra = @import("vectra.zig");
 const vgsam = @import("vgsam.zig");
 const watop = @import("watop.zig");
 const zeisslms = @import("zeisslms.zig");
@@ -83,7 +84,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vgsam, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, vgsam, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -196,6 +197,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .trestle => trestle.readMetadata(entry.data),
         .ubm => ubm.readMetadata(entry.data),
         .varianfdf => varianfdf.readMetadata(entry.data),
+        .vectra => vectra.readMetadata(entry.data),
         .vgsam => vgsam.readMetadata(entry.data),
         .watop => watop.readMetadata(entry.data),
         .zeisslms => zeisslms.readMetadata(entry.data),
@@ -272,6 +274,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .trestle => trestle.readPlaneIndex(allocator, entry.data, plane_index),
         .ubm => if (plane_index == 0) ubm.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .varianfdf => varianfdf.readPlaneIndex(allocator, entry.data, plane_index),
+        .vectra => vectra.readPlaneIndex(allocator, entry.data, plane_index),
         .vgsam => if (plane_index == 0) vgsam.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .watop => if (plane_index == 0) watop.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .zeisslms => zeisslms.readPlaneIndex(allocator, entry.data, plane_index),
@@ -287,6 +290,7 @@ fn readInnerRegionIndex(
 ) bio.ReaderError!bio.Plane {
     if (entry.kind == .ometiff) return ometiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .trestle) return trestle.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .vectra) return vectra.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .zeisslsm) return zeisslsm.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .tiff) return tiff.readRegionIndex(allocator, entry.data, plane_index, region);
 
@@ -400,6 +404,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (text.matches(data)) return .text;
     if (hasExtension(filename, ".tga") and tga.matches(data)) return .tga;
     if (trestle.matches(data)) return .trestle;
+    if (vectra.matches(data)) return .vectra;
     if (zeisslsm.matches(data)) return .zeisslsm;
     if (tiff.matches(data)) return .tiff;
     if (topometrix.matches(data)) return .topometrix;
@@ -2781,6 +2786,63 @@ test "reads stored ubm zip entry through extension-gated inner reader" {
         4, 0, 0, 0,
     }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
+}
+
+test "reads stored vectra zip entry before baseline tiff" {
+    var vectra_data: std.ArrayList(u8) = .empty;
+    defer vectra_data.deinit(std.testing.allocator);
+
+    try vectra_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&vectra_data, 42);
+    try appendU32Le(&vectra_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const software = "PerkinElmer-QPI 1.0\x00";
+    const software_offset = ifd_end;
+    const pixel_offset = software_offset + software.len;
+
+    try appendU16Le(&vectra_data, entry_count);
+    try appendTiffEntry(&vectra_data, 256, 4, 1, 1);
+    try appendTiffEntry(&vectra_data, 257, 4, 1, 1);
+    try appendTiffEntry(&vectra_data, 258, 3, 1, 8);
+    try appendTiffEntry(&vectra_data, 259, 3, 1, 1);
+    try appendTiffEntry(&vectra_data, 262, 3, 1, 1);
+    try appendTiffEntry(&vectra_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&vectra_data, 277, 3, 1, 1);
+    try appendTiffEntry(&vectra_data, 278, 4, 1, 1);
+    try appendTiffEntry(&vectra_data, 279, 4, 1, 1);
+    try appendTiffEntry(&vectra_data, 305, 2, software.len, @intCast(software_offset));
+    try appendU32Le(&vectra_data, 0);
+    try vectra_data.appendSlice(std.testing.allocator, software);
+    try vectra_data.append(std.testing.allocator, 223);
+
+    try std.testing.expectEqual(Entry.Kind.vectra, detectInner("image.qptiff", vectra_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.qptiff", vectra_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{223}, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{223}, region_plane.data);
 }
 
 test "reads stored watop zip entry through inner reader" {
