@@ -49,10 +49,57 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    _ = allocator;
-    _ = data;
-    _ = plane_index;
+    const metadata = try readMetadata(data);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
+    const plane_len = try planeByteCount(metadata);
+    const block = try findPlaneBlock(data, metadata.plane_count, plane_index, plane_len);
+    const out = try allocator.alloc(u8, plane_len);
+    errdefer allocator.free(out);
+    @memcpy(out, data[block.data_offset..][0..plane_len]);
+    return .{ .metadata = metadata, .data = out };
+}
+
+const PixelBlock = struct {
+    data_offset: usize,
+    data_len: usize,
+};
+
+fn findPlaneBlock(data: []const u8, plane_count: u32, plane_index: u32, plane_len: usize) bio.ReaderError!PixelBlock {
+    var pos: usize = identifier.len;
+    var index: u32 = 0;
+    while (pos + 28 <= data.len) : (pos += 1) {
+        const block = parsePixelBlockAt(data, pos) catch continue;
+        if (block.data_len == plane_len) {
+            if (index == plane_index) return block;
+            index += 1;
+            pos = block.data_offset + block.data_len - 1;
+        } else if (block.data_len > 0) {
+            return error.UnsupportedVariant;
+        }
+    }
+    if (index > 0 and index != plane_count) return error.UnsupportedVariant;
     return error.UnsupportedVariant;
+}
+
+fn parsePixelBlockAt(data: []const u8, pos: usize) bio.ReaderError!PixelBlock {
+    if (pos + 28 > data.len) return error.TruncatedData;
+    const check_len = leU32(data[pos..][0..4]);
+    const check = leU32(data[pos + 4 ..][0..4]);
+    if (check != 3) return error.InvalidFormat;
+    const uid_len = leU32(data[pos + 16 ..][0..4]);
+    if (check_len != uid_len + 12 or uid_len == 0 or uid_len > 4096) return error.InvalidFormat;
+    const uid_start = pos + 20;
+    const uid_len_usize = try checkedUsize(uid_len);
+    const uid_end = std.math.add(usize, uid_start, uid_len_usize) catch return error.UnsupportedVariant;
+    if (uid_end + 8 > data.len) return error.TruncatedData;
+    const uid = data[uid_start..uid_end];
+    if (std.mem.indexOfScalar(u8, uid, '_') == null) return error.InvalidFormat;
+    const pixel_bytes = leU32(data[uid_end..][0..4]);
+    if (pixel_bytes == 0) return error.InvalidFormat;
+    const pixel_len = try checkedUsize(pixel_bytes);
+    const pixel_offset = uid_end + 8;
+    if (pixel_offset > data.len or data.len - pixel_offset < pixel_len) return error.TruncatedData;
+    return .{ .data_offset = pixel_offset, .data_len = pixel_len };
 }
 
 fn parseXml(xml: []const u8, scan: *Scan) bio.ReaderError!void {
@@ -153,6 +200,19 @@ fn boundedDimension(value: u32) u16 {
     return @intCast(@min(@max(value, 1), std.math.maxInt(u16)));
 }
 
+fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
+    const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
+    return std.math.mul(usize, pixels, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
+}
+
+fn leU32(bytes: []const u8) u32 {
+    return std.mem.readInt(u32, bytes[0..4], .little);
+}
+
+fn checkedUsize(value: anytype) bio.ReaderError!usize {
+    return std.math.cast(usize, value) orelse error.UnsupportedVariant;
+}
+
 test "reads olympus oir image metadata from xml blocks" {
     const data =
         identifier ++
@@ -188,4 +248,42 @@ test "reports rgb oir frame metadata" {
     try std.testing.expectEqual(@as(u16, 3), metadata.size_c);
     try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
     try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data, 0));
+}
+
+fn appendU32Le(out: *std.ArrayList(u8), value: u32) !void {
+    var bytes: [4]u8 = undefined;
+    std.mem.writeInt(u32, &bytes, value, .little);
+    try out.appendSlice(std.testing.allocator, &bytes);
+}
+
+fn appendPixelBlock(out: *std.ArrayList(u8), uid: []const u8, pixels: []const u8) !void {
+    try appendU32Le(out, @intCast(uid.len + 12));
+    try appendU32Le(out, 3);
+    try appendU32Le(out, 0);
+    try appendU32Le(out, 0);
+    try appendU32Le(out, @intCast(uid.len));
+    try out.appendSlice(std.testing.allocator, uid);
+    try appendU32Le(out, @intCast(pixels.len));
+    try appendU32Le(out, 0);
+    try out.appendSlice(std.testing.allocator, pixels);
+}
+
+test "reads olympus oir full-plane raw pixel blocks" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendSlice(std.testing.allocator, identifier ++ "<?xml version=\"1.0\"?><commonframe:frameProperties><commonframe:imageDefinition>");
+    try data.appendSlice(std.testing.allocator, "<base:width>3</base:width><base:height>2</base:height><base:depth>2</base:depth>");
+    try data.appendSlice(std.testing.allocator, "<commonimage:axis><commonparam:axis>ZSTACK</commonparam:axis><commonparam:maxSize>2</commonparam:maxSize></commonimage:axis>");
+    try data.appendSlice(std.testing.allocator, "</commonframe:imageDefinition></commonframe:frameProperties>");
+    const first = [_]u8{ 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0 };
+    const second = [_]u8{ 7, 0, 8, 0, 9, 0, 10, 0, 11, 0, 12, 0 };
+    try appendPixelBlock(&data, "z001t001_ch0_0", &first);
+    try appendPixelBlock(&data, "z002t001_ch0_0", &second);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("oir", plane.metadata.format);
+    try std.testing.expectEqual(bio.PixelType.uint16, plane.metadata.pixel_type);
+    try std.testing.expectEqualSlices(u8, &second, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
 }

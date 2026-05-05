@@ -1101,9 +1101,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "oir",
-        .name = "Olympus OIR metadata",
+        .name = "Olympus OIR raw blocks",
         .extensions = &.{"oir"},
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "olympustile",
