@@ -1,5 +1,6 @@
 param(
     [string]$BioformatsPath = "../bioformats",
+    [string]$Binary = "zig-out/bin/bioformats-zig.exe",
     [switch]$Strict
 )
 
@@ -122,6 +123,75 @@ function Convert-ReaderNameToId {
     return $ReaderName.ToLowerInvariant()
 }
 
+function Resolve-RepoPath {
+    param([string]$Path)
+
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return $Path
+    }
+    return Join-Path (Get-Location) $Path
+}
+
+function Write-ProcessLine {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [string]$Line
+    )
+
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    $bytes = $utf8.GetBytes($Line + "`n")
+    $Process.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+    $Process.StandardInput.BaseStream.Flush()
+}
+
+function Read-RuntimeFormats {
+    param([string]$BinaryPath)
+
+    if (-not (Test-Path -LiteralPath $BinaryPath)) {
+        return $null
+    }
+
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = (Resolve-Path -LiteralPath $BinaryPath).Path
+    $psi.WorkingDirectory = (Get-Location).Path
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $process = [System.Diagnostics.Process]::Start($psi)
+    try {
+        Write-ProcessLine $process '{"jsonrpc":"2.0","id":1,"method":"formats"}'
+        $line = $process.StandardOutput.ReadLine()
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            throw "No JSON-RPC response from $BinaryPath"
+        }
+        $response = $line | ConvertFrom-Json
+        if ($response.error) {
+            throw "formats failed: $($response.error.message)"
+        }
+        $formats = @{}
+        foreach ($format in $response.result) {
+            $formats[$format.id] = [bool]$format.canReadPixels
+        }
+        return $formats
+    }
+    finally {
+        if (-not $process.HasExited) {
+            Write-ProcessLine $process '{"jsonrpc":"2.0","method":"shutdown"}'
+            $process.StandardInput.Close()
+            if (-not $process.WaitForExit(2000)) {
+                $process.Kill()
+            }
+        }
+        $stderr = $process.StandardError.ReadToEnd()
+        if (-not [string]::IsNullOrWhiteSpace($stderr)) {
+            Write-Warning $stderr
+        }
+        $process.Dispose()
+    }
+}
+
 if (-not (Test-Path -LiteralPath $BioformatsPath)) {
     throw "Bio-Formats checkout not found: $BioformatsPath"
 }
@@ -132,7 +202,16 @@ $formatMatches = [regex]::Matches($root, '(?s)\.\{\s*\.id = "([^"]+)".*?\.can_re
 $zigFormats = @{}
 foreach ($match in $formatMatches) {
     $canReadPixels = $match.Groups[2].Value.Trim()
-    $zigFormats[$match.Groups[1].Value] = $canReadPixels -ne "false"
+    $zigFormats[$match.Groups[1].Value] = if ($canReadPixels -eq "true") {
+        $true
+    } else {
+        $false
+    }
+}
+
+$runtimeFormats = Read-RuntimeFormats (Resolve-RepoPath $Binary)
+if ($runtimeFormats) {
+    $zigFormats = $runtimeFormats
 }
 
 $readerFiles = @(Get-ChildItem -LiteralPath $BioformatsPath -Recurse -Filter "*Reader.java" -File)
@@ -167,6 +246,7 @@ $pixelDisabled = @(
     ZigFormats = $zigFormats.Count
     MissingConcreteReaders = $missing.Count
     PixelDisabledFormats = $pixelDisabled.Count
+    RuntimeFormats = $runtimeFormats -ne $null
 }
 
 if ($missing.Count -gt 0) {
