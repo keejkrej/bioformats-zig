@@ -33,6 +33,8 @@ Use the helper script to list known sources or fetch a small public candidate
 from the first direct OME/HTTP source:
 
 ```powershell
+./fixtures/audit.ps1
+./fixtures/audit.ps1 -List
 ./fixtures/fetch.ps1 -List
 ./fixtures/fetch.ps1 -Format tiff -MaxBytes 52428800
 ```
