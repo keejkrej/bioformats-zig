@@ -5,7 +5,7 @@ const max_companion_bytes = 512 * 1024 * 1024;
 
 pub fn matches(data: []const u8) bool {
     return std.mem.indexOf(u8, data, "LMSDataContainerHeader") != null and
-        (std.mem.indexOf(u8, data, "<Reference ") != null or std.mem.indexOf(u8, data, "<Frame ") != null);
+        (hasElement(data, "Reference") or hasElement(data, "Frame"));
 }
 
 pub fn isPath(path: []const u8) bool {
@@ -89,20 +89,47 @@ fn framePathFromXlif(allocator: std.mem.Allocator, xlif_path: []const u8, xlif: 
 }
 
 fn nextAttrValue(xml: []const u8, element: []const u8, attr: []const u8, pos: *usize) ?[]const u8 {
-    var tag_buf: [64]u8 = undefined;
-    if (element.len + 1 > tag_buf.len) return null;
-    tag_buf[0] = '<';
-    @memcpy(tag_buf[1..][0..element.len], element);
-    const tag_prefix = tag_buf[0 .. element.len + 1];
     while (pos.* < xml.len) {
-        const rel = std.mem.indexOf(u8, xml[pos.*..], tag_prefix) orelse return null;
-        const tag_start = pos.* + rel;
-        const tag_end = std.mem.indexOfScalarPos(u8, xml, tag_start, '>') orelse return null;
+        const tag_start = std.mem.indexOfScalarPos(u8, xml, pos.*, '<') orelse return null;
+        const name_start = tag_start + 1;
+        pos.* = name_start;
+        if (name_start >= xml.len or xml[name_start] == '/' or xml[name_start] == '!' or xml[name_start] == '?') continue;
+        const tag_name = tagName(xml, name_start) orelse continue;
+        const tag_end = std.mem.indexOfScalarPos(u8, xml, name_start + tag_name.len, '>') orelse return null;
         pos.* = tag_end + 1;
+        if (!std.mem.eql(u8, localName(tag_name), element)) continue;
         const tag = xml[tag_start..tag_end];
         if (attributeValue(tag, attr)) |value| return value;
     }
     return null;
+}
+
+fn hasElement(xml: []const u8, element: []const u8) bool {
+    var pos: usize = 0;
+    while (pos < xml.len) {
+        const tag_start = std.mem.indexOfScalarPos(u8, xml, pos, '<') orelse return false;
+        const name_start = tag_start + 1;
+        pos = name_start;
+        if (name_start >= xml.len or xml[name_start] == '/' or xml[name_start] == '!' or xml[name_start] == '?') continue;
+        const tag_name = tagName(xml, name_start) orelse continue;
+        if (std.mem.eql(u8, localName(tag_name), element)) return true;
+        pos = name_start + tag_name.len;
+    }
+    return false;
+}
+
+fn tagName(data: []const u8, start: usize) ?[]const u8 {
+    var end = start;
+    while (end < data.len and !std.ascii.isWhitespace(data[end]) and data[end] != '>' and data[end] != '/') : (end += 1) {}
+    if (end == start) return null;
+    return data[start..end];
+}
+
+fn localName(name: []const u8) []const u8 {
+    if (std.mem.lastIndexOfScalar(u8, name, ':')) |colon| {
+        return name[colon + 1 ..];
+    }
+    return name;
 }
 
 fn attributeValue(tag: []const u8, attr: []const u8) ?[]const u8 {
@@ -280,9 +307,9 @@ test "reads xlef metadata through first xlif tiff frame" {
     defer std.Io.Dir.cwd().deleteDir(std.testing.io, metadata_dir) catch {};
     try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = &tiny_tiff });
     defer std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
-    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlif_path, .data = "<LMSDataContainerHeader><Element><Memory><Frame File=\"..%5Cimage.tif\" /></Memory></Element></LMSDataContainerHeader>" });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlif_path, .data = "<LMS:LMSDataContainerHeader xmlns:LMS=\"urn:test\"><LMS:Element><LMS:Memory><LMS:Frame File=\"..%5Cimage.tif\" /></LMS:Memory></LMS:Element></LMS:LMSDataContainerHeader>" });
     defer std.Io.Dir.cwd().deleteFile(std.testing.io, xlif_path) catch {};
-    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlef_path, .data = "<LMSDataContainerHeader><Element><Children><Reference File=\".%5Cmetadata%5Cfirst.xlif\" /></Children></Element></LMSDataContainerHeader>" });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlef_path, .data = "<LMS:LMSDataContainerHeader xmlns:LMS=\"urn:test\"><LMS:Element><LMS:Children><LMS:Reference File=\".%5Cmetadata%5Cfirst.xlif\" /></LMS:Children></LMS:Element></LMS:LMSDataContainerHeader>" });
     defer std.Io.Dir.cwd().deleteFile(std.testing.io, xlef_path) catch {};
 
     const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, xlef_path);

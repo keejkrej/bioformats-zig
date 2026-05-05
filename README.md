@@ -373,7 +373,7 @@ plane, which can differ from logical OME `sizeC`.
 - VG SAM DTI files with big-endian 8/16-bit unsigned or 32-bit floating-point grayscale planes.
 - Volocity Library Clipping `.acff` files with inline uncompressed 8-bit planes; LZO-compressed clipping payloads are not yet handled.
 - WA Technology TOP `.wat` files with fixed-header little-endian signed 16-bit grayscale planes.
-- Leica XLEF projects that reference XLIF metadata and TIFF/JPEG/PNG/BMP frame files, delegated through the first readable frame; LOF, multi-image/tile assembly, stage metadata, and Leica-specific metadata translation are not yet handled.
+- Leica XLEF projects that reference XLIF metadata and TIFF/JPEG/PNG/BMP frame files, including namespaced `Reference`/`Frame` XML elements, delegated through the first readable frame; LOF, multi-image/tile assembly, stage metadata, and Leica-specific metadata translation are not yet handled.
 - Zeiss CZI files are detected from `ZISRAWFILE` segments, subblock directory entries provide dimensions and pixel type, and full-size uncompressed scalar subblock planes are read directly; compressed payloads, BGR/RGBA planes, tiles, pyramids, attachments, XML metadata, scenes, and mosaics are not yet implemented.
 - Zeiss LMS files identified by the LMSFLE marker, with CSM 700 fixed-size little-endian 16-bit Z planes read after the thumbnail and LUT blocks; the thumbnail series, palette LUT, objective magnification, and other instrument metadata are not yet surfaced.
 - Zeiss LSM TIFF files identified by the private `TIF_CZ_LSMINFO` tag, decoded through the TIFF pixel path; LSM dimension metadata, channel names/colors, LUTs, timestamps, ROIs, and MDB multi-file grouping are not yet parsed.
