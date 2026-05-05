@@ -22,6 +22,7 @@ pub const dicom = @import("readers/dicom.zig");
 pub const dng = @import("readers/dng.zig");
 pub const ecat7 = @import("readers/ecat7.zig");
 pub const eps = @import("readers/eps.zig");
+pub const fake = @import("readers/fake.zig");
 pub const fei = @import("readers/fei.zig");
 pub const feitiff = @import("readers/feitiff.zig");
 pub const fits = @import("readers/fits.zig");
@@ -409,6 +410,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "eps",
         .name = "Encapsulated PostScript raster",
         .extensions = &.{ "eps", "epsi", "ps" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "fake",
+        .name = "Bio-Formats simulated data",
+        .extensions = &.{ "fake", "fake.ini" },
         .can_read_pixels = true,
     },
     .{
@@ -1562,6 +1569,7 @@ test {
     _ = dicom;
     _ = dng;
     _ = ecat7;
+    _ = fake;
     _ = feitiff;
     _ = flowsight;
     _ = fluoview;

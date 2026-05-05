@@ -54,6 +54,7 @@
     "canonraw": ["needs-public-sample"],
     "dng": ["needs-public-sample"],
     "eps": ["generated-fixture"],
+    "fake": ["generated-fixture"],
     "fei": ["needs-public-sample"],
     "feitiff": ["needs-public-sample"],
     "fits": ["generated-fixture"],

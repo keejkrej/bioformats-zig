@@ -156,6 +156,7 @@ plane, which can differ from logical OME `sizeC`.
 - DICOM files with a `DICM` preamble and native explicit VR little-endian, implicit VR little-endian, or explicit VR big-endian pixel data for 8/16-bit grayscale, RGB, and RGBA planes, including planar RGB/RGBA normalization to interleaved output and MONOCHROME1 grayscale inversion; compressed transfer syntaxes, encapsulated fragments, palettes, WSI tiling, and multi-file series grouping are not yet handled.
 - ECAT7 files with `MATRIX72v` headers and big-endian unsigned 16-bit planes, including Bio-Formats' per-frame padding rule; other ECAT7 matrix data types and medical metadata fields are not yet surfaced.
 - EPS/PostScript files with declared 8-bit grayscale or RGB raster image data stored as ASCII hex or raw bytes; TIFF previews and vector-only EPS are not yet supported.
+- Bio-Formats simulated `.fake` files with filename-derived dimensions, integer/floating pixel types, dimension order, endianness, scale factor, and deterministic generated planes; `.fake.ini`, RGB/indexed/SPW metadata, labels, annotations, ROIs, and pyramids are not yet handled.
 - FEI/Philips SEM IMG files with interlaced 8-bit grayscale pixels.
 - FEI TIFF files identified by S-FEG, Helios, or Titan private metadata tags, decoded through the TIFF pixel path.
 - FITS primary image HDUs with 8-bit unsigned, 16/32-bit signed integer, and 32/64-bit floating-point pixels, with `NAXIS3` exposed as planes.
