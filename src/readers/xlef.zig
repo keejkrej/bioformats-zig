@@ -244,6 +244,25 @@ const tiny_tiff = [_]u8{
     0,   0,   82,
 };
 
+const tiny_bmp = [_]u8{
+    'B',  'M',
+    58,   0,   0, 0,
+    0,    0,   0, 0,
+    54,   0,   0, 0,
+    40,   0,   0, 0,
+    1,    0,   0, 0,
+    1,    0,   0, 0,
+    1,    0,
+    24,   0,
+    0,    0,   0, 0,
+    4,    0,   0, 0,
+    0,    0,   0, 0,
+    0,    0,   0, 0,
+    0,    0,   0, 0,
+    0,    0,   0, 0,
+    0,    0, 255, 0,
+};
+
 test "reads xlef metadata through first xlif tiff frame" {
     const root = "xlef-test";
     const metadata_dir = "xlef-test/metadata";
@@ -301,4 +320,28 @@ test "reads xlef metadata through xlif jpeg frame" {
     try std.testing.expect(plane.data[0] > 200);
     try std.testing.expect(plane.data[1] < 80);
     try std.testing.expect(plane.data[2] < 80);
+}
+
+test "reads xlef metadata through xlif bmp frame" {
+    const root = "xlef-bmp-test";
+    const metadata_dir = "xlef-bmp-test/metadata";
+    const xlif_path = "xlef-bmp-test/metadata/first.xlif";
+    const image_path = "xlef-bmp-test/image.bmp";
+    std.Io.Dir.cwd().deleteTree(std.testing.io, root) catch {};
+    defer std.Io.Dir.cwd().deleteTree(std.testing.io, root) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root, .default_dir);
+    try std.Io.Dir.cwd().createDir(std.testing.io, metadata_dir, .default_dir);
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = &tiny_bmp });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlif_path, .data = "<LMSDataContainerHeader><Element><Memory><Frame File=\"..%5Cimage.bmp\" /></Memory></Element></LMSDataContainerHeader>" });
+
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, xlif_path);
+    try std.testing.expectEqualStrings("xlef", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+
+    const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, xlif_path, 0, .{ .x = 0, .y = 0, .width = 1, .height = 1 });
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("xlef", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 255, 0, 0 }, plane.data);
 }
