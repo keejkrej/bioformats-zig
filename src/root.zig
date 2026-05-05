@@ -17,6 +17,7 @@ pub const bruker = @import("readers/bruker.zig");
 pub const burleigh = @import("readers/burleigh.zig");
 pub const canonraw = @import("readers/canonraw.zig");
 pub const cellomics = @import("readers/cellomics.zig");
+pub const columbus = @import("readers/columbus.zig");
 pub const dcimg = @import("readers/dcimg.zig");
 pub const deltavision = @import("readers/deltavision.zig");
 pub const dicom = @import("readers/dicom.zig");
@@ -396,6 +397,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "cellomics",
         .name = "Cellomics C01/DIB",
         .extensions = &.{ "c01", "dib" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "columbus",
+        .name = "PerkinElmer Columbus TIFF dataset",
+        .extensions = &.{ "xml", "tif", "tiff" },
         .can_read_pixels = true,
     },
     .{
@@ -1167,6 +1174,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (bmp.matches(data)) return "bmp";
     if (burleigh.matches(data)) return "burleigh";
     if (cellomics.matches(data)) return "cellomics";
+    if (columbus.matches(data)) return "columbus";
     if (dcimg.matches(data)) return "dcimg";
     if (deltavision.matches(data)) return "deltavision";
     if (dicom.matches(data)) return "dicom";
@@ -1295,6 +1303,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (bmp.matches(data)) return bmp.readMetadata(data);
     if (burleigh.matches(data)) return burleigh.readMetadata(data);
     if (cellomics.matches(data)) return cellomics.readMetadata(data);
+    if (columbus.matches(data)) return columbus.readMetadata(data);
     if (dcimg.matches(data)) return dcimg.readMetadata(data);
     if (deltavision.matches(data)) return deltavision.readMetadata(data);
     if (dicom.matches(data)) return dicom.readMetadata(data);
@@ -1437,6 +1446,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return burleigh.readPlane(allocator, data);
     }
     if (cellomics.matches(data)) return cellomics.readPlaneIndex(allocator, data, plane_index);
+    if (columbus.matches(data)) return columbus.readPlaneIndex(allocator, data, plane_index);
     if (dcimg.matches(data)) return dcimg.readPlaneIndex(allocator, data, plane_index);
     if (deltavision.matches(data)) return deltavision.readPlaneIndex(allocator, data, plane_index);
     if (dicom.matches(data)) return dicom.readPlaneIndex(allocator, data, plane_index);
@@ -1698,6 +1708,7 @@ test {
     _ = bruker;
     _ = canonraw;
     _ = cellomics;
+    _ = columbus;
     _ = dcimg;
     _ = deltavision;
     _ = dicom;

@@ -69,11 +69,12 @@ Supported methods:
 
 For companion-file formats, path-based requests may use neighboring files. For
 example, Analyze 7.5 `.hdr`/`.img`, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`,
-Fuji LAS 3000 `.inf`/`.img`, Inveon `.hdr`/data pairs, MetaXpress `.htd`
-plus neighboring TIFF planes, Micro-Manager `metadata.txt` plus TIFF planes,
-PerkinElmer `.htm` plus TIFF planes, Perkin Elmer Densitometer `.hdr`/`.img`,
-Hitachi S-4800 `.txt` plus neighboring TIFF/BMP, PCO-RAW `.pcoraw`/`.rec`,
-and Unisoku STM `.HDR`/`.DAT` datasets can be opened
+Columbus `MeasurementIndex.ColumbusIDX.xml` plus TIFF planes, Fuji LAS 3000
+`.inf`/`.img`, Inveon `.hdr`/data pairs, MetaXpress `.htd` plus neighboring
+TIFF planes, Micro-Manager `metadata.txt` plus TIFF planes, PerkinElmer `.htm`
+plus TIFF planes, Perkin Elmer Densitometer `.hdr`/`.img`, Hitachi S-4800
+`.txt` plus neighboring TIFF/BMP, PCO-RAW `.pcoraw`/`.rec`, and Unisoku STM
+`.HDR`/`.DAT` datasets can be opened
 by selecting either file; inline `data` can identify the header but cannot
 provide the paired pixel file.
 
@@ -158,6 +159,7 @@ plane, which can differ from logical OME `sizeC`.
 - Canon DNG/RAW TIFF-like files identified by Canon TIFF-EP/private tags, decoded through the TIFF pixel path when the stored image is directly TIFF-readable; non-TIFF Canon CRW variants beyond the fixed-length legacy RAW reader and white-balance metadata expansion are not yet handled.
 - Bio-Rad SCN multipart files identified by Image Lab headers, with dimensions and pixel type parsed from XML and one raw octet-stream image block decoded; acquisition metadata, detector metadata, and physical pixel sizes are not yet surfaced.
 - Cellomics C01/DIB files with uncompressed little-endian raw planes at the standard offset; compressed `.c01` streams, multi-file plate/channel grouping, MDB metadata, and missing-channel fill behavior are not yet handled.
+- Columbus `MeasurementIndex.ColumbusIDX.xml` datasets delegated through recursively discovered neighboring TIFF planes and reported as `columbus`; full HCS plate/well/field mapping, missing-plane fill, acquisition metadata, and OME plate metadata are not yet surfaced.
 - Bruker MRI datasets opened from `acqp`, `fid`, `reco`, or `2dseq`, with dimensions and pixel type parsed from `acqp`/`pdata/1/reco` and uncompressed planes read from `pdata/1/2dseq`; multiple reconstructions/acquisitions, FID reconstruction, timestamps, and medical metadata are not yet handled.
 - Hamamatsu DCIMG version 1 files with little-endian mono8/mono16 frames exposed as time planes, including row-order normalization; grouped `.dcimg` Z stacks, version 0 footers, frame footer four-pixel correction, timestamps, and acquisition metadata are not yet handled.
 - Deltavision DV/R3D files with fixed headers and uncompressed 8/16/32-bit integer or 32/64-bit floating-point raw planes, including stored Z/W/T sequence mapping and row-order normalization; extended-header metadata, log files, panel/position series splitting, tiling/stage metadata, and objective/channel metadata are not yet handled.
