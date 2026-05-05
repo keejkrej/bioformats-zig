@@ -195,6 +195,8 @@ $lineProcess = Start-BioformatsProcess $binaryPath
 try {
     $initialize = Invoke-LineRequest $lineProcess @{ jsonrpc = "2.0"; id = 1; method = "initialize" }
     Assert-True ($initialize.result.protocol -eq "json-rpc-2.0-stdio") "Unexpected initialize protocol."
+    Assert-True ([bool]$initialize.result.capabilities.metadata) "Metadata reads were not advertised."
+    Assert-True ([bool]$initialize.result.capabilities.pixels) "Pixel reads were not advertised."
     Assert-True ([bool]$initialize.result.capabilities.contentLengthFraming) "Content-Length framing was not advertised."
     Assert-True ([bool]$initialize.result.capabilities.inlineData) "Inline data was not advertised."
     Assert-True ([bool]$initialize.result.capabilities.handles) "Reader handles were not advertised."
@@ -212,6 +214,29 @@ try {
         [byte[]](10, 20, 30)
     )
     $ppmBase64 = [Convert]::ToBase64String($ppmBytes)
+    $probe = Invoke-LineRequest $lineProcess @{
+        jsonrpc = "2.0"
+        id = 11
+        method = "probe"
+        params = @{
+            data = $ppmBase64
+        }
+    }
+    Assert-True ([bool]$probe.result.matched) "Probe did not match inline netpbm data."
+    Assert-True ($probe.result.format -eq "netpbm") "Probe returned unexpected format."
+
+    $metadata = Invoke-LineRequest $lineProcess @{
+        jsonrpc = "2.0"
+        id = 12
+        method = "metadata"
+        params = @{
+            data = $ppmBase64
+        }
+    }
+    Assert-True ($metadata.result.format -eq "netpbm") "Metadata returned unexpected format."
+    Assert-True ($metadata.result.pixelType -eq "rgb8") "Metadata returned unexpected pixel type."
+    Assert-True ($metadata.result.width -eq 1 -and $metadata.result.height -eq 1) "Metadata returned unexpected dimensions."
+
     $plane = Invoke-LineRequest $lineProcess @{
         jsonrpc = "2.0"
         id = 3
@@ -308,6 +333,8 @@ try {
         Check = "line-delimited"
         Status = "ok"
         Formats = $formats.result.Count
+        Probe = $probe.result.format
+        Metadata = $metadata.result.pixelType
         InlinePixels = $plane.result.data
         HandlePixels = $handlePlane.result.data
         RegionPixels = $regionPlane.result.data
