@@ -40,7 +40,7 @@ const Element = struct {
 };
 
 pub fn matches(data: []const u8) bool {
-    return data.len >= preamble_len + magic.len and std.mem.eql(u8, data[preamble_len..][0..magic.len], magic);
+    return hasDicomPreamble(data) or looksLikeDicomDataset(data);
 }
 
 pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
@@ -89,9 +89,10 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (!matches(data)) return error.InvalidFormat;
     var header = Header{};
-    var offset: usize = preamble_len + magic.len;
-    var syntax: TransferSyntax = .explicit_little;
-    var in_meta = true;
+    const has_preamble = hasDicomPreamble(data);
+    var offset: usize = if (has_preamble) preamble_len + magic.len else 0;
+    var syntax: TransferSyntax = if (has_preamble) .explicit_little else .implicit_little;
+    var in_meta = has_preamble;
 
     while (offset + 8 <= data.len) {
         const group = leU16(data[offset..][0..2]);
@@ -145,6 +146,23 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     const needed = std.math.mul(usize, plane_len, header.frames) catch return error.UnsupportedVariant;
     if (header.pixel_len < needed) return error.TruncatedData;
     return header;
+}
+
+fn hasDicomPreamble(data: []const u8) bool {
+    return data.len >= preamble_len + magic.len and std.mem.eql(u8, data[preamble_len..][0..magic.len], magic);
+}
+
+fn looksLikeDicomDataset(data: []const u8) bool {
+    if (data.len < 16) return false;
+    const group = leU16(data[0..2]);
+    const element = leU16(data[2..4]);
+    if (group != 0x0008) return false;
+    switch (element) {
+        0x0000, 0x0005, 0x0008, 0x0016, 0x0018, 0x0020, 0x0030, 0x0060 => {},
+        else => return false,
+    }
+    const value_len = leU32(data[4..8]);
+    return value_len <= data.len - 8;
 }
 
 fn readElement(data: []const u8, offset: usize, syntax: TransferSyntax) bio.ReaderError!Element {
@@ -540,6 +558,29 @@ test "reads implicit little endian dicom plane after meta header" {
     const plane = try readPlane(std.testing.allocator, data.items);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{42}, plane.data);
+}
+
+test "reads no-preamble implicit little endian dicom plane" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    try appendImplicitElement(&data, 0x0008, 0x0000, &.{ 4, 0, 0, 0 });
+    var samples: [2]u8 = undefined;
+    std.mem.writeInt(u16, &samples, 1, .little);
+    try appendImplicitElement(&data, 0x0028, 0x0002, &samples);
+    try appendImplicitElement(&data, 0x0028, 0x0004, "MONOCHROME2");
+    try appendImplicitElement(&data, 0x0028, 0x0010, &samples);
+    try appendImplicitElement(&data, 0x0028, 0x0011, &samples);
+    try appendImplicitElement(&data, 0x0028, 0x0100, &.{ 8, 0 });
+    try appendImplicitElement(&data, 0x0028, 0x0103, &.{ 0, 0 });
+    try appendImplicitElement(&data, pixel_data_group, pixel_data_element, &.{99});
+
+    try std.testing.expect(matches(data.items));
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("dicom", metadata.format);
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{99}, plane.data);
 }
 
 test "rejects compressed dicom transfer syntax" {
