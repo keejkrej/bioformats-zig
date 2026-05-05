@@ -133,16 +133,29 @@ fn localName(name: []const u8) []const u8 {
 }
 
 fn attributeValue(tag: []const u8, attr: []const u8) ?[]const u8 {
-    var pattern_buf: [64]u8 = undefined;
-    if (attr.len + 2 > pattern_buf.len) return null;
-    @memcpy(pattern_buf[0..attr.len], attr);
-    pattern_buf[attr.len] = '=';
-    pattern_buf[attr.len + 1] = '"';
-    const pattern = pattern_buf[0 .. attr.len + 2];
-    const start = std.mem.indexOf(u8, tag, pattern) orelse return null;
-    const value_start = start + pattern.len;
-    const value_end = std.mem.indexOfScalarPos(u8, tag, value_start, '"') orelse return null;
-    return tag[value_start..value_end];
+    var pos: usize = 0;
+    while (pos < tag.len) {
+        const found = std.mem.indexOfPos(u8, tag, pos, attr) orelse return null;
+        const after_name = found + attr.len;
+        if (found > 0 and (std.ascii.isAlphanumeric(tag[found - 1]) or tag[found - 1] == '_' or tag[found - 1] == ':')) {
+            pos = after_name;
+            continue;
+        }
+        var eq = after_name;
+        while (eq < tag.len and std.ascii.isWhitespace(tag[eq])) : (eq += 1) {}
+        if (eq >= tag.len or tag[eq] != '=') {
+            pos = after_name;
+            continue;
+        }
+        eq += 1;
+        while (eq < tag.len and std.ascii.isWhitespace(tag[eq])) : (eq += 1) {}
+        if (eq >= tag.len or (tag[eq] != '"' and tag[eq] != '\'')) return null;
+        const quote = tag[eq];
+        const value_start = eq + 1;
+        const value_end = std.mem.indexOfScalarPos(u8, tag, value_start, quote) orelse return null;
+        return tag[value_start..value_end];
+    }
+    return null;
 }
 
 fn resolveReference(allocator: std.mem.Allocator, base_path: []const u8, encoded_ref: []const u8) ![]u8 {
@@ -307,9 +320,9 @@ test "reads xlef metadata through first xlif tiff frame" {
     defer std.Io.Dir.cwd().deleteDir(std.testing.io, metadata_dir) catch {};
     try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = &tiny_tiff });
     defer std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
-    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlif_path, .data = "<LMS:LMSDataContainerHeader xmlns:LMS=\"urn:test\"><LMS:Element><LMS:Memory><LMS:Frame File=\"..%5Cimage.tif\" /></LMS:Memory></LMS:Element></LMS:LMSDataContainerHeader>" });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlif_path, .data = "<LMS:LMSDataContainerHeader xmlns:LMS=\"urn:test\"><LMS:Element><LMS:Memory><LMS:Frame File = '..%5Cimage.tif' /></LMS:Memory></LMS:Element></LMS:LMSDataContainerHeader>" });
     defer std.Io.Dir.cwd().deleteFile(std.testing.io, xlif_path) catch {};
-    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlef_path, .data = "<LMS:LMSDataContainerHeader xmlns:LMS=\"urn:test\"><LMS:Element><LMS:Children><LMS:Reference File=\".%5Cmetadata%5Cfirst.xlif\" /></LMS:Children></LMS:Element></LMS:LMSDataContainerHeader>" });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlef_path, .data = "<LMS:LMSDataContainerHeader xmlns:LMS=\"urn:test\"><LMS:Element><LMS:Children><LMS:Reference File = '.%5Cmetadata%5Cfirst.xlif' /></LMS:Children></LMS:Element></LMS:LMSDataContainerHeader>" });
     defer std.Io.Dir.cwd().deleteFile(std.testing.io, xlef_path) catch {};
 
     const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, xlef_path);
