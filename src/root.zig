@@ -167,6 +167,7 @@ pub const zeisslms = @import("readers/zeisslms.zig");
 pub const zeisslsm = @import("readers/zeisslsm.zig");
 pub const zeisstiff = @import("readers/zeisstiff.zig");
 pub const zeissxrm = @import("readers/zeissxrm.zig");
+pub const zeisszvi = @import("readers/zeisszvi.zig");
 pub const zip = @import("readers/zip.zig");
 
 pub const ReaderError = error{
@@ -1373,6 +1374,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "zeisszvi",
+        .name = "Zeiss Vision Image metadata",
+        .extensions = &.{"zvi"},
+        .can_read_pixels = false,
+    },
+    .{
         .id = "zip",
         .name = "ZIP archive first stored image entry",
         .extensions = &.{"zip"},
@@ -1474,6 +1481,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (zeissczi.matches(data)) return "zeissczi";
     if (zeisslms.matches(data)) return "zeisslms";
     if (zeissxrm.matches(data)) return "zeissxrm";
+    if (zeisszvi.matches(data)) return "zeisszvi";
     if (povray.matches(data)) return "povray";
     if (prairie.matches(data)) return "prairie";
     if (incell.matches(data)) return "incell";
@@ -1634,6 +1642,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (zeissczi.matches(data)) return zeissczi.readMetadata(data);
     if (zeisslms.matches(data)) return zeisslms.readMetadata(data);
     if (zeissxrm.matches(data)) return zeissxrm.readMetadata(data);
+    if (zeisszvi.matches(data)) return zeisszvi.readMetadata(data);
     if (povray.matches(data)) return povray.readMetadata(data);
     if (prairie.matches(data)) return prairie.readMetadata(data);
     if (incell.matches(data)) return incell.readMetadata(data);
@@ -1854,6 +1863,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (zeissczi.matches(data)) return zeissczi.readPlaneIndex(allocator, data, plane_index);
     if (zeisslms.matches(data)) return zeisslms.readPlaneIndex(allocator, data, plane_index);
     if (zeissxrm.matches(data)) return zeissxrm.readPlaneIndex(allocator, data, plane_index);
+    if (zeisszvi.matches(data)) return zeisszvi.readPlaneIndex(allocator, data, plane_index);
     if (povray.matches(data)) return povray.readPlaneIndex(allocator, data, plane_index);
     if (prairie.matches(data)) return prairie.readPlaneIndex(allocator, data, plane_index);
     if (incell.matches(data)) return incell.readPlaneIndex(allocator, data, plane_index);
@@ -2134,6 +2144,7 @@ test {
     _ = zeisslsm;
     _ = zeisstiff;
     _ = zeissxrm;
+    _ = zeisszvi;
     _ = zip;
 }
 
