@@ -10,6 +10,7 @@ const biorad = @import("biorad.zig");
 const bioradgel = @import("bioradgel.zig");
 const bioradscn = @import("bioradscn.zig");
 const bmp = @import("bmp.zig");
+const burleigh = @import("burleigh.zig");
 const dcimg = @import("dcimg.zig");
 const dicom = @import("dicom.zig");
 const ecat7 = @import("ecat7.zig");
@@ -70,7 +71,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -126,6 +127,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .bioradgel => bioradgel.readMetadata(entry.data),
         .bioradscn => bioradscn.readMetadata(entry.data),
         .bmp => bmp.readMetadata(entry.data),
+        .burleigh => burleigh.readMetadata(entry.data),
         .dcimg => dcimg.readMetadata(entry.data),
         .dicom => dicom.readMetadata(entry.data),
         .ecat7 => ecat7.readMetadata(entry.data),
@@ -189,6 +191,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .bioradgel => bioradgel.readPlaneIndex(allocator, entry.data, plane_index),
         .bioradscn => bioradscn.readPlaneIndex(allocator, entry.data, plane_index),
         .bmp => if (plane_index == 0) bmp.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
+        .burleigh => if (plane_index == 0) burleigh.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .dcimg => dcimg.readPlaneIndex(allocator, entry.data, plane_index),
         .dicom => dicom.readPlaneIndex(allocator, entry.data, plane_index),
         .ecat7 => ecat7.readPlaneIndex(allocator, entry.data, plane_index),
@@ -306,6 +309,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (bioradgel.matches(data)) return .bioradgel;
     if (bioradscn.matches(data)) return .bioradscn;
     if (bmp.matches(data)) return .bmp;
+    if (hasExtension(filename, ".img") and burleigh.matches(data)) return .burleigh;
     if (dcimg.matches(data)) return .dcimg;
     if (dicom.matches(data)) return .dicom;
     if (ecat7.matches(data)) return .ecat7;
@@ -734,6 +738,36 @@ test "reads stored bmp zip entry through inner reader" {
     const plane = try readPlane(std.testing.allocator, data.items);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3 }, plane.data);
+}
+
+test "reads stored burleigh zip entry through extension-gated inner reader" {
+    var burleigh_data: std.ArrayList(u8) = .empty;
+    defer burleigh_data.deinit(std.testing.allocator);
+    try burleigh_data.appendNTimes(std.testing.allocator, 0, 8);
+    writeU32(burleigh_data.items, 0, @bitCast(@as(f32, 2.1)));
+    writeU16(burleigh_data.items, 4, 2);
+    writeU16(burleigh_data.items, 6, 1);
+    try burleigh_data.appendSlice(std.testing.allocator, &.{ 0x34, 0x12, 0xcd, 0xab });
+
+    try std.testing.expectEqual(Entry.Kind.burleigh, detectInner("scan.IMG", burleigh_data.items).?);
+    try std.testing.expectEqual(null, detectInner("scan.dat", burleigh_data.items));
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "scan.img", burleigh_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x12, 0xcd, 0xab }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
 }
 
 test "reads stored avi zip entry through inner reader" {

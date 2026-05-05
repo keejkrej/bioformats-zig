@@ -46,20 +46,14 @@ pub fn readPlane(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (data.len < 8) return error.TruncatedData;
     if (data[0] != 0x66 or data[1] != 0x66 or data[3] != 0x40 or (data[2] != 0x46 and data[2] != 0x06)) return error.InvalidFormat;
-    const version = readF32(data[0..4]);
-    if (version != 2.0 and version != 3.0) return error.UnsupportedVariant;
     const width = readU16(data[4..6]);
     const height = readU16(data[6..8]);
     if (width == 0 or height == 0) return error.InvalidFormat;
     return .{
         .width = width,
         .height = height,
-        .pixel_offset = if (version == 2.0) 8 else 260,
+        .pixel_offset = if (data[2] == 0x06) 8 else 260,
     };
-}
-
-fn readF32(bytes: []const u8) f32 {
-    return @bitCast(std.mem.readInt(u32, bytes[0..4], .little));
 }
 
 fn readU16(bytes: []const u8) u16 {
@@ -80,7 +74,7 @@ fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
 }
 
 fn appendHeader(list: *std.ArrayList(u8), version: f32, width: u16, height: u16) !void {
-    const pixel_offset: usize = if (version == 2.0) 8 else 260;
+    const pixel_offset: usize = if (@as(u32, @intFromFloat(version)) == 2) 8 else 260;
     try list.appendNTimes(std.testing.allocator, 0, pixel_offset);
     writeF32(list.items, 0, version);
     writeU16(list.items, 4, width);
@@ -90,7 +84,7 @@ fn appendHeader(list: *std.ArrayList(u8), version: f32, width: u16, height: u16)
 test "reads burleigh version 2 uint16 plane" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
-    try appendHeader(&data, 2.0, 2, 1);
+    try appendHeader(&data, 2.1, 2, 1);
     try data.appendSlice(std.testing.allocator, &.{ 0x34, 0x12, 0xcd, 0xab });
 
     const metadata = try readMetadata(data.items);
@@ -107,7 +101,7 @@ test "reads burleigh version 2 uint16 plane" {
 test "reads burleigh version 3 offset" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
-    try appendHeader(&data, 3.0, 1, 1);
+    try appendHeader(&data, 3.1, 1, 1);
     try data.appendSlice(std.testing.allocator, &.{ 1, 0 });
 
     const plane = try readPlane(std.testing.allocator, data.items);
@@ -118,10 +112,9 @@ test "reads burleigh version 3 offset" {
 test "rejects truncated burleigh pixels" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
-    try appendHeader(&data, 2.0, 2, 1);
+    try appendHeader(&data, 2.1, 2, 1);
     try data.append(std.testing.allocator, 0);
 
     try std.testing.expect(!matches(data.items));
     try std.testing.expectError(error.TruncatedData, readPlane(std.testing.allocator, data.items));
 }
-
