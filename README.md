@@ -56,8 +56,9 @@ Supported methods:
 
 For companion-file formats, path-based requests may use neighboring files. For
 example, Analyze 7.5 `.hdr`/`.img`, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`,
-and Unisoku STM `.HDR`/`.DAT` datasets can be opened by selecting either file;
-inline `data` can identify the header but cannot provide the paired pixel file.
+Perkin Elmer Densitometer `.hdr`/`.img`, and Unisoku STM `.HDR`/`.DAT`
+datasets can be opened by selecting either file; inline `data` can identify the
+header but cannot provide the paired pixel file.
 
 Example:
 
@@ -197,6 +198,7 @@ plane, which can differ from logical OME `sizeC`.
 - Openlab RAW files with fixed per-image records, 8/16-bit grayscale, and RGB byte planes.
 - Oxford Instruments TOP files identified by fixed headers, with little-endian 16-bit pixels read after the LUT block; descriptive metadata strings, acquisition timestamps, and physical calibration are not yet surfaced.
 - PCX 8-bit grayscale, 256-color palette, and three-plane RGB files with PCX RLE compression, returned as grayscale or RGB.
+- Perkin Elmer Densitometer `.hdr`/`.img` pairs with little-endian 16-bit grayscale planes, fixed-record row padding, and stored-axis reversal; RGB/LUT variants and acquisition metadata are not yet surfaced.
 - Photoshop TIFF files identified by image source data private tags, with the merged TIFF image decoded; Photoshop layer extraction is not yet handled.
 - PicoQuant BIN FLIM files with little-endian 32-bit unsigned lifetime bins exposed as time planes.
 - Photoshop PSD files with uncompressed merged 8/16-bit grayscale, 8/16-bit RGB, and 8-bit indexed-color pixels; PackBits-compressed PSD pixels, layer extraction, CMYK/Lab/multichannel modes, and vector data are not yet handled.

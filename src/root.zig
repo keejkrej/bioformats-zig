@@ -74,6 +74,7 @@ pub const operetta = @import("readers/operetta.zig");
 pub const openlabraw = @import("readers/openlabraw.zig");
 pub const oxfordinstruments = @import("readers/oxfordinstruments.zig");
 pub const pcx = @import("readers/pcx.zig");
+pub const pds = @import("readers/pds.zig");
 pub const photoshoptiff = @import("readers/photoshoptiff.zig");
 pub const png = @import("readers/png.zig");
 pub const povray = @import("readers/povray.zig");
@@ -771,6 +772,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "pds",
+        .name = "Perkin Elmer Densitometer",
+        .extensions = &.{ "hdr", "img" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "photoshoptiff",
         .name = "Adobe Photoshop TIFF",
         .extensions = &.{ "tif", "tiff" },
@@ -981,6 +988,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (operetta.matches(data)) return "operetta";
     if (openlabraw.matches(data)) return "openlabraw";
     if (oxfordinstruments.matches(data)) return "oxfordinstruments";
+    if (pds.matches(data)) return "pds";
     if (pcx.matches(data)) return "pcx";
     if (sif.matches(data)) return "sif";
     if (spider.matches(data)) return "spider";
@@ -1097,6 +1105,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (operetta.matches(data)) return operetta.readMetadata(data);
     if (openlabraw.matches(data)) return openlabraw.readMetadata(data);
     if (oxfordinstruments.matches(data)) return oxfordinstruments.readMetadata(data);
+    if (pds.matches(data)) return pds.readMetadata(data);
     if (pcx.matches(data)) return pcx.readMetadata(data);
     if (sif.matches(data)) return sif.readMetadata(data);
     if (spider.matches(data)) return spider.readMetadata(data);
@@ -1249,6 +1258,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (operetta.matches(data)) return operetta.readPlaneIndex(allocator, data, plane_index);
     if (openlabraw.matches(data)) return openlabraw.readPlaneIndex(allocator, data, plane_index);
     if (oxfordinstruments.matches(data)) return oxfordinstruments.readPlaneIndex(allocator, data, plane_index);
+    if (pds.matches(data)) return pds.readPlaneIndex(allocator, data, plane_index);
     if (pcx.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return pcx.readPlane(allocator, data);
@@ -1482,6 +1492,7 @@ test {
     _ = ometiff;
     _ = operetta;
     _ = oxfordinstruments;
+    _ = pds;
     _ = photoshoptiff;
     _ = png;
     _ = prairie;

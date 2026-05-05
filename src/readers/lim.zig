@@ -57,7 +57,8 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     var bits = readU16(data[4..6]);
     const compressed = readU16(data[6..8]) != 0;
     if (width == 0 or height == 0 or bits == 0) return error.InvalidFormat;
-    while (bits % 8 != 0) bits += 1;
+    if (bits > 96) return error.UnsupportedVariant;
+    while (bits % 8 != 0) bits = std.math.add(u16, bits, 1) catch return error.UnsupportedVariant;
     var samples: u16 = 1;
     if (bits % 3 == 0) {
         samples = 3;
@@ -155,3 +156,11 @@ test "rejects compressed lim pixels" {
     try std.testing.expectError(error.UnsupportedVariant, readMetadata(data.items));
 }
 
+test "lim detector rejects overflowing bit depth" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendHeader(&data, 1, 1, 65535, false);
+
+    try std.testing.expect(!matches(data.items));
+    try std.testing.expectError(error.UnsupportedVariant, readMetadata(data.items));
+}
