@@ -28,6 +28,16 @@ zig build
 
 The executable is written to `zig-out/bin/bioformats-zig`.
 
+## Reader Audit
+
+When the sibling `../bioformats` checkout is available, compare concrete Java
+reader classes against the Zig format catalog and list remaining metadata-only
+formats:
+
+```powershell
+./tools/audit-readers.ps1
+```
+
 ## Fixture Sources
 
 Public fixture discovery is tracked in `fixtures/`. The current catalog points
