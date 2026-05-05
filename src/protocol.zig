@@ -504,6 +504,9 @@ pub const Server = struct {
         if (bio.bdpathway.isPath(path)) {
             if (bio.bdpathway.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.cellworx.isPath(path)) {
+            if (bio.cellworx.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.columbus.isPath(path)) {
             if (bio.columbus.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -590,6 +593,9 @@ pub const Server = struct {
         }
         if (bio.bdpathway.isPath(path)) {
             if (bio.bdpathway.readMetadataPath(self.allocator, self.io, path)) |_| return "bdpathway" else |_| {}
+        }
+        if (bio.cellworx.isPath(path)) {
+            if (bio.cellworx.readMetadataPath(self.allocator, self.io, path)) |_| return "cellworx" else |_| {}
         }
         if (bio.columbus.isPath(path)) {
             if (bio.columbus.readMetadataPath(self.allocator, self.io, path)) |_| return "columbus" else |_| {}
@@ -704,6 +710,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "bdpathway")) {
             return bio.bdpathway.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "cellworx")) {
+            return bio.cellworx.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "columbus")) {
             return bio.columbus.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -772,6 +781,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "jpk") or
             std.mem.eql(u8, format, "l2d") or
             std.mem.eql(u8, format, "bdpathway") or
+            std.mem.eql(u8, format, "cellworx") or
             std.mem.eql(u8, format, "columbus") or
             std.mem.eql(u8, format, "jdce") or
             std.mem.eql(u8, format, "metaxpress") or

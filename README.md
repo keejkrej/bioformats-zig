@@ -69,7 +69,8 @@ Supported methods:
 
 For companion-file formats, path-based requests may use neighboring files. For
 example, Analyze 7.5 `.hdr`/`.img`, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`,
-Columbus `MeasurementIndex.ColumbusIDX.xml` plus TIFF planes, Fuji LAS 3000
+CellWorx `.htd` plus Deltavision `.pnl` planes, Columbus
+`MeasurementIndex.ColumbusIDX.xml` plus TIFF planes, Fuji LAS 3000
 `.inf`/`.img`, Inveon `.hdr`/data pairs, MetaXpress `.htd` plus neighboring
 TIFF planes, Micro-Manager `metadata.txt` plus TIFF planes, PerkinElmer `.htm`
 plus TIFF planes, JDCE `.jdce`/CSV datasets plus TIFF planes, Perkin Elmer
@@ -159,6 +160,7 @@ plane, which can differ from logical OME `sizeC`.
 - Canon DNG/RAW TIFF-like files identified by Canon TIFF-EP/private tags, decoded through the TIFF pixel path when the stored image is directly TIFF-readable; non-TIFF Canon CRW variants beyond the fixed-length legacy RAW reader and white-balance metadata expansion are not yet handled.
 - Bio-Rad SCN multipart files identified by Image Lab headers, with dimensions and pixel type parsed from XML and one raw octet-stream image block decoded; acquisition metadata, detector metadata, and physical pixel sizes are not yet surfaced.
 - Cellomics C01/DIB files with uncompressed little-endian raw planes at the standard offset; compressed `.c01` streams, multi-file plate/channel grouping, MDB metadata, and missing-channel fill behavior are not yet handled.
+- CellWorx `.htd` plate files delegated through matching Deltavision `.pnl` planes and reported as `cellworx`; full HCS multi-series assembly, field mapping beyond the first selected field, log files, and OME plate metadata are not yet surfaced.
 - Columbus `MeasurementIndex.ColumbusIDX.xml` datasets delegated through recursively discovered neighboring TIFF planes and reported as `columbus`; full HCS plate/well/field mapping, missing-plane fill, acquisition metadata, and OME plate metadata are not yet surfaced.
 - Bruker MRI datasets opened from `acqp`, `fid`, `reco`, or `2dseq`, with dimensions and pixel type parsed from `acqp`/`pdata/1/reco` and uncompressed planes read from `pdata/1/2dseq`; multiple reconstructions/acquisitions, FID reconstruction, timestamps, and medical metadata are not yet handled.
 - Hamamatsu DCIMG version 1 files with little-endian mono8/mono16 frames exposed as time planes, including row-order normalization; grouped `.dcimg` Z stacks, version 0 footers, frame footer four-pixel correction, timestamps, and acquisition metadata are not yet handled.
