@@ -38,6 +38,7 @@ const lim = @import("lim.zig");
 const metamorph = @import("metamorph.zig");
 const mng = @import("mng.zig");
 const microct = @import("microct.zig");
+const mikroscan = @import("mikroscan.zig");
 const mias = @import("mias.zig");
 const molecularimaging = @import("molecularimaging.zig");
 const mrc = @import("mrc.zig");
@@ -96,7 +97,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, metamorph, mias, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -180,6 +181,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .metamorph => metamorph.readMetadata(entry.data),
         .mias => mias.readMetadata(entry.data),
         .microct => microct.readMetadata(entry.data),
+        .mikroscan => mikroscan.readMetadata(entry.data),
         .mng => mng.readMetadata(entry.data),
         .molecularimaging => molecularimaging.readMetadata(entry.data),
         .mrc => mrc.readMetadata(entry.data),
@@ -269,6 +271,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .metamorph => metamorph.readPlaneIndex(allocator, entry.data, plane_index),
         .mias => mias.readPlaneIndex(allocator, entry.data, plane_index),
         .microct => microct.readPlaneIndex(allocator, entry.data, plane_index),
+        .mikroscan => mikroscan.readPlaneIndex(allocator, entry.data, plane_index),
         .mng => mng.readPlaneIndex(allocator, entry.data, plane_index),
         .molecularimaging => molecularimaging.readPlaneIndex(allocator, entry.data, plane_index),
         .mrc => mrc.readPlaneIndex(allocator, entry.data, plane_index),
@@ -327,6 +330,7 @@ fn readInnerRegionIndex(
     if (entry.kind == .ometiff) return ometiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .metamorph) return metamorph.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .mias) return mias.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .mikroscan) return mikroscan.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .nikonelements) return nikonelements.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .nikontiff) return nikontiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .trestle) return trestle.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -425,6 +429,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (hasExtension(filename, ".fli") and liflim.matches(data)) return .liflim;
     if (hasExtension(filename, ".lim") and lim.matches(data)) return .lim;
     if (microct.matches(data)) return .microct;
+    if (mikroscan.matches(data)) return .mikroscan;
     if (mng.matches(data)) return .mng;
     if (molecularimaging.matches(data)) return .molecularimaging;
     if (hasMrcExtension(filename) and mrc.matches(data)) return .mrc;
@@ -3247,6 +3252,63 @@ test "reads stored microct zip entry through inner reader" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 0, 2 }, plane.data);
+}
+
+test "reads stored mikroscan zip entry before baseline tiff" {
+    var mikroscan_data: std.ArrayList(u8) = .empty;
+    defer mikroscan_data.deinit(std.testing.allocator);
+
+    try mikroscan_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&mikroscan_data, 42);
+    try appendU32Le(&mikroscan_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const description = "Mikroscan Image|Aperio compatible\x00";
+    const description_offset = ifd_end;
+    const pixel_offset = description_offset + description.len;
+
+    try appendU16Le(&mikroscan_data, entry_count);
+    try appendTiffEntry(&mikroscan_data, 256, 4, 1, 1);
+    try appendTiffEntry(&mikroscan_data, 257, 4, 1, 1);
+    try appendTiffEntry(&mikroscan_data, 258, 3, 1, 8);
+    try appendTiffEntry(&mikroscan_data, 259, 3, 1, 1);
+    try appendTiffEntry(&mikroscan_data, 262, 3, 1, 1);
+    try appendTiffEntry(&mikroscan_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&mikroscan_data, 277, 3, 1, 1);
+    try appendTiffEntry(&mikroscan_data, 278, 4, 1, 1);
+    try appendTiffEntry(&mikroscan_data, 279, 4, 1, 1);
+    try appendTiffEntry(&mikroscan_data, 270, 2, description.len, @intCast(description_offset));
+    try appendU32Le(&mikroscan_data, 0);
+    try mikroscan_data.appendSlice(std.testing.allocator, description);
+    try mikroscan_data.append(std.testing.allocator, 123);
+
+    try std.testing.expectEqual(Entry.Kind.mikroscan, detectInner("image.tif", mikroscan_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.tif", mikroscan_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{123}, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{123}, region_plane.data);
 }
 
 test "reads stored molecular imaging zip entry through inner reader" {
