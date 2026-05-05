@@ -73,14 +73,14 @@ fn readMessageAlloc(allocator: std.mem.Allocator, reader: *std.Io.Reader) !?Mess
     errdefer if (free_first_line) allocator.free(first_line_owned);
 
     const first_line = std.mem.trimEnd(u8, first_line_owned, "\r");
-    const first_content_length = try contentLengthHeader(first_line) orelse {
+    var content_length = try contentLengthHeader(first_line);
+    if (content_length == null and !looksLikeHeader(first_line)) {
         free_first_line = false;
         return .{ .data = first_line_owned, .framing = .line };
-    };
+    }
     allocator.free(first_line_owned);
     free_first_line = false;
 
-    var content_length = first_content_length;
     while (true) {
         const header_with_cr = try readLineAlloc(allocator, reader) orelse return error.InvalidMessageFraming;
         defer allocator.free(header_with_cr);
@@ -89,12 +89,13 @@ fn readMessageAlloc(allocator: std.mem.Allocator, reader: *std.Io.Reader) !?Mess
         if (try contentLengthHeader(header)) |value| content_length = value;
     }
 
-    if (content_length > max_request_body_bytes) {
-        try discardExact(reader, content_length);
+    const body_len = content_length orelse return error.InvalidMessageFraming;
+    if (body_len > max_request_body_bytes) {
+        try discardExact(reader, body_len);
         return error.StreamTooLong;
     }
     return .{
-        .data = try reader.readAlloc(allocator, content_length),
+        .data = try reader.readAlloc(allocator, body_len),
         .framing = .content_length,
     };
 }
@@ -124,6 +125,16 @@ fn contentLengthHeader(line: []const u8) !?usize {
     const value = std.mem.trim(u8, line[colon + 1 ..], " \t");
     if (value.len == 0) return error.InvalidMessageFraming;
     return std.fmt.parseUnsigned(usize, value, 10) catch error.InvalidMessageFraming;
+}
+
+fn looksLikeHeader(line: []const u8) bool {
+    const colon = std.mem.indexOfScalar(u8, line, ':') orelse return false;
+    const name = std.mem.trim(u8, line[0..colon], " \t");
+    if (name.len == 0) return false;
+    for (name) |c| {
+        if (!(std.ascii.isAlphanumeric(c) or c == '-')) return false;
+    }
+    return true;
 }
 
 fn discardExact(reader: *std.Io.Reader, len: usize) !void {
@@ -183,6 +194,22 @@ test "readMessageAlloc reads content-length framed json messages" {
 
     try std.testing.expectEqual(Framing.content_length, message.framing);
     try std.testing.expectEqualStrings(body, message.data);
+}
+
+test "readMessageAlloc accepts content-length after other headers" {
+    const body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}";
+    const input = "Content-Type: application/vscode-jsonrpc; charset=utf-8\r\nContent-Length: 46\r\n\r\n" ++ body;
+    var reader: std.Io.Reader = .fixed(input);
+    const message = (try readMessageAlloc(std.testing.allocator, &reader)).?;
+    defer std.testing.allocator.free(message.data);
+
+    try std.testing.expectEqual(Framing.content_length, message.framing);
+    try std.testing.expectEqualStrings(body, message.data);
+}
+
+test "readMessageAlloc rejects framed messages without content length" {
+    var reader: std.Io.Reader = .fixed("Content-Type: application/vscode-jsonrpc\r\n\r\n{}");
+    try std.testing.expectError(error.InvalidMessageFraming, readMessageAlloc(std.testing.allocator, &reader));
 }
 
 test "writeContentLengthResponse frames json response body" {
