@@ -493,10 +493,13 @@ pub const Server = struct {
     fn metadataFromPathBytes(self: *Server, path: []const u8, bytes: []const u8) !bio.Metadata {
         return bio.readMetadata(bytes) catch |err| {
             if (bio.analyze.isPath(path)) {
-                return bio.analyze.readMetadataPath(self.allocator, self.io, path);
+                if (bio.analyze.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+            }
+            if (bio.imagic.isPath(path)) {
+                if (bio.imagic.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
             }
             if (bio.unisoku.isPath(path)) {
-                return bio.unisoku.readMetadataPath(self.allocator, self.io, path);
+                if (bio.unisoku.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
             }
             return err;
         };
@@ -506,6 +509,10 @@ pub const Server = struct {
         if (bio.analyze.isPath(path)) {
             _ = bio.analyze.readMetadataPath(self.allocator, self.io, path) catch return null;
             return "analyze";
+        }
+        if (bio.imagic.isPath(path)) {
+            _ = bio.imagic.readMetadataPath(self.allocator, self.io, path) catch return null;
+            return "imagic";
         }
         if (bio.unisoku.isPath(path)) {
             _ = bio.unisoku.readMetadataPath(self.allocator, self.io, path) catch return null;
@@ -524,6 +531,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "analyze")) {
             return bio.analyze.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "imagic")) {
+            return bio.imagic.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "unisoku")) {
             return bio.unisoku.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -535,7 +545,9 @@ pub const Server = struct {
     }
 
     fn isCompanionFormat(format: []const u8) bool {
-        return std.mem.eql(u8, format, "analyze") or std.mem.eql(u8, format, "unisoku");
+        return std.mem.eql(u8, format, "analyze") or
+            std.mem.eql(u8, format, "imagic") or
+            std.mem.eql(u8, format, "unisoku");
     }
 };
 
@@ -1091,6 +1103,7 @@ test "formats response includes expanded readers" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"hrdgdf\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"i2i\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imacon\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imagic\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imod\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"improvisiontiff\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"inr\"") != null);
@@ -1242,6 +1255,44 @@ test "server opens analyze img path and reads companion pixels" {
     );
     try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"analyze\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":1,\"y\":0,\"width\":1,\"height\":2}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"region\":{\"x\":1,\"y\":0,\"width\":1,\"height\":2}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AgAEAA==\"") != null);
+}
+
+test "server opens imagic img path and reads companion pixels" {
+    const hed_path = "protocol-imagic-test.hed";
+    const img_path = "protocol-imagic-test.img";
+    var header = [_]u8{0} ** 1024;
+    std.mem.writeInt(u32, header[48..52], 2, .little);
+    std.mem.writeInt(u32, header[52..56], 2, .little);
+    @memcpy(header[56..60], "INTG");
+    const pixels = [_]u8{
+        1, 0, 2, 0,
+        3, 0, 4, 0,
+    };
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = hed_path, .data = &header });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, hed_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = img_path, .data = &pixels });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, img_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-imagic-test.img\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"imagic\"") != null);
     out.clearRetainingCapacity();
 
     _ = try server.handleLine(

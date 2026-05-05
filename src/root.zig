@@ -34,6 +34,7 @@ pub const hrdgdf = @import("readers/hrdgdf.zig");
 pub const i2i = @import("readers/i2i.zig");
 pub const imacon = @import("readers/imacon.zig");
 pub const im3 = @import("readers/im3.zig");
+pub const imagic = @import("readers/imagic.zig");
 pub const incell3000 = @import("readers/incell3000.zig");
 pub const imaris = @import("readers/imaris.zig");
 pub const imod = @import("readers/imod.zig");
@@ -466,6 +467,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "im3",
         .name = "PerkinElmer Nuance IM3",
         .extensions = &.{"im3"},
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "imagic",
+        .name = "IMAGIC",
+        .extensions = &.{ "hed", "img" },
         .can_read_pixels = true,
     },
     .{
@@ -986,6 +993,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (povray.matches(data)) return "povray";
     if (prairie.matches(data)) return "prairie";
     if (incell3000.matches(data)) return "incell3000";
+    if (imagic.matches(data)) return "imagic";
     if (tga.matches(data)) return "tga";
     if (dng.matches(data)) return "dng";
     if (canonraw.matches(data)) return "canonraw";
@@ -1100,6 +1108,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (povray.matches(data)) return povray.readMetadata(data);
     if (prairie.matches(data)) return prairie.readMetadata(data);
     if (incell3000.matches(data)) return incell3000.readMetadata(data);
+    if (imagic.matches(data)) return imagic.readMetadata(data);
     if (tga.matches(data)) return tga.readMetadata(data);
     if (dng.matches(data)) return dng.readMetadata(data);
     if (canonraw.matches(data)) return canonraw.readMetadata(data);
@@ -1277,6 +1286,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return incell3000.readPlane(allocator, data);
     }
+    if (imagic.matches(data)) return imagic.readPlaneIndex(allocator, data, plane_index);
     if (tga.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return tga.readPlane(allocator, data);
@@ -1434,6 +1444,7 @@ test {
     _ = gif;
     _ = imacon;
     _ = im3;
+    _ = imagic;
     _ = incell3000;
     _ = imaris;
     _ = imod;
