@@ -10,6 +10,7 @@ pub const apng = @import("readers/apng.zig");
 pub const arf = @import("readers/arf.zig");
 pub const avi = @import("readers/avi.zig");
 pub const bdpathway = @import("readers/bdpathway.zig");
+pub const bdv = @import("readers/bdv.zig");
 pub const biorad = @import("readers/biorad.zig");
 pub const bioradgel = @import("readers/bioradgel.zig");
 pub const bioradscn = @import("readers/bioradscn.zig");
@@ -380,6 +381,12 @@ pub const formats = [_]FormatDescriptor{
         .name = "BD Pathway TIFF",
         .extensions = &.{ "exp", "tif", "tiff" },
         .can_read_pixels = true,
+    },
+    .{
+        .id = "bdv",
+        .name = "BigDataViewer XML/HDF5 metadata",
+        .extensions = &.{ "xml", "h5" },
+        .can_read_pixels = false,
     },
     .{
         .id = "bd",
@@ -1383,6 +1390,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (arf.matches(data)) return "arf";
     if (avi.matches(data)) return "avi";
     if (bdpathway.matches(data)) return "bdpathway";
+    if (bdv.matches(data)) return "bdv";
     if (biorad.matches(data)) return "biorad";
     if (bioradgel.matches(data)) return "bioradgel";
     if (bioradscn.matches(data)) return "bioradscn";
@@ -1541,6 +1549,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (arf.matches(data)) return arf.readMetadata(data);
     if (avi.matches(data)) return avi.readMetadata(data);
     if (bdpathway.matches(data)) return bdpathway.readMetadata(data);
+    if (bdv.matches(data)) return bdv.readMetadata(data);
     if (biorad.matches(data)) return biorad.readMetadata(data);
     if (bioradgel.matches(data)) return bioradgel.readMetadata(data);
     if (bioradscn.matches(data)) return bioradscn.readMetadata(data);
@@ -1704,6 +1713,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (arf.matches(data)) return arf.readPlaneIndex(allocator, data, plane_index);
     if (avi.matches(data)) return avi.readPlaneIndex(allocator, data, plane_index);
     if (bdpathway.matches(data)) return bdpathway.readPlaneIndex(allocator, data, plane_index);
+    if (bdv.matches(data)) return bdv.readPlaneIndex(allocator, data, plane_index);
     if (biorad.matches(data)) return biorad.readPlaneIndex(allocator, data, plane_index);
     if (bioradgel.matches(data)) return bioradgel.readPlaneIndex(allocator, data, plane_index);
     if (bioradscn.matches(data)) return bioradscn.readPlaneIndex(allocator, data, plane_index);
@@ -2004,6 +2014,7 @@ test {
     _ = analyze;
     _ = apl;
     _ = bdpathway;
+    _ = bdv;
     _ = apng;
     _ = avi;
     _ = bmp;

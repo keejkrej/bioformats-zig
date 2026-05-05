@@ -14,6 +14,7 @@
   "implemented_format_sources": {
     "amira": ["ome_images/AmiraMesh/"],
     "bdpathway": ["synthetic-or-vendor-needed"],
+    "bdv": ["ome_images/BDV/"],
     "bd": ["alias-of-bdpathway"],
     "cellomics": ["ome_images/Cellomics/"],
     "dcimg": ["ome_images/DCIMG/"],

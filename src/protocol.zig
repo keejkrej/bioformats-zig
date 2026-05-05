@@ -507,6 +507,9 @@ pub const Server = struct {
         if (bio.bdpathway.isPath(path)) {
             if (bio.bdpathway.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.bdv.isPath(path)) {
+            if (bio.bdv.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.cellworx.isPath(path)) {
             if (bio.cellworx.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -638,6 +641,9 @@ pub const Server = struct {
         }
         if (bio.bdpathway.isPath(path)) {
             if (bio.bdpathway.readMetadataPath(self.allocator, self.io, path)) |_| return "bdpathway" else |_| {}
+        }
+        if (bio.bdv.isPath(path)) {
+            if (bio.bdv.readMetadataPath(self.allocator, self.io, path)) |_| return "bdv" else |_| {}
         }
         if (bio.cellworx.isPath(path)) {
             if (bio.cellworx.readMetadataPath(self.allocator, self.io, path)) |_| return "cellworx" else |_| {}
