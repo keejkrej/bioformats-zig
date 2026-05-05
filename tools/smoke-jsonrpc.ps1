@@ -251,10 +251,22 @@ try {
     Assert-True ($initialize.result.server -eq "bioformats-zig") "Unexpected framed initialize server name."
     Assert-True ([bool]$initialize.result.capabilities.contentLengthFraming) "Framed initialize did not advertise Content-Length support."
 
+    $plane = Invoke-FramedRequest $framedProcess @{
+        jsonrpc = "2.0"
+        id = 5
+        method = "readPlane"
+        params = @{
+            data = [Convert]::ToBase64String($ppmBytes)
+        }
+    }
+    Assert-True ($plane.result.metadata.format -eq "netpbm") "Framed readPlane did not return netpbm metadata."
+    Assert-True ($plane.result.data -eq "ChQe") "Framed readPlane returned unexpected pixel payload."
+
     [PSCustomObject]@{
         Check = "content-length"
         Status = "ok"
         Server = $initialize.result.server
+        InlinePixels = $plane.result.data
     }
 }
 finally {
