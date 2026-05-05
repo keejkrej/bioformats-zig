@@ -13,6 +13,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
     var metadata = try tiff.readMetadata(data);
     metadata.format = "zeisslsm";
     applyLsmInfo(data, &metadata);
+    metadata.plane_count = logicalPlaneCount(data);
     return metadata;
 }
 
@@ -21,9 +22,11 @@ pub fn readPlane(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    var plane = try tiff.readPlaneIndex(allocator, data, plane_index);
+    const physical_index = try physicalPlaneIndex(data, plane_index);
+    var plane = try tiff.readPlaneIndex(allocator, data, physical_index);
     plane.metadata.format = "zeisslsm";
     applyLsmInfo(data, &plane.metadata);
+    plane.metadata.plane_count = logicalPlaneCount(data);
     return plane;
 }
 
@@ -33,10 +36,23 @@ pub fn readRegionIndex(
     plane_index: u32,
     region: bio.Region,
 ) bio.ReaderError!bio.Plane {
-    var plane = try tiff.readRegionIndex(allocator, data, plane_index, region);
+    const physical_index = try physicalPlaneIndex(data, plane_index);
+    var plane = try tiff.readRegionIndex(allocator, data, physical_index, region);
     plane.metadata.format = "zeisslsm";
     applyLsmInfo(data, &plane.metadata);
+    plane.metadata.plane_count = logicalPlaneCount(data);
     return plane;
+}
+
+fn physicalPlaneIndex(data: []const u8, plane_index: u32) bio.ReaderError!u32 {
+    const planes = logicalPlaneCount(data);
+    if (plane_index >= planes) return error.InvalidPlaneIndex;
+    return std.math.mul(u32, plane_index, 2) catch return error.InvalidPlaneIndex;
+}
+
+fn logicalPlaneCount(data: []const u8) u32 {
+    const count = tiff.ifdCount(data) orelse return 1;
+    return @max(@as(u32, 1), count / 2);
 }
 
 fn applyLsmInfo(data: []const u8, metadata: *bio.Metadata) void {
@@ -134,4 +150,59 @@ test "reads zeiss lsm tagged tiff plane" {
     try std.testing.expectEqualStrings("zeisslsm", plane.metadata.format);
     try std.testing.expectEqualStrings("XYZTC", plane.metadata.dimension_order.?);
     try std.testing.expectEqualSlices(u8, &.{0x5a}, plane.data);
+}
+
+test "skips paired zeiss lsm thumbnail ifds" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    try data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&data, 42);
+    try appendU32Le(&data, 8);
+
+    const main_entry_count = 10;
+    const main_ifd_end = 8 + 2 + main_entry_count * 12 + 4;
+    const lsm_offset = main_ifd_end;
+    const lsm_bytes = 92;
+    const main_pixel_offset = lsm_offset + lsm_bytes;
+    const thumbnail_ifd_offset = main_pixel_offset + 1;
+    const thumbnail_entry_count = 9;
+    const thumbnail_pixel_offset = thumbnail_ifd_offset + 2 + thumbnail_entry_count * 12 + 4;
+
+    try appendU16Le(&data, main_entry_count);
+    try appendEntry(&data, 256, 4, 1, 1);
+    try appendEntry(&data, 257, 4, 1, 1);
+    try appendEntry(&data, 258, 3, 1, 8);
+    try appendEntry(&data, 259, 3, 1, 1);
+    try appendEntry(&data, 262, 3, 1, 1);
+    try appendEntry(&data, 273, 4, 1, @intCast(main_pixel_offset));
+    try appendEntry(&data, 277, 3, 1, 1);
+    try appendEntry(&data, 278, 4, 1, 1);
+    try appendEntry(&data, 279, 4, 1, 1);
+    try appendEntry(&data, zeiss_lsm_info_tag, 1, lsm_bytes, @intCast(lsm_offset));
+    try appendU32Le(&data, @intCast(thumbnail_ifd_offset));
+    try data.appendNTimes(std.testing.allocator, 0, lsm_bytes);
+    try data.append(std.testing.allocator, 0x5a);
+
+    try appendU16Le(&data, thumbnail_entry_count);
+    try appendEntry(&data, 256, 4, 1, 1);
+    try appendEntry(&data, 257, 4, 1, 1);
+    try appendEntry(&data, 258, 3, 1, 8);
+    try appendEntry(&data, 259, 3, 1, 1);
+    try appendEntry(&data, 262, 3, 1, 1);
+    try appendEntry(&data, 273, 4, 1, @intCast(thumbnail_pixel_offset));
+    try appendEntry(&data, 277, 3, 1, 1);
+    try appendEntry(&data, 278, 4, 1, 1);
+    try appendEntry(&data, 279, 4, 1, 1);
+    try appendU32Le(&data, 0);
+    try data.append(std.testing.allocator, 0x33);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(@as(u32, 1), plane.metadata.plane_count);
+    try std.testing.expectEqualSlices(u8, &.{0x5a}, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
 }
