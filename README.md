@@ -220,6 +220,7 @@ plane, which can differ from logical OME `sizeC`.
 - Prairie TIFF files identified by Prairie software and private TIFF tags, decoded through the TIFF pixel path; companion `.xml/.cfg/.env` grouping, channel/sequence metadata, time points, and physical calibration are not yet handled.
 - Pyramid TIFF files identified by Faas software tags, decoded through the TIFF pixel path; pyramid resolution metadata is not yet modeled as series.
 - Quesant AFM files with square little-endian 16-bit grayscale planes.
+- RCPNL `.rcpnl` DeltaVision variant files decoded through the DeltaVision pixel path and reported as `rcpnl`; position/timepoint metadata and Nikon objective mappings are not yet surfaced.
 - RHK Technologies SPM files with 8-bit unsigned, 16/32-bit signed integer, and 32-bit floating-point scalar planes, including text-header axis flips.
 - SBIG astronomy images with little-endian 16-bit grayscale pixels and SBIG row compression.
 - Olympus ScanR TIFF files identified by National Instruments IMAQ software tags, decoded through the TIFF pixel path; `experiment_descriptor.xml`/`.dat` grouping, HCS plate/well/field mapping, channel metadata, exposure times, and stage positions are not yet handled.

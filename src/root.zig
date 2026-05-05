@@ -87,6 +87,7 @@ pub const pqbin = @import("readers/pqbin.zig");
 pub const psd = @import("readers/psd.zig");
 pub const pyramidtiff = @import("readers/pyramidtiff.zig");
 pub const quesant = @import("readers/quesant.zig");
+pub const rcpnl = @import("readers/rcpnl.zig");
 pub const rhk = @import("readers/rhk.zig");
 pub const sbig = @import("readers/sbig.zig");
 pub const scanr = @import("readers/scanr.zig");
@@ -713,6 +714,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "quesant",
         .name = "Quesant AFM",
         .extensions = &.{"afm"},
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "rcpnl",
+        .name = "RCPNL DeltaVision",
+        .extensions = &.{"rcpnl"},
         .can_read_pixels = true,
     },
     .{

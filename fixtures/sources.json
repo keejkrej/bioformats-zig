@@ -104,6 +104,7 @@
     "psd": ["generated-fixture"],
     "pyramidtiff": ["needs-public-sample"],
     "quesant": ["needs-public-sample"],
+    "rcpnl": ["ome_images/DV/"],
     "rhk": ["needs-public-sample"],
     "sbig": ["needs-public-sample"],
     "seiko": ["needs-public-sample"],

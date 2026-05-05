@@ -498,6 +498,9 @@ pub const Server = struct {
         if (bio.pcoraw.isPath(path)) {
             if (bio.pcoraw.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.rcpnl.isPath(path)) {
+            if (bio.rcpnl.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         return bio.readMetadata(bytes) catch |err| {
             if (bio.analyze.isPath(path)) {
                 if (bio.analyze.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
@@ -530,6 +533,9 @@ pub const Server = struct {
     fn probePathPriorityFormat(self: *Server, path: []const u8) !?[]const u8 {
         if (bio.pcoraw.isPath(path)) {
             if (bio.pcoraw.readMetadataPath(self.allocator, self.io, path)) |_| return "pcoraw" else |_| {}
+        }
+        if (bio.rcpnl.isPath(path)) {
+            if (bio.rcpnl.readMetadataPath(self.allocator, self.io, path)) |_| return "rcpnl" else |_| {}
         }
         return null;
     }
@@ -578,6 +584,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "pcoraw")) {
             return bio.pcoraw.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "rcpnl")) {
+            return bio.rcpnl.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "inveon")) {
             return bio.inveon.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -607,6 +616,7 @@ pub const Server = struct {
         return std.mem.eql(u8, format, "analyze") or
             std.mem.eql(u8, format, "pds") or
             std.mem.eql(u8, format, "pcoraw") or
+            std.mem.eql(u8, format, "rcpnl") or
             std.mem.eql(u8, format, "inveon") or
             std.mem.eql(u8, format, "fuji") or
             std.mem.eql(u8, format, "hitachi") or
@@ -1206,6 +1216,7 @@ test "formats response includes expanded readers" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"povray\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"pyramidtiff\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"quesant\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"rcpnl\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"rhk\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"sbig\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"seiko\"") != null);
@@ -1423,6 +1434,47 @@ test "server opens pcoraw rec path and reads tiff pixels" {
         &out.writer,
     );
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
+}
+
+test "server opens rcpnl path as deltavision variant" {
+    const file_path = "protocol-rcpnl-test.rcpnl";
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendNTimes(std.testing.allocator, 0, 1024);
+    std.mem.writeInt(i32, data.items[0..4], 2, .little);
+    std.mem.writeInt(i32, data.items[4..8], 2, .little);
+    std.mem.writeInt(i32, data.items[8..12], 1, .little);
+    std.mem.writeInt(i32, data.items[12..16], 6, .little);
+    std.mem.writeInt(i16, data.items[96..98], -16224, .little);
+    std.mem.writeInt(u16, data.items[180..182], 1, .little);
+    std.mem.writeInt(u16, data.items[182..184], 0, .little);
+    std.mem.writeInt(u16, data.items[196..198], 1, .little);
+    try data.appendSlice(std.testing.allocator, &.{
+        1, 0, 2, 0,
+        3, 0, 4, 0,
+    });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = file_path, .data = data.items });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, file_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"probe\",\"params\":{\"path\":\"protocol-rcpnl-test.rcpnl\"}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"rcpnl\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"path\":\"protocol-rcpnl-test.rcpnl\",\"x\":1,\"y\":0,\"width\":1,\"height\":2}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"rcpnl\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"BAACAA==\"") != null);
 }
 
 test "server opens fuji img path and reads companion pixels" {
