@@ -241,6 +241,10 @@ try {
     Assert-True ([bool]$initialize.result.capabilities.batch) "Batch requests were not advertised."
     Assert-True ([bool]$initialize.result.capabilities.notifications) "Notifications were not advertised."
 
+    Write-Utf8Bytes $lineProcess ([string][char]0xfeff + '{"jsonrpc":"2.0","id":14,"method":"initialize"}' + "`n")
+    $bomInitialize = $lineProcess.StandardOutput.ReadLine() | ConvertFrom-Json
+    Assert-True ($bomInitialize.id -eq 14 -and $bomInitialize.result.server -eq "bioformats-zig") "Line-delimited UTF-8 BOM request failed."
+
     $formats = Invoke-LineRequest $lineProcess @{ jsonrpc = "2.0"; id = 2; method = "formats" }
     Assert-True ($formats.result.Count -gt 0) "formats returned no readers."
     Assert-True (@($formats.result | Where-Object { $_.id -eq "netpbm" }).Count -eq 1) "formats did not include netpbm."
@@ -388,6 +392,7 @@ try {
         ZctMarkers = "$($zctBytes[0])/$($zctBytes[10])/$($zctBytes[20])/$($zctBytes[30])"
         BatchResponses = $batch.Count
         ErrorCodes = "$($unknownMethod.error.code)/$($parseError.error.code)"
+        BomServer = $bomInitialize.result.server
     }
 }
 finally {
