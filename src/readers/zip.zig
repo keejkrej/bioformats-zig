@@ -94,6 +94,7 @@ const varianfdf = @import("varianfdf.zig");
 const vectra = @import("vectra.zig");
 const ventana = @import("ventana.zig");
 const vgsam = @import("vgsam.zig");
+const volocityclipping = @import("volocityclipping.zig");
 const watop = @import("watop.zig");
 const zeisslms = @import("zeisslms.zig");
 const zeisslsm = @import("zeisslsm.zig");
@@ -109,7 +110,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, leo, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, leo, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -249,6 +250,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .vectra => vectra.readMetadata(entry.data),
         .ventana => ventana.readMetadata(entry.data),
         .vgsam => vgsam.readMetadata(entry.data),
+        .volocityclipping => volocityclipping.readMetadata(entry.data),
         .watop => watop.readMetadata(entry.data),
         .zeisslms => zeisslms.readMetadata(entry.data),
         .zeisslsm => zeisslsm.readMetadata(entry.data),
@@ -351,6 +353,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .vectra => vectra.readPlaneIndex(allocator, entry.data, plane_index),
         .ventana => ventana.readPlaneIndex(allocator, entry.data, plane_index),
         .vgsam => if (plane_index == 0) vgsam.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
+        .volocityclipping => volocityclipping.readPlaneIndex(allocator, entry.data, plane_index),
         .watop => if (plane_index == 0) watop.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .zeisslms => zeisslms.readPlaneIndex(allocator, entry.data, plane_index),
         .zeisslsm => zeisslsm.readPlaneIndex(allocator, entry.data, plane_index),
@@ -534,6 +537,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (hasExtension(filename, ".pr3") and ubm.matches(data)) return .ubm;
     if (varianfdf.matches(data)) return .varianfdf;
     if (vgsam.matches(data)) return .vgsam;
+    if (hasExtension(filename, ".acff") and volocityclipping.matches(data)) return .volocityclipping;
     if (watop.matches(data)) return .watop;
     if (zeisslms.matches(data)) return .zeisslms;
     return null;
@@ -3350,6 +3354,38 @@ test "reads stored incell 3000 zip entry through extension-gated inner reader" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 17, 0, 29, 0, 31, 0, 43, 0 }, plane.data);
+}
+
+test "reads stored volocity clipping zip entry through extension-gated inner reader" {
+    var clipping_data: std.ArrayList(u8) = .empty;
+    defer clipping_data.deinit(std.testing.allocator);
+    try clipping_data.append(std.testing.allocator, 'I');
+    try clipping_data.appendNTimes(std.testing.allocator, 0, 4);
+    try clipping_data.appendSlice(std.testing.allocator, "FFCA");
+    try appendU32Le(&clipping_data, 0x208);
+    try appendU32Le(&clipping_data, 2);
+    try appendU32Le(&clipping_data, 1);
+    try appendU32Le(&clipping_data, 1);
+    try clipping_data.appendNTimes(std.testing.allocator, 0, 65);
+    try clipping_data.appendSlice(std.testing.allocator, &.{ 12, 13 });
+
+    try std.testing.expectEqual(Entry.Kind.volocityclipping, detectInner("image.acff", clipping_data.items).?);
+    try std.testing.expectEqual(@as(?Entry.Kind, null), detectInner("image.bin", clipping_data.items));
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.acff", clipping_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 12, 13 }, plane.data);
 }
 
 test "reads stored ionpath mibi zip entry before baseline tiff" {

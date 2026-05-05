@@ -94,6 +94,7 @@ pub const varianfdf = @import("readers/varianfdf.zig");
 pub const vectra = @import("readers/vectra.zig");
 pub const ventana = @import("readers/ventana.zig");
 pub const vgsam = @import("readers/vgsam.zig");
+pub const volocityclipping = @import("readers/volocityclipping.zig");
 pub const watop = @import("readers/watop.zig");
 pub const zeisslms = @import("readers/zeisslms.zig");
 pub const zeisslsm = @import("readers/zeisslsm.zig");
@@ -811,6 +812,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "volocityclipping",
+        .name = "Volocity Library Clipping",
+        .extensions = &.{"acff"},
+        .can_read_pixels = true,
+    },
+    .{
         .id = "watop",
         .name = "WA Technology TOP",
         .extensions = &.{"wat"},
@@ -891,6 +898,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (mng.matches(data)) return "mng";
     if (varianfdf.matches(data)) return "varianfdf";
     if (vgsam.matches(data)) return "vgsam";
+    if (volocityclipping.matches(data)) return "volocityclipping";
     if (watop.matches(data)) return "watop";
     if (zeisslms.matches(data)) return "zeisslms";
     if (povray.matches(data)) return "povray";
@@ -993,6 +1001,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (mng.matches(data)) return mng.readMetadata(data);
     if (varianfdf.matches(data)) return varianfdf.readMetadata(data);
     if (vgsam.matches(data)) return vgsam.readMetadata(data);
+    if (volocityclipping.matches(data)) return volocityclipping.readMetadata(data);
     if (watop.matches(data)) return watop.readMetadata(data);
     if (zeisslms.matches(data)) return zeisslms.readMetadata(data);
     if (povray.matches(data)) return povray.readMetadata(data);
@@ -1152,6 +1161,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return vgsam.readPlane(allocator, data);
     }
+    if (volocityclipping.matches(data)) return volocityclipping.readPlaneIndex(allocator, data, plane_index);
     if (watop.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return watop.readPlane(allocator, data);
@@ -1341,6 +1351,7 @@ test {
     _ = trestle;
     _ = vectra;
     _ = ventana;
+    _ = volocityclipping;
     _ = zeisslms;
     _ = zeisslsm;
     _ = zip;
