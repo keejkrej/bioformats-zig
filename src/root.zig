@@ -56,6 +56,7 @@ pub const ics = @import("readers/ics.zig");
 pub const incell = @import("readers/incell.zig");
 pub const incell3000 = @import("readers/incell3000.zig");
 pub const imaris = @import("readers/imaris.zig");
+pub const imarishdf = @import("readers/imarishdf.zig");
 pub const imaristiff = @import("readers/imaristiff.zig");
 pub const imod = @import("readers/imod.zig");
 pub const improvisiontiff = @import("readers/improvisiontiff.zig");
@@ -675,6 +676,12 @@ pub const formats = [_]FormatDescriptor{
         .name = "Bitplane Imaris raw",
         .extensions = &.{"ims"},
         .can_read_pixels = true,
+    },
+    .{
+        .id = "imarishdf",
+        .name = "Bitplane Imaris HDF metadata",
+        .extensions = &.{"ims"},
+        .can_read_pixels = false,
     },
     .{
         .id = "imaristiff",
@@ -1538,6 +1545,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (hamamatsuvms.matches(data)) return "hamamatsuvms";
     if (imacon.matches(data)) return "imacon";
     if (im3.matches(data)) return "im3";
+    if (imarishdf.matches(data)) return "imarishdf";
     if (imaris.matches(data)) return "imaris";
     if (imod.matches(data)) return "imod";
     if (improvisiontiff.matches(data)) return "improvisiontiff";
@@ -1704,6 +1712,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (hamamatsuvms.matches(data)) return hamamatsuvms.readMetadata(data);
     if (imacon.matches(data)) return imacon.readMetadata(data);
     if (im3.matches(data)) return im3.readMetadata(data);
+    if (imarishdf.matches(data)) return imarishdf.readMetadata(data);
     if (imaris.matches(data)) return imaris.readMetadata(data);
     if (imod.matches(data)) return imod.readMetadata(data);
     if (improvisiontiff.matches(data)) return improvisiontiff.readMetadata(data);
@@ -1936,6 +1945,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (hamamatsuvms.matches(data)) return hamamatsuvms.readPlaneIndex(allocator, data, plane_index);
     if (imacon.matches(data)) return imacon.readPlaneIndex(allocator, data, plane_index);
     if (im3.matches(data)) return im3.readPlaneIndex(allocator, data, plane_index);
+    if (imarishdf.matches(data)) return imarishdf.readPlaneIndex(allocator, data, plane_index);
     if (imaris.matches(data)) return imaris.readPlaneIndex(allocator, data, plane_index);
     if (imod.matches(data)) return imod.readPlaneIndex(allocator, data, plane_index);
     if (improvisiontiff.matches(data)) return improvisiontiff.readPlaneIndex(allocator, data, plane_index);
@@ -2114,6 +2124,7 @@ test {
     _ = incell;
     _ = incell3000;
     _ = imaris;
+    _ = imarishdf;
     _ = imod;
     _ = improvisiontiff;
     _ = imspector;

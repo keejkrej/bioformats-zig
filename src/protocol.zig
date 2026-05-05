@@ -585,6 +585,9 @@ pub const Server = struct {
         if (bio.jpk.isPath(path)) {
             if (bio.jpk.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.imarishdf.isPath(path)) {
+            if (bio.imarishdf.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.imaristiff.isPath(path)) {
             if (bio.imaristiff.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -728,6 +731,9 @@ pub const Server = struct {
         }
         if (bio.jpk.isPath(path)) {
             if (bio.jpk.readMetadataPath(self.allocator, self.io, path)) |_| return "jpk" else |_| {}
+        }
+        if (bio.imarishdf.isPath(path)) {
+            if (bio.imarishdf.readMetadataPath(self.allocator, self.io, path)) |_| return "imarishdf" else |_| {}
         }
         if (bio.imaristiff.isPath(path)) {
             if (bio.imaristiff.readMetadataPath(self.allocator, self.io, path)) |_| return "imaristiff" else |_| {}
@@ -887,6 +893,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "zeisstiff")) {
             return bio.zeisstiff.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "imarishdf")) {
+            return bio.imarishdf.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "imaristiff")) {
             return bio.imaristiff.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -960,6 +969,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "tilejpeg") or
             std.mem.eql(u8, format, "hamamatsuvms") or
             std.mem.eql(u8, format, "zeisstiff") or
+            std.mem.eql(u8, format, "imarishdf") or
             std.mem.eql(u8, format, "imaristiff") or
             std.mem.eql(u8, format, "rcpnl") or
             std.mem.eql(u8, format, "inveon") or
@@ -1921,6 +1931,41 @@ test "server probes jpeg path as tilejpeg path reader" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"tilejpeg\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"width\":3") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"height\":2") != null);
+}
+
+test "server probes imaris hdf ims path before imaris variants" {
+    const file_path = "protocol-imarishdf-test.ims";
+    const image = "\x89HDF\r\n\x1a\n" ++
+        "Imaris\x00DataSetInfo\x00Channel 0\x00Channel 1\x00" ++
+        "ImageSizeX\x00\x13\x00\x00\x00143" ++
+        "ImageSizeY\x00\x13\x00\x00\x00109" ++
+        "ImageSizeZ\x00\x13\x00\x00\x0064" ++
+        "FileTimePoints\x00\x13\x00\x00\x001";
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = file_path, .data = image });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, file_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"probe\",\"params\":{\"path\":\"protocol-imarishdf-test.ims\"}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"imarishdf\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"metadata\",\"params\":{\"path\":\"protocol-imarishdf-test.ims\"}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"imarishdf\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"width\":143") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"height\":109") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"sizeC\":2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"sizeZ\":64") != null);
 }
 
 test "server probes imaris tiff ims path before raw imaris" {

@@ -87,6 +87,7 @@
     "im3": ["needs-public-sample"],
     "imagic": ["needs-public-sample"],
     "imaris": ["ome_images/Imaris-IMS/"],
+    "imarishdf": ["ome_images/Imaris-IMS/bitplane/lz4/", "ome_images/Imaris-IMS/davemason/", "bioformats-docs/bitplane-imaris-hdf-public-sample-images"],
     "imaristiff": ["ome_images/Imaris-IMS/"],
     "imod": ["needs-public-sample"],
     "improvisiontiff": ["needs-public-sample"],
@@ -198,7 +199,6 @@
   },
   "pending_reader_sources": {
     "cellh5": ["ome_images/CellH5/samples/reduced/", "bioformats-docs/cellh5-public-sample-images"],
-    "imarishdf": ["ome_images/Imaris-IMS/", "bioformats-docs/bitplane-imaris-hdf-public-sample-images"],
     "tissuefaxs": ["needs-public-sample", "bioformats-docs/tissuegnostics-tfcyto-several-internal-datasets"]
   }
 }
