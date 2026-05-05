@@ -102,6 +102,7 @@ pub const obf = @import("readers/obf.zig");
 pub const omexml = @import("readers/omexml.zig");
 pub const ometiff = @import("readers/ometiff.zig");
 pub const operetta = @import("readers/operetta.zig");
+pub const openlab = @import("readers/openlab.zig");
 pub const openlabraw = @import("readers/openlabraw.zig");
 pub const oxfordinstruments = @import("readers/oxfordinstruments.zig");
 pub const pcx = @import("readers/pcx.zig");
@@ -1044,6 +1045,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "openlab",
+        .name = "Openlab LIFF metadata",
+        .extensions = &.{"liff"},
+        .can_read_pixels = false,
+    },
+    .{
         .id = "openlabraw",
         .name = "Openlab RAW",
         .extensions = &.{"raw"},
@@ -1365,6 +1372,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (obf.matches(data)) return "obf";
     if (omexml.matches(data)) return "omexml";
     if (operetta.matches(data)) return "operetta";
+    if (openlab.matches(data)) return "openlab";
     if (openlabraw.matches(data)) return "openlabraw";
     if (oxfordinstruments.matches(data)) return "oxfordinstruments";
     if (pds.matches(data)) return "pds";
@@ -1514,6 +1522,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (obf.matches(data)) return obf.readMetadata(data);
     if (omexml.matches(data)) return omexml.readMetadata(data);
     if (operetta.matches(data)) return operetta.readMetadata(data);
+    if (openlab.matches(data)) return openlab.readMetadata(data);
     if (openlabraw.matches(data)) return openlabraw.readMetadata(data);
     if (oxfordinstruments.matches(data)) return oxfordinstruments.readMetadata(data);
     if (pds.matches(data)) return pds.readMetadata(data);
@@ -1699,6 +1708,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (obf.matches(data)) return obf.readPlaneIndex(allocator, data, plane_index);
     if (omexml.matches(data)) return omexml.readPlaneIndex(allocator, data, plane_index);
     if (operetta.matches(data)) return operetta.readPlaneIndex(allocator, data, plane_index);
+    if (openlab.matches(data)) return openlab.readPlaneIndex(allocator, data, plane_index);
     if (openlabraw.matches(data)) return openlabraw.readPlaneIndex(allocator, data, plane_index);
     if (oxfordinstruments.matches(data)) return oxfordinstruments.readPlaneIndex(allocator, data, plane_index);
     if (pds.matches(data)) return pds.readPlaneIndex(allocator, data, plane_index);
@@ -1976,6 +1986,7 @@ test {
     _ = omexml;
     _ = ometiff;
     _ = operetta;
+    _ = openlab;
     _ = oxfordinstruments;
     _ = pds;
     _ = perkinelmer;
