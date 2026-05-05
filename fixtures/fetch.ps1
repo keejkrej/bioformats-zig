@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|lof|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|lof|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|jdce|xml)$',
     [switch]$List
 )
 
@@ -128,6 +128,7 @@ function Preferred-NamePattern {
         "gatan" { return '\.dm[34]$' }
         "gatandm2" { return '\.dm2$' }
         "hamamatsuvms" { return '\.vms$' }
+        "jdce" { return '\.jdce$' }
         "lof" { return '^mono 8bit\.lof$' }
         "mrc" { return '\.(mrc|map)$' }
         "nifti" { return '\.nii$' }
@@ -241,6 +242,36 @@ function Download-Companion {
     }
 }
 
+function Download-RelativeCompanion {
+    param(
+        [string]$BaseUrl,
+        [string]$Name,
+        [string]$TargetDir
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        return $null
+    }
+    $uri = [Uri]::new([Uri]$BaseUrl, $Name)
+    $length = Get-RemoteLength $uri.AbsoluteUri
+    if ($length -ne $null -and $length -gt $MaxBytes) {
+        throw "Companion '$Name' is $length bytes, above MaxBytes $MaxBytes."
+    }
+    $relative = [Uri]::UnescapeDataString($Name).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+    $targetPath = Join-Path $TargetDir $relative
+    $targetParent = Split-Path -Parent $targetPath
+    New-Item -ItemType Directory -Force -Path $targetParent | Out-Null
+    if (-not (Test-Path -LiteralPath $targetPath)) {
+        Invoke-WebRequest -UseBasicParsing -Uri $uri.AbsoluteUri -OutFile $targetPath
+    }
+    return [PSCustomObject]@{
+        Format = $Format
+        Source = $uri.AbsoluteUri
+        Path = $targetPath
+        Bytes = (Get-Item $targetPath).Length
+    }
+}
+
 function Download-HamamatsuVmsCompanions {
     param(
         [string]$VmsSource,
@@ -326,6 +357,38 @@ function Download-SpcCompanions {
     Download-Companion $baseUrl $companion $TargetDir
 }
 
+function Download-JdceCompanions {
+    param(
+        [string]$JdceSource,
+        [string]$JdcePath,
+        [string]$TargetDir
+    )
+
+    $content = Get-Content -LiteralPath $JdcePath -Raw
+    $match = [regex]::Match($content, '"ImageMetadataFiles"\s*:\s*\[\s*"([^"]+)"')
+    if (-not $match.Success) {
+        return
+    }
+    $baseUrl = [Uri]::new([Uri]$JdceSource, ".").AbsoluteUri
+    $csvName = $match.Groups[1].Value
+    $csv = Download-RelativeCompanion $baseUrl $csvName $TargetDir
+    if (-not $csv) {
+        return
+    }
+
+    $firstRow = Import-Csv -LiteralPath $csv.Path | Select-Object -First 1
+    if (-not $firstRow) {
+        return
+    }
+    $folder = [string]$firstRow.ImageSubFolderPath
+    $file = [string]$firstRow.ImageFileName
+    if ([string]::IsNullOrWhiteSpace($file)) {
+        return
+    }
+    $relative = if ([string]::IsNullOrWhiteSpace($folder)) { $file } else { "$folder/$file" }
+    Download-RelativeCompanion $baseUrl $relative $TargetDir
+}
+
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
 $zenodoRecordId = Resolve-ZenodoRecordId ([string[]]$formatEntry.Value)
 if ($null -eq $sourceUrl -and $null -eq $zenodoRecordId) {
@@ -382,4 +445,7 @@ if ($Format -eq "ics") {
 }
 if ($Format -eq "spc") {
     Download-SpcCompanions $candidate.Url $targetDir
+}
+if ($Format -eq "jdce") {
+    Download-JdceCompanions $candidate.Url $targetPath $targetDir
 }

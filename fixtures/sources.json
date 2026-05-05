@@ -103,7 +103,7 @@
     "iplab": ["needs-public-sample"],
     "ipw": ["needs-public-sample"],
     "ivision": ["needs-public-sample"],
-    "jdce": ["ome_images/JDCE/"],
+    "jdce": ["ome_images/JDCE/molecular-devices/Converted/mini-actin_confocal_CDE/", "ome_images/JDCE/"],
     "jeol": ["needs-public-sample"],
     "jpeg": ["generated-fixture"],
     "tilejpeg": ["generated-fixture", "same-bitstream-as-jpeg-reader"],
