@@ -66,6 +66,7 @@ const png = @import("png.zig");
 const povray = @import("povray.zig");
 const pqbin = @import("pqbin.zig");
 const psd = @import("psd.zig");
+const pyramidtiff = @import("pyramidtiff.zig");
 const quesant = @import("quesant.zig");
 const rhk = @import("rhk.zig");
 const sbig = @import("sbig.zig");
@@ -105,7 +106,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gif, his, hrdgdf, i2i, imacon, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, leo, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gif, his, hrdgdf, i2i, imacon, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, leo, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -217,6 +218,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .povray => povray.readMetadata(entry.data),
         .pqbin => pqbin.readMetadata(entry.data),
         .psd => psd.readMetadata(entry.data),
+        .pyramidtiff => pyramidtiff.readMetadata(entry.data),
         .quesant => quesant.readMetadata(entry.data),
         .rhk => rhk.readMetadata(entry.data),
         .sbig => sbig.readMetadata(entry.data),
@@ -315,6 +317,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .povray => povray.readPlaneIndex(allocator, entry.data, plane_index),
         .pqbin => pqbin.readPlaneIndex(allocator, entry.data, plane_index),
         .psd => if (plane_index == 0) psd.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
+        .pyramidtiff => pyramidtiff.readPlaneIndex(allocator, entry.data, plane_index),
         .quesant => if (plane_index == 0) quesant.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .rhk => if (plane_index == 0) rhk.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .sbig => if (plane_index == 0) sbig.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
@@ -367,6 +370,7 @@ fn readInnerRegionIndex(
     if (entry.kind == .nikontiff) return nikontiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .trestle) return trestle.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .photoshoptiff) return photoshoptiff.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .pyramidtiff) return pyramidtiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .seq) return seq.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .simplepci) return simplepci.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .sis) return sis.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -489,6 +493,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (hasExtension(filename, ".df3") and povray.matches(data)) return .povray;
     if (hasExtension(filename, ".bin") and pqbin.matches(data)) return .pqbin;
     if (psd.matches(data)) return .psd;
+    if (pyramidtiff.matches(data)) return .pyramidtiff;
     if (quesant.matches(data)) return .quesant;
     if (rhk.matches(data)) return .rhk;
     if (sbig.matches(data)) return .sbig;
@@ -1129,6 +1134,62 @@ test "reads stored canon dng zip entry before baseline tiff" {
     defer std.testing.allocator.free(region_plane.data);
     try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{210}, region_plane.data);
+}
+
+test "reads stored pyramid tiff zip entry before baseline tiff" {
+    var pyramid_data: std.ArrayList(u8) = .empty;
+    defer pyramid_data.deinit(std.testing.allocator);
+
+    try pyramid_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&pyramid_data, 42);
+    try appendU32Le(&pyramid_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const software = "Faas pyramid writer\x00";
+    const pixel_offset = ifd_end + software.len;
+
+    try appendU16Le(&pyramid_data, entry_count);
+    try appendTiffEntry(&pyramid_data, 256, 4, 1, 1);
+    try appendTiffEntry(&pyramid_data, 257, 4, 1, 1);
+    try appendTiffEntry(&pyramid_data, 258, 3, 1, 8);
+    try appendTiffEntry(&pyramid_data, 259, 3, 1, 1);
+    try appendTiffEntry(&pyramid_data, 262, 3, 1, 1);
+    try appendTiffEntry(&pyramid_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&pyramid_data, 277, 3, 1, 1);
+    try appendTiffEntry(&pyramid_data, 278, 4, 1, 1);
+    try appendTiffEntry(&pyramid_data, 279, 4, 1, 1);
+    try appendTiffEntry(&pyramid_data, 305, 2, software.len, @intCast(ifd_end));
+    try appendU32Le(&pyramid_data, 0);
+    try pyramid_data.appendSlice(std.testing.allocator, software);
+    try pyramid_data.append(std.testing.allocator, 123);
+
+    try std.testing.expectEqual(Entry.Kind.pyramidtiff, detectInner("image.tif", pyramid_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.tif", pyramid_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{123}, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{123}, region_plane.data);
 }
 
 test "reads stored fei tiff zip entry before baseline tiff" {
