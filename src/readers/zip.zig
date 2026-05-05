@@ -64,6 +64,7 @@ const tga = @import("tga.zig");
 const text = @import("text.zig");
 const tiff = @import("tiff.zig");
 const topometrix = @import("topometrix.zig");
+const trestle = @import("trestle.zig");
 const ubm = @import("ubm.zig");
 const varianfdf = @import("varianfdf.zig");
 const vgsam = @import("vgsam.zig");
@@ -81,7 +82,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, ubm, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -191,6 +192,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .tga => tga.readMetadata(entry.data),
         .tiff => tiff.readMetadata(entry.data),
         .topometrix => topometrix.readMetadata(entry.data),
+        .trestle => trestle.readMetadata(entry.data),
         .ubm => ubm.readMetadata(entry.data),
         .varianfdf => varianfdf.readMetadata(entry.data),
         .vgsam => vgsam.readMetadata(entry.data),
@@ -265,6 +267,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .tga => if (plane_index == 0) tga.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .tiff => tiff.readPlaneIndex(allocator, entry.data, plane_index),
         .topometrix => if (plane_index == 0) topometrix.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
+        .trestle => trestle.readPlaneIndex(allocator, entry.data, plane_index),
         .ubm => if (plane_index == 0) ubm.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .varianfdf => varianfdf.readPlaneIndex(allocator, entry.data, plane_index),
         .vgsam => if (plane_index == 0) vgsam.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
@@ -280,6 +283,7 @@ fn readInnerRegionIndex(
     region: bio.Region,
 ) bio.ReaderError!bio.Plane {
     if (entry.kind == .ometiff) return ometiff.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .trestle) return trestle.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .tiff) return tiff.readRegionIndex(allocator, entry.data, plane_index, region);
 
     const plane = try readInnerPlaneIndex(allocator, entry, plane_index);
@@ -391,6 +395,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (hasExtension(filename, ".spi") and spider.matches(data)) return .spider;
     if (text.matches(data)) return .text;
     if (hasExtension(filename, ".tga") and tga.matches(data)) return .tga;
+    if (trestle.matches(data)) return .trestle;
     if (tiff.matches(data)) return .tiff;
     if (topometrix.matches(data)) return .topometrix;
     if (hasExtension(filename, ".pr3") and ubm.matches(data)) return .ubm;
@@ -2680,6 +2685,63 @@ test "reads stored topometrix zip entry through inner reader" {
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x12, 0xcd, 0xab }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
+}
+
+test "reads stored trestle zip entry before baseline tiff" {
+    var trestle_data: std.ArrayList(u8) = .empty;
+    defer trestle_data.deinit(std.testing.allocator);
+
+    try trestle_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&trestle_data, 42);
+    try appendU32Le(&trestle_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const copyright = "Copyright Trestle Corp.\x00";
+    const copyright_offset = ifd_end;
+    const pixel_offset = copyright_offset + copyright.len;
+
+    try appendU16Le(&trestle_data, entry_count);
+    try appendTiffEntry(&trestle_data, 256, 4, 1, 1);
+    try appendTiffEntry(&trestle_data, 257, 4, 1, 1);
+    try appendTiffEntry(&trestle_data, 258, 3, 1, 8);
+    try appendTiffEntry(&trestle_data, 259, 3, 1, 1);
+    try appendTiffEntry(&trestle_data, 262, 3, 1, 1);
+    try appendTiffEntry(&trestle_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&trestle_data, 277, 3, 1, 1);
+    try appendTiffEntry(&trestle_data, 278, 4, 1, 1);
+    try appendTiffEntry(&trestle_data, 279, 4, 1, 1);
+    try appendTiffEntry(&trestle_data, 33432, 2, copyright.len, @intCast(copyright_offset));
+    try appendU32Le(&trestle_data, 0);
+    try trestle_data.appendSlice(std.testing.allocator, copyright);
+    try trestle_data.append(std.testing.allocator, 18);
+
+    try std.testing.expectEqual(Entry.Kind.trestle, detectInner("image.tif", trestle_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.tif", trestle_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{18}, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{18}, region_plane.data);
 }
 
 test "reads stored ubm zip entry through extension-gated inner reader" {
