@@ -33,6 +33,7 @@ const mrw = @import("mrw.zig");
 const netpbm = @import("netpbm.zig");
 const nifti = @import("nifti.zig");
 const nrrd = @import("nrrd.zig");
+const omexml = @import("omexml.zig");
 const openlabraw = @import("openlabraw.zig");
 const ometiff = @import("ometiff.zig");
 const oxfordinstruments = @import("oxfordinstruments.zig");
@@ -67,7 +68,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -146,6 +147,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .netpbm => netpbm.readMetadata(entry.data),
         .nifti => nifti.readMetadata(entry.data),
         .nrrd => nrrd.readMetadata(entry.data),
+        .omexml => omexml.readMetadata(entry.data),
         .openlabraw => openlabraw.readMetadata(entry.data),
         .ometiff => ometiff.readMetadata(entry.data),
         .oxfordinstruments => oxfordinstruments.readMetadata(entry.data),
@@ -206,6 +208,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .netpbm => if (plane_index == 0) netpbm.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .nifti => nifti.readPlaneIndex(allocator, entry.data, plane_index),
         .nrrd => nrrd.readPlaneIndex(allocator, entry.data, plane_index),
+        .omexml => omexml.readPlaneIndex(allocator, entry.data, plane_index),
         .openlabraw => openlabraw.readPlaneIndex(allocator, entry.data, plane_index),
         .ometiff => ometiff.readPlaneIndex(allocator, entry.data, plane_index),
         .oxfordinstruments => oxfordinstruments.readPlaneIndex(allocator, entry.data, plane_index),
@@ -320,6 +323,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (netpbm.matches(data)) return .netpbm;
     if (nifti.matches(data)) return .nifti;
     if (nrrd.matches(data)) return .nrrd;
+    if (omexml.matches(data)) return .omexml;
     if (openlabraw.matches(data)) return .openlabraw;
     if (ometiff.matches(data)) return .ometiff;
     if (oxfordinstruments.matches(data)) return .oxfordinstruments;
@@ -925,6 +929,31 @@ test "detects stored ome-tiff zip entry before baseline tiff" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{17}, plane.data);
+}
+
+test "reads stored ome-xml zip entry through inner reader" {
+    const ome_xml_data =
+        \\<?xml version="1.0"?>
+        \\<OME><Image ID="Image:0"><Pixels DimensionOrder="XYZCT" Type="uint8" SizeX="2" SizeY="1" SizeZ="1" SizeC="1" SizeT="1"><BinData Compression="none">ESI=</BinData></Pixels></Image></OME>
+    ;
+
+    try std.testing.expectEqual(Entry.Kind.omexml, detectInner("metadata.ome.xml", ome_xml_data).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "metadata.ome.xml", ome_xml_data);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 17, 34 }, plane.data);
 }
 
 test "reads region from stored tiff zip entry through inner region reader" {
