@@ -58,6 +58,7 @@ const mias = @import("mias.zig");
 const molecularimaging = @import("molecularimaging.zig");
 const mrc = @import("mrc.zig");
 const mrw = @import("mrw.zig");
+const naf = @import("naf.zig");
 const ndpi = @import("ndpi.zig");
 const netpbm = @import("netpbm.zig");
 const nifti = @import("nifti.zig");
@@ -120,7 +121,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, flowsight, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, prairie, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, sdt, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, flowsight, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, naf, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, prairie, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, sdt, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -224,6 +225,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .molecularimaging => molecularimaging.readMetadata(entry.data),
         .mrc => mrc.readMetadata(entry.data),
         .mrw => mrw.readMetadata(entry.data),
+        .naf => naf.readMetadata(entry.data),
         .ndpi => ndpi.readMetadata(entry.data),
         .netpbm => netpbm.readMetadata(entry.data),
         .nifti => nifti.readMetadata(entry.data),
@@ -337,6 +339,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .molecularimaging => molecularimaging.readPlaneIndex(allocator, entry.data, plane_index),
         .mrc => mrc.readPlaneIndex(allocator, entry.data, plane_index),
         .mrw => mrw.readPlaneIndex(allocator, entry.data, plane_index),
+        .naf => naf.readPlaneIndex(allocator, entry.data, plane_index),
         .ndpi => ndpi.readPlaneIndex(allocator, entry.data, plane_index),
         .netpbm => if (plane_index == 0) netpbm.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .nifti => nifti.readPlaneIndex(allocator, entry.data, plane_index),
@@ -536,6 +539,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (molecularimaging.matches(data)) return .molecularimaging;
     if (hasMrcExtension(filename) and mrc.matches(data)) return .mrc;
     if (mrw.matches(data)) return .mrw;
+    if (hasExtension(filename, ".naf") and naf.matches(data)) return .naf;
     if (hasExtension(filename, ".ndpi") and ndpi.matches(data)) return .ndpi;
     if (netpbm.matches(data)) return .netpbm;
     if (nifti.matches(data)) return .nifti;
@@ -4646,6 +4650,41 @@ test "reads stored mrw zip entry through inner reader" {
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 0, 10, 0, 30, 0, 30 }, plane.data[0..6]);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
+}
+
+test "reads stored naf zip entry through inner reader" {
+    var naf_data = [_]u8{0} ** (464 + 8);
+    @memcpy(naf_data[0..2], "II");
+    std.mem.writeInt(i32, naf_data[98..102], 1, .little);
+    @memcpy(naf_data[192..195], "NAF");
+    const entry_offset = 208;
+    std.mem.writeInt(i32, naf_data[entry_offset + 0 ..][0..4], 2, .little);
+    std.mem.writeInt(i32, naf_data[entry_offset + 4 ..][0..4], 1, .little);
+    std.mem.writeInt(i32, naf_data[entry_offset + 8 ..][0..4], 16, .little);
+    std.mem.writeInt(i32, naf_data[entry_offset + 12 ..][0..4], 1, .little);
+    std.mem.writeInt(i32, naf_data[entry_offset + 16 ..][0..4], 1, .little);
+    std.mem.writeInt(i32, naf_data[entry_offset + 20 ..][0..4], 2, .little);
+    @memcpy(naf_data[464..], &[_]u8{ 1, 0, 2, 0, 3, 0, 4, 0 });
+
+    try std.testing.expectEqual(Entry.Kind.naf, detectInner("image.NAF", &naf_data).?);
+    try std.testing.expectEqual(null, detectInner("image.bin", &naf_data));
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.naf", &naf_data);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 3, 0, 4, 0 }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
 }
 
 test "reads stored hamamatsu ndpi zip entry through extension-gated inner reader" {

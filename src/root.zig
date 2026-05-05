@@ -72,6 +72,7 @@ pub const mng = @import("readers/mng.zig");
 pub const netpbm = @import("readers/netpbm.zig");
 pub const mrw = @import("readers/mrw.zig");
 pub const mrc = @import("readers/mrc.zig");
+pub const naf = @import("readers/naf.zig");
 pub const ndpi = @import("readers/ndpi.zig");
 pub const ndpis = @import("readers/ndpis.zig");
 pub const nifti = @import("readers/nifti.zig");
@@ -789,6 +790,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "naf",
+        .name = "Hamamatsu Aquacosmos",
+        .extensions = &.{"naf"},
+        .can_read_pixels = true,
+    },
+    .{
         .id = "ndpi",
         .name = "Hamamatsu NDPI TIFF",
         .extensions = &.{"ndpi"},
@@ -1105,6 +1112,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (pqbin.matches(data)) return "pqbin";
     if (psd.matches(data)) return "psd";
     if (mrc.matches(data)) return "mrc";
+    if (naf.matches(data)) return "naf";
     if (ndpi.matches(data)) return "ndpi";
     if (nifti.matches(data)) return "nifti";
     if (nrrd.matches(data)) return "nrrd";
@@ -1229,6 +1237,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (pqbin.matches(data)) return pqbin.readMetadata(data);
     if (psd.matches(data)) return psd.readMetadata(data);
     if (mrc.matches(data)) return mrc.readMetadata(data);
+    if (naf.matches(data)) return naf.readMetadata(data);
     if (ndpi.matches(data)) return ndpi.readMetadata(data);
     if (nifti.matches(data)) return nifti.readMetadata(data);
     if (nrrd.matches(data)) return nrrd.readMetadata(data);
@@ -1389,6 +1398,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return psd.readPlane(allocator, data);
     }
     if (mrc.matches(data)) return mrc.readPlaneIndex(allocator, data, plane_index);
+    if (naf.matches(data)) return naf.readPlaneIndex(allocator, data, plane_index);
     if (ndpi.matches(data)) return ndpi.readPlaneIndex(allocator, data, plane_index);
     if (nifti.matches(data)) return nifti.readPlaneIndex(allocator, data, plane_index);
     if (nrrd.matches(data)) return nrrd.readPlaneIndex(allocator, data, plane_index);
@@ -1630,6 +1640,7 @@ test {
     _ = klb;
     _ = l2d;
     _ = mrw;
+    _ = naf;
     _ = ndpi;
     _ = leicascn;
     _ = nikon;

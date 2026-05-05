@@ -96,6 +96,7 @@
     "mng": ["generated-fixture"],
     "molecularimaging": ["needs-public-sample"],
     "mrw": ["needs-public-sample"],
+    "naf": ["needs-public-sample"],
     "netpbm": ["generated-fixture"],
     "nikon": ["needs-public-sample"],
     "ndpis": ["ome_images/Hamamatsu-NDPI/"],
