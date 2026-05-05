@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dng|lsm|oir|vsi|ets|nd2|czi|lif|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|dng|lsm|oir|vsi|ets|nd2|czi|lif|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|xml)$',
     [switch]$List
 )
 
@@ -103,6 +103,9 @@ function Get-RemoteLength {
         $head = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $Url
         $length = $head.Headers["Content-Length"]
         if ($length) {
+            if ($length -is [array]) {
+                $length = $length[0]
+            }
             return [long]$length
         }
     }
@@ -118,6 +121,8 @@ function Preferred-NamePattern {
     switch ($Format) {
         "amira" { return '\.(am|amiramesh|grey|hx|labels)$' }
         "ecat7" { return '\.v$' }
+        "gatan" { return '\.dm[34]$' }
+        "gatandm2" { return '\.dm2$' }
         "hamamatsuvms" { return '\.vms$' }
         "mrc" { return '\.(mrc|map)$' }
         "nifti" { return '\.nii$' }
