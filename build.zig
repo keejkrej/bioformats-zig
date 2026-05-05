@@ -17,13 +17,15 @@ pub fn build(b: *std.Build) void {
     if (openjpeg_root) |root| {
         const include_dir = b.pathJoin(&.{ root, "include", "openjpeg-2.5" });
         const lib_dir = b.pathJoin(&.{ root, "lib" });
-        const dll_path = b.pathJoin(&.{ root, "bin", "openjp2.dll" });
         mod.addIncludePath(.{ .cwd_relative = include_dir });
         mod.addLibraryPath(.{ .cwd_relative = lib_dir });
         mod.linkSystemLibrary("openjp2", .{});
         mod.linkSystemLibrary("c", .{});
         mod.addCSourceFile(.{ .file = b.path("src/openjpeg_bridge.c"), .flags = &.{} });
-        b.getInstallStep().dependOn(&b.addInstallBinFile(.{ .cwd_relative = dll_path }, "openjp2.dll").step);
+        if (target.result.os.tag == .windows) {
+            const dll_path = b.pathJoin(&.{ root, "bin", "openjp2.dll" });
+            b.getInstallStep().dependOn(&b.addInstallBinFile(.{ .cwd_relative = dll_path }, "openjp2.dll").step);
+        }
     }
 
     const exe = b.addExecutable(.{
@@ -84,8 +86,18 @@ fn findOpenJpegRoot(b: *std.Build) ?[]const u8 {
 
 fn isOpenJpegRoot(b: *std.Build, root: []const u8) bool {
     const header = b.pathJoin(&.{ root, "include", "openjpeg-2.5", "openjpeg.h" });
-    const lib = b.pathJoin(&.{ root, "lib", "openjp2.lib" });
     std.Io.Dir.accessAbsolute(b.graph.io, header, .{}) catch return false;
-    std.Io.Dir.accessAbsolute(b.graph.io, lib, .{}) catch return false;
-    return true;
+    const lib_dir = b.pathJoin(&.{ root, "lib" });
+    const candidates = [_][]const u8{
+        "openjp2.lib",
+        "libopenjp2.a",
+        "libopenjp2.so",
+        "libopenjp2.dylib",
+    };
+    for (candidates) |name| {
+        const lib = b.pathJoin(&.{ lib_dir, name });
+        std.Io.Dir.accessAbsolute(b.graph.io, lib, .{}) catch continue;
+        return true;
+    }
+    return false;
 }

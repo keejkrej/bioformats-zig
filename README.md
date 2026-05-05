@@ -28,11 +28,27 @@ zig build
 
 The executable is written to `zig-out/bin/bioformats-zig`.
 
+JPEG-2000 and JPX pixel reads use OpenJPEG when it is found at build time. The
+build checks `-Dopenjpeg-root=...`, then `VCPKG_ROOT`, then the local Windows
+vcpkg locations used during development. The root must contain
+`include/openjpeg-2.5/openjpeg.h` and an `openjp2` library under `lib/`.
+
+```sh
+zig build -Dopenjpeg-root=/path/to/openjpeg-or-vcpkg-installed-triplet
+```
+
+On Windows, `zig build` also copies `openjp2.dll` beside the executable when
+OpenJPEG is built from a vcpkg-style root. Use `formats` or
+`tools/audit-readers.ps1 -Strict` against the built binary to verify whether
+`jpeg2000` and `jpx` are advertised with `canReadPixels:true`.
+
 ## Reader Audit
 
 When the sibling `../bioformats` checkout is available, compare concrete Java
 reader classes against the Zig format catalog and list remaining metadata-only
-formats:
+formats. If `zig-out/bin/bioformats-zig.exe` exists, the audit uses the
+binary's runtime `formats` response so build-time optional dependencies are
+checked as embedders will see them:
 
 ```powershell
 ./tools/audit-readers.ps1
