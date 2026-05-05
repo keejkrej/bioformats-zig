@@ -66,6 +66,14 @@ zig build
 ./tools/smoke-jsonrpc.ps1
 ```
 
+When the sibling `../bioformats` checkout is available, a small upstream sample
+smoke test exercises OME-XML files from Bio-Formats' own schema fixtures through
+the same JSON-RPC binary:
+
+```powershell
+./tools/smoke-upstream-samples.ps1
+```
+
 ## Fixture Sources
 
 Public fixture discovery is tracked in `fixtures/`. The current catalog points
