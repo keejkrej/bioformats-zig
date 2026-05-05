@@ -103,10 +103,9 @@ pub fn readMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const 
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    _ = allocator;
-    _ = data;
-    _ = plane_index;
-    return error.UnsupportedVariant;
+    const metadata = try readMetadata(data);
+    const full = bio.Region.full(metadata);
+    return readDatabasePlane(allocator, data, plane_index, full);
 }
 
 pub fn readPlanePathRegionIndex(
@@ -116,12 +115,15 @@ pub fn readPlanePathRegionIndex(
     plane_index: u32,
     region: bio.Region,
 ) !bio.Plane {
-    _ = allocator;
-    _ = io;
-    _ = path;
-    _ = plane_index;
-    _ = region;
-    return error.UnsupportedVariant;
+    const db_path = if (hasExtension(path, "aqproj"))
+        try findProjectDatabase(allocator, io, path)
+    else
+        try allocator.dupe(u8, path);
+    defer allocator.free(db_path);
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(io, db_path, allocator, .limited(max_database_bytes));
+    defer allocator.free(data);
+    return readDatabasePlane(allocator, data, plane_index, region);
 }
 
 fn readDatabaseMetadata(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError!bio.Metadata {
@@ -171,6 +173,38 @@ fn readDatabaseMetadata(allocator: std.mem.Allocator, data: []const u8) bio.Read
         .little_endian = true,
         .plane_count = plane_count,
         .dimension_order = "XYCZT",
+    };
+}
+
+fn readDatabasePlane(allocator: std.mem.Allocator, data: []const u8, plane_index: u32, region: bio.Region) bio.ReaderError!bio.Plane {
+    const metadata = try readDatabaseMetadata(allocator, data);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
+    try region.validate(metadata);
+    if (metadata.samples_per_pixel != 1) return error.UnsupportedVariant;
+
+    const db = try SqliteDb.init(data);
+    const tables = try readTables(allocator, db);
+    defer allocator.free(tables);
+
+    const region_table = findTable(tables, "region") orelse return error.InvalidFormat;
+    const fovs_table = findTable(tables, "fovs") orelse return error.InvalidFormat;
+    const images_table = findTable(tables, "images") orelse return error.InvalidFormat;
+
+    var region_info = try readFirstRegion(allocator, db, region_table);
+    try applyFovBounds(allocator, db, fovs_table, region_table, &region_info);
+    if (region_info.overlap_x != 0 or region_info.overlap_y != 0) return error.UnsupportedVariant;
+
+    const zct = try planeToZct(metadata, plane_index);
+    const full_len = try planeByteCount(metadata);
+    const full = try allocator.alloc(u8, full_len);
+    errdefer allocator.free(full);
+    @memset(full, 0);
+    try copyRawTiles(allocator, db, images_table, region_info, metadata, zct, full);
+    if (region.isFull(metadata)) return .{ .metadata = metadata, .data = full };
+    defer allocator.free(full);
+    return .{
+        .metadata = metadata,
+        .data = try bio.cropPlane(allocator, .{ .metadata = metadata, .data = full }, region),
     };
 }
 
@@ -304,6 +338,80 @@ fn readChannelInfo(allocator: std.mem.Allocator, db: SqliteDb, table: Table) bio
 
     if (ids.items.len > std.math.maxInt(u16)) return error.UnsupportedVariant;
     return .{ .size_c = @max(1, @as(u16, @intCast(ids.items.len))), .save_16bit = save_16bit };
+}
+
+const Zct = struct {
+    z: u32,
+    c: u32,
+    t: u32,
+};
+
+fn planeToZct(metadata: bio.Metadata, plane_index: u32) bio.ReaderError!Zct {
+    const size_z: u32 = metadata.size_z;
+    const size_c: u32 = metadata.size_c;
+    const zc = std.math.mul(u32, size_z, size_c) catch return error.InvalidPlaneIndex;
+    return .{
+        .z = plane_index % size_z,
+        .c = (plane_index / size_z) % size_c,
+        .t = plane_index / zc,
+    };
+}
+
+fn copyRawTiles(
+    allocator: std.mem.Allocator,
+    db: SqliteDb,
+    table: Table,
+    region: RegionInfo,
+    metadata: bio.Metadata,
+    zct: Zct,
+    out: []u8,
+) bio.ReaderError!void {
+    const rows = try readTableRows(allocator, db, table.root_page);
+    defer rows.deinit(allocator);
+
+    const region_index = columnIndex(table.sql, "region") orelse return error.InvalidFormat;
+    const level_index = columnIndex(table.sql, "level") orelse return error.InvalidFormat;
+    const channel_index = columnIndex(table.sql, "channel") orelse return error.InvalidFormat;
+    const is_zstack_index = columnIndex(table.sql, "is_zstack") orelse return error.InvalidFormat;
+    const z_position_index = columnIndex(table.sql, "z_position") orelse return error.InvalidFormat;
+    const row_index = columnIndex(table.sql, "row") orelse return error.InvalidFormat;
+    const column_index = columnIndex(table.sql, "column") orelse return error.InvalidFormat;
+    const data_index = columnIndex(table.sql, "data") orelse return error.InvalidFormat;
+    const compression_index = columnIndex(table.sql, "compression") orelse return error.InvalidFormat;
+
+    const bpp = metadata.bytesPerPixel();
+    const tile_len = std.math.mul(usize, std.math.mul(usize, region.tile_size_x, region.tile_size_y) catch return error.UnsupportedVariant, bpp) catch return error.UnsupportedVariant;
+    const dst_row_bytes = std.math.mul(usize, metadata.width, bpp) catch return error.UnsupportedVariant;
+    const src_row_bytes = std.math.mul(usize, region.tile_size_x, bpp) catch return error.UnsupportedVariant;
+
+    for (rows.items) |row| {
+        if (maxIndex(&.{ region_index, level_index, channel_index, is_zstack_index, z_position_index, row_index, column_index, data_index, compression_index }) >= row.values.len) continue;
+        if ((valueInt(row.values[region_index]) orelse -1) != region.id) continue;
+        if ((valueInt(row.values[level_index]) orelse -1) != 0) continue;
+        if ((valueInt(row.values[channel_index]) orelse -1) != @as(i64, zct.c) + 1) continue;
+        const expected_zstack: i64 = if (zct.z > 0) 1 else 0;
+        if ((valueInt(row.values[is_zstack_index]) orelse -1) != expected_zstack) continue;
+        if ((valueInt(row.values[z_position_index]) orelse -1) != @as(i64, @intCast(zct.z))) continue;
+        const compression = valueInt(row.values[compression_index]) orelse return error.InvalidFormat;
+        if (compression != 0 and compression != 1) return error.UnsupportedVariant;
+        const tile = valueBlob(row.values[data_index]) orelse return error.InvalidFormat;
+        if (tile.len != tile_len) return error.UnsupportedVariant;
+        const tile_row = valueInt(row.values[row_index]) orelse return error.InvalidFormat;
+        const tile_col = valueInt(row.values[column_index]) orelse return error.InvalidFormat;
+        if (tile_row < region.min_row or tile_col < region.min_col) return error.InvalidFormat;
+        const dst_x_tiles: usize = @intCast(tile_col - region.min_col);
+        const dst_y_tiles: usize = @intCast(tile_row - region.min_row);
+        const dst_x = std.math.mul(usize, dst_x_tiles, region.tile_size_x) catch return error.UnsupportedVariant;
+        const dst_y = std.math.mul(usize, dst_y_tiles, region.tile_size_y) catch return error.UnsupportedVariant;
+        if (dst_x + region.tile_size_x > metadata.width or dst_y + region.tile_size_y > metadata.height) return error.UnsupportedVariant;
+
+        var y: usize = 0;
+        while (y < region.tile_size_y) : (y += 1) {
+            const src_offset = y * src_row_bytes;
+            const dst_offset = (dst_y + y) * dst_row_bytes + dst_x * bpp;
+            @memcpy(out[dst_offset..][0..src_row_bytes], tile[src_offset..][0..src_row_bytes]);
+        }
+    }
 }
 
 fn readTableRows(allocator: std.mem.Allocator, db: SqliteDb, root_page: u32) bio.ReaderError!Rows {
@@ -565,6 +673,24 @@ fn valueText(value: Value) ?[]const u8 {
     };
 }
 
+fn valueBlob(value: Value) ?[]const u8 {
+    return switch (value) {
+        .blob => |v| v,
+        else => null,
+    };
+}
+
+fn maxIndex(indexes: []const usize) usize {
+    var out: usize = 0;
+    for (indexes) |index| out = @max(out, index);
+    return out;
+}
+
+fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
+    const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
+    return std.math.mul(usize, pixels, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
+}
+
 fn containsInt(values: []const i64, needle: i64) bool {
     for (values) |value| {
         if (value == needle) return true;
@@ -638,6 +764,7 @@ fn containsAsciiIgnoreCase(haystack: []const u8, needle: []const u8) bool {
 const TestValue = union(enum) {
     integer: i64,
     text: []const u8,
+    blob: []const u8,
 };
 
 fn appendVarint(list: *std.ArrayList(u8), allocator: std.mem.Allocator, value: u64) !void {
@@ -680,6 +807,10 @@ fn testRecord(allocator: std.mem.Allocator, values: []const TestValue) ![]u8 {
                 try appendVarint(&serials, allocator, 13 + text.len * 2);
                 try body.appendSlice(allocator, text);
             },
+            .blob => |blob| {
+                try appendVarint(&serials, allocator, 12 + blob.len * 2);
+                try body.appendSlice(allocator, blob);
+            },
         }
     }
 
@@ -720,14 +851,14 @@ fn makeTestDatabase(allocator: std.mem.Allocator) ![]u8 {
     const schema = [_][]const u8{
         try testRecord(allocator, &.{ .{ .text = "table" }, .{ .text = "region" }, .{ .text = "region" }, .{ .integer = 2 }, .{ .text = "CREATE TABLE region (id INTEGER, data TEXT, is_timelapse INTEGER)" } }),
         try testRecord(allocator, &.{ .{ .text = "table" }, .{ .text = "fovs" }, .{ .text = "fovs" }, .{ .integer = 3 }, .{ .text = "CREATE TABLE fovs (region_id INTEGER, row INTEGER, column INTEGER)" } }),
-        try testRecord(allocator, &.{ .{ .text = "table" }, .{ .text = "images" }, .{ .text = "images" }, .{ .integer = 4 }, .{ .text = "CREATE TABLE images (region INTEGER, level INTEGER, is_zstack INTEGER, z_position INTEGER)" } }),
+        try testRecord(allocator, &.{ .{ .text = "table" }, .{ .text = "images" }, .{ .text = "images" }, .{ .integer = 4 }, .{ .text = "CREATE TABLE images (region INTEGER, level INTEGER, channel INTEGER, is_zstack INTEGER, z_position INTEGER, row INTEGER, column INTEGER, data BLOB, compression INTEGER)" } }),
         try testRecord(allocator, &.{ .{ .text = "table" }, .{ .text = "channels" }, .{ .text = "channels" }, .{ .integer = 5 }, .{ .text = "CREATE TABLE channels (id INTEGER, name TEXT, save_16bit INTEGER)" } }),
     };
     defer for (schema) |record| allocator.free(record);
     writeLeafPage(data, page_size, 1, &schema);
 
     const region_rows = [_][]const u8{
-        try testRecord(allocator, &.{ .{ .integer = 1 }, .{ .text = "{\"ImageWidth\":4,\"ImageHeight\":3,\"OverlapWidth\":1,\"OverlapHeight\":1,\"CacheStep\":2}" }, .{ .integer = 0 } }),
+        try testRecord(allocator, &.{ .{ .integer = 1 }, .{ .text = "{\"ImageWidth\":4,\"ImageHeight\":3,\"OverlapWidth\":0,\"OverlapHeight\":0,\"CacheStep\":2}" }, .{ .integer = 0 } }),
     };
     defer for (region_rows) |record| allocator.free(record);
     writeLeafPage(data, page_size, 2, &region_rows);
@@ -740,8 +871,9 @@ fn makeTestDatabase(allocator: std.mem.Allocator) ![]u8 {
     writeLeafPage(data, page_size, 3, &fov_rows);
 
     const image_rows = [_][]const u8{
-        try testRecord(allocator, &.{ .{ .integer = 1 }, .{ .integer = 0 }, .{ .integer = 0 }, .{ .integer = 0 } }),
-        try testRecord(allocator, &.{ .{ .integer = 1 }, .{ .integer = 0 }, .{ .integer = 1 }, .{ .integer = 1 } }),
+        try testRecord(allocator, &.{ .{ .integer = 1 }, .{ .integer = 0 }, .{ .integer = 1 }, .{ .integer = 0 }, .{ .integer = 0 }, .{ .integer = 0 }, .{ .integer = 0 }, .{ .blob = &.{ 1, 0, 2, 0, 3, 0, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0, 9, 0, 10, 0, 11, 0, 12, 0 } }, .{ .integer = 0 } }),
+        try testRecord(allocator, &.{ .{ .integer = 1 }, .{ .integer = 0 }, .{ .integer = 2 }, .{ .integer = 0 }, .{ .integer = 0 }, .{ .integer = 0 }, .{ .integer = 0 }, .{ .blob = &.{ 21, 0, 22, 0, 23, 0, 24, 0, 25, 0, 26, 0, 27, 0, 28, 0, 29, 0, 30, 0, 31, 0, 32, 0 } }, .{ .integer = 1 } }),
+        try testRecord(allocator, &.{ .{ .integer = 1 }, .{ .integer = 0 }, .{ .integer = 1 }, .{ .integer = 1 }, .{ .integer = 1 }, .{ .integer = 0 }, .{ .integer = 0 }, .{ .blob = &.{ 41, 0, 42, 0, 43, 0, 44, 0, 45, 0, 46, 0, 47, 0, 48, 0, 49, 0, 50, 0, 51, 0, 52, 0 } }, .{ .integer = 0 } }),
     };
     defer for (image_rows) |record| allocator.free(record);
     writeLeafPage(data, page_size, 4, &image_rows);
@@ -762,8 +894,8 @@ test "reads tissuefaxs metadata from sqlite tables" {
 
     const metadata = try readMetadata(data);
     try std.testing.expectEqualStrings("tissuefaxs", metadata.format);
-    try std.testing.expectEqual(@as(u32, 6), metadata.width);
-    try std.testing.expectEqual(@as(u32, 2), metadata.height);
+    try std.testing.expectEqual(@as(u32, 8), metadata.width);
+    try std.testing.expectEqual(@as(u32, 3), metadata.height);
     try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
     try std.testing.expectEqual(@as(u16, 2), metadata.size_z);
     try std.testing.expectEqual(@as(u32, 4), metadata.plane_count);
@@ -785,8 +917,21 @@ test "reads tissuefaxs metadata through aqproj slide lookup" {
 
     const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, project);
     try std.testing.expectEqualStrings("tissuefaxs", metadata.format);
-    try std.testing.expectEqual(@as(u32, 6), metadata.width);
+    try std.testing.expectEqual(@as(u32, 8), metadata.width);
     try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
+}
+
+test "reads tissuefaxs raw passthrough tile plane" {
+    const data = try makeTestDatabase(std.testing.allocator);
+    defer std.testing.allocator.free(data);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 2);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("tissuefaxs", plane.metadata.format);
+    try std.testing.expectEqual(bio.PixelType.uint16, plane.metadata.pixel_type);
+    try std.testing.expectEqual(@as(usize, 48), plane.data.len);
+    try std.testing.expectEqualSlices(u8, &.{ 21, 0, 22, 0, 23, 0, 24, 0 }, plane.data[0..8]);
+    try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0, 0, 0, 0, 0, 0 }, plane.data[8..16]);
 }
 
 test "rejects non-sqlite tissuefaxs data" {

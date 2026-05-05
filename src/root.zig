@@ -1311,9 +1311,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "tissuefaxs",
-        .name = "TissueFAXS SQLite metadata",
+        .name = "TissueFAXS SQLite raw tiles",
         .extensions = &.{ "aqproj", "tfcyto" },
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "topometrix",
