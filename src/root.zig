@@ -1179,9 +1179,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "pict",
-        .name = "Apple PICT metadata",
+        .name = "Apple PICT bitmap",
         .extensions = &.{ "pict", "pct" },
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "photoshoptiff",
