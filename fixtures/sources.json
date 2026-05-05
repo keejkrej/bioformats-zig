@@ -59,6 +59,7 @@
     "burleigh": ["needs-public-sample"],
     "canonraw": ["needs-public-sample"],
     "cellvoyager": ["needs-public-sample"],
+    "cellsens": ["ome_images/CellSens/"],
     "cellworx": ["ome_images/CellWorX/"],
     "dng": ["needs-public-sample"],
     "columbus": ["ome_images/PerkinElmer-Columbus/"],
