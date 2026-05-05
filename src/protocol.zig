@@ -504,6 +504,9 @@ pub const Server = struct {
         if (bio.bdpathway.isPath(path)) {
             if (bio.bdpathway.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.metaxpress.isPath(path)) {
+            if (bio.metaxpress.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.fake.isPath(path)) {
             if (bio.fake.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -575,6 +578,9 @@ pub const Server = struct {
         }
         if (bio.bdpathway.isPath(path)) {
             if (bio.bdpathway.readMetadataPath(self.allocator, self.io, path)) |_| return "bdpathway" else |_| {}
+        }
+        if (bio.metaxpress.isPath(path)) {
+            if (bio.metaxpress.readMetadataPath(self.allocator, self.io, path)) |_| return "metaxpress" else |_| {}
         }
         if (bio.fake.isPath(path)) {
             if (bio.fake.readMetadataPath(self.allocator, self.io, path)) |_| return "fake" else |_| {}
@@ -671,6 +677,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "bdpathway")) {
             return bio.bdpathway.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "metaxpress")) {
+            return bio.metaxpress.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "fake")) {
             return bio.fake.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -726,6 +735,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "jpk") or
             std.mem.eql(u8, format, "l2d") or
             std.mem.eql(u8, format, "bdpathway") or
+            std.mem.eql(u8, format, "metaxpress") or
             std.mem.eql(u8, format, "fake") or
             std.mem.eql(u8, format, "visitech") or
             std.mem.eql(u8, format, "bruker") or

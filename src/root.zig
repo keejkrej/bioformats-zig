@@ -64,6 +64,7 @@ pub const leicascn = @import("readers/leicascn.zig");
 pub const liflim = @import("readers/liflim.zig");
 pub const lim = @import("readers/lim.zig");
 pub const metamorph = @import("readers/metamorph.zig");
+pub const metaxpress = @import("readers/metaxpress.zig");
 pub const mias = @import("readers/mias.zig");
 pub const microct = @import("readers/microct.zig");
 pub const mikroscan = @import("readers/mikroscan.zig");
@@ -668,6 +669,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "metamorph",
         .name = "Metamorph STK/TIFF",
         .extensions = &.{ "stk", "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "metaxpress",
+        .name = "MetaXpress TIFF",
+        .extensions = &.{ "htd", "tif", "tiff" },
         .can_read_pixels = true,
     },
     .{
@@ -1642,6 +1649,7 @@ test {
     _ = leo;
     _ = liflim;
     _ = metamorph;
+    _ = metaxpress;
     _ = mias;
     _ = microct;
     _ = mikroscan;

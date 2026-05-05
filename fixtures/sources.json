@@ -91,6 +91,7 @@
     "liflim": ["needs-public-sample"],
     "lim": ["needs-public-sample"],
     "metamorph": ["ome_images/Metamorph/"],
+    "metaxpress": ["ome_images/MetaXpress/"],
     "mias": ["needs-public-sample"],
     "microct": ["needs-public-sample"],
     "mikroscan": ["needs-public-sample"],
