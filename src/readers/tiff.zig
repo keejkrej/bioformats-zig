@@ -573,17 +573,11 @@ fn validateReadable(header: Header) bio.ReaderError!void {
     if (header.photometric == 0 and (first_sample_format != 1 or header.samples_per_pixel != 1)) return error.UnsupportedVariant;
     if (header.photometric == 2 and header.samples_per_pixel != 3 and header.samples_per_pixel != 4) return error.UnsupportedVariant;
     if (header.photometric != 2 and header.samples_per_pixel == 4) return error.UnsupportedVariant;
-    if (header.samples_per_pixel == 4 and !hasAlphaExtraSample(header)) return error.UnsupportedVariant;
     if (header.photometric == 3) {
         if (first_bits != 1 and first_bits != 2 and first_bits != 4 and first_bits != 8) return error.UnsupportedVariant;
         const color_count = std.math.mul(usize, 3, @as(usize, 1) << @intCast(first_bits)) catch return error.UnsupportedVariant;
         if (first_sample_format != 1 or header.samples_per_pixel != 1 or header.color_map_count != color_count) return error.UnsupportedVariant;
     }
-}
-
-fn hasAlphaExtraSample(header: Header) bool {
-    if (header.extra_samples_count != 1) return false;
-    return header.extra_samples[0] == 1 or header.extra_samples[0] == 2;
 }
 
 fn pixelType(header: Header) bio.PixelType {
@@ -2834,7 +2828,7 @@ test "reads chunky 16-bit rgba tiff strip" {
     try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x12, 0x78, 0x56, 0xbc, 0x9a, 0xff, 0xff }, plane.data);
 }
 
-test "rejects four-sample rgb tiff without alpha extra sample" {
+test "reads four-sample rgb tiff without alpha extra sample as rgba" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
 
@@ -2853,7 +2847,47 @@ test "rejects four-sample rgb tiff without alpha extra sample" {
     try appendU16Le(&data, 8);
     try appendU8s(&data, &.{ 10, 20, 30, 40, 11, 21, 31, 41 });
 
-    try std.testing.expectError(error.UnsupportedVariant, readMetadata(data.items));
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(bio.PixelType.rgba8, plane.metadata.pixel_type);
+    try std.testing.expectEqual(@as(u16, 4), plane.metadata.samples_per_pixel);
+    try std.testing.expectEqualSlices(u8, &.{ 10, 20, 30, 40, 11, 21, 31, 41 }, plane.data);
+}
+
+test "reads planar four-sample rgb tiff without alpha extra sample as rgba" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    try appendU8s(&data, "II");
+    try appendU16Le(&data, 42);
+    try appendU32Le(&data, 8);
+
+    const ifd_size = 2 + 10 * 12 + 4;
+    const bits_offset = 8 + ifd_size;
+    const strip_offsets_array = bits_offset + 8;
+    const strip_counts_array = strip_offsets_array + 4 * 4;
+    const pixel_offset = strip_counts_array + 4 * 4;
+
+    try appendPlanarRgbaNoExtraIfd(&data, bits_offset, strip_offsets_array, strip_counts_array);
+    try appendU16Le(&data, 8);
+    try appendU16Le(&data, 8);
+    try appendU16Le(&data, 8);
+    try appendU16Le(&data, 8);
+    try appendU32Le(&data, pixel_offset + 0);
+    try appendU32Le(&data, pixel_offset + 2);
+    try appendU32Le(&data, pixel_offset + 4);
+    try appendU32Le(&data, pixel_offset + 6);
+    try appendU32Le(&data, 2);
+    try appendU32Le(&data, 2);
+    try appendU32Le(&data, 2);
+    try appendU32Le(&data, 2);
+    try appendU8s(&data, &.{ 10, 11, 20, 21, 30, 31, 255, 128 });
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(bio.PixelType.rgba8, plane.metadata.pixel_type);
+    try std.testing.expectEqual(@as(u16, 4), plane.metadata.samples_per_pixel);
+    try std.testing.expectEqualSlices(u8, &.{ 10, 20, 30, 255, 11, 21, 31, 128 }, plane.data);
 }
 
 test "reads baseline little-endian bigtiff grayscale strip" {
@@ -3194,6 +3228,26 @@ fn appendPlanarRgbaIfd(
     try appendEntry(list, 279, 4, 4, @intCast(strip_counts_array));
     try appendEntry(list, 284, 3, 1, 2);
     try appendEntry(list, 338, 3, 1, 2);
+    try appendU32Le(list, 0);
+}
+
+fn appendPlanarRgbaNoExtraIfd(
+    list: *std.ArrayList(u8),
+    bits_offset: usize,
+    strip_offsets_array: usize,
+    strip_counts_array: usize,
+) !void {
+    try appendU16Le(list, 10);
+    try appendEntry(list, 256, 4, 1, 2);
+    try appendEntry(list, 257, 4, 1, 1);
+    try appendEntry(list, 258, 3, 4, @intCast(bits_offset));
+    try appendEntry(list, 259, 3, 1, 1);
+    try appendEntry(list, 262, 3, 1, 2);
+    try appendEntry(list, 273, 4, 4, @intCast(strip_offsets_array));
+    try appendEntry(list, 277, 3, 1, 4);
+    try appendEntry(list, 278, 4, 1, 1);
+    try appendEntry(list, 279, 4, 4, @intCast(strip_counts_array));
+    try appendEntry(list, 284, 3, 1, 2);
     try appendU32Le(list, 0);
 }
 
