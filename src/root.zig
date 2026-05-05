@@ -52,6 +52,7 @@ pub const imaris = @import("readers/imaris.zig");
 pub const imaristiff = @import("readers/imaristiff.zig");
 pub const imod = @import("readers/imod.zig");
 pub const improvisiontiff = @import("readers/improvisiontiff.zig");
+pub const imspector = @import("readers/imspector.zig");
 pub const inr = @import("readers/inr.zig");
 pub const inveon = @import("readers/inveon.zig");
 pub const ionpathmibi = @import("readers/ionpathmibi.zig");
@@ -614,6 +615,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "improvisiontiff",
         .name = "Improvision TIFF",
         .extensions = &.{ "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "imspector",
+        .name = "LaVision Imspector MSR",
+        .extensions = &.{"msr"},
         .can_read_pixels = true,
     },
     .{
@@ -1240,6 +1247,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (hitachi.matches(data)) return "hitachi";
     if (i2i.matches(data)) return "i2i";
     if (ics.matches(data)) return "ics";
+    if (imspector.matches(data)) return "imspector";
     if (inr.matches(data)) return "inr";
     if (inveon.matches(data)) return "inveon";
     if (iplab.matches(data)) return "iplab";
@@ -1376,6 +1384,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (hitachi.matches(data)) return hitachi.readMetadata(data);
     if (i2i.matches(data)) return i2i.readMetadata(data);
     if (ics.matches(data)) return ics.readMetadata(data);
+    if (imspector.matches(data)) return imspector.readMetadata(data);
     if (inr.matches(data)) return inr.readMetadata(data);
     if (inveon.matches(data)) return inveon.readMetadata(data);
     if (iplab.matches(data)) return iplab.readMetadata(data);
@@ -1536,6 +1545,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (hitachi.matches(data)) return hitachi.readPlaneIndex(allocator, data, plane_index);
     if (i2i.matches(data)) return i2i.readPlaneIndex(allocator, data, plane_index);
     if (ics.matches(data)) return ics.readPlaneIndex(allocator, data, plane_index);
+    if (imspector.matches(data)) return imspector.readPlaneIndex(allocator, data, plane_index);
     if (inr.matches(data)) return inr.readPlaneIndex(allocator, data, plane_index);
     if (inveon.matches(data)) return inveon.readPlaneIndex(allocator, data, plane_index);
     if (iplab.matches(data)) return iplab.readPlaneIndex(allocator, data, plane_index);
@@ -1802,6 +1812,7 @@ test {
     _ = imaris;
     _ = imod;
     _ = improvisiontiff;
+    _ = imspector;
     _ = inveon;
     _ = ionpathmibi;
     _ = ivision;

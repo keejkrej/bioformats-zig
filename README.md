@@ -201,6 +201,7 @@ plane, which can differ from logical OME `sizeC`.
 - Bitplane Imaris 3 TIFF `.ims` files delegated through the TIFF pixel path and reported as `imaristiff`; thumbnail/stack IFD reshaping, channel metadata, dates, and wavelengths are not yet modeled.
 - IMOD `.mod` model files identified by `IMODV1.2`, exposing blank RGB planes with parsed model dimensions to match Bio-Formats' disabled point-rendering path; ROI/model object metadata and contour drawing are not yet surfaced.
 - Improvision TIFF files identified by Improvision image descriptions, decoded through the TIFF pixel path; multi-file grouping and Improvision axis metadata interpretation are not yet handled.
+- LaVision Imspector `.msr` files with first-block uncompressed little-endian uint16 Z/T planes; FLIM lifetime metadata, multi-block PMT/channel grouping, mosaic tiles, and extended acquisition metadata are not yet surfaced.
 - INR raw fixed-size images with 8/16/32-bit signed or unsigned integer samples; `ZDIM` and `VDIM` are exposed as plane axes.
 - Ionpath MIBI TIFF files identified by IonpathMIBI software tags, decoded through the TIFF pixel path; SIMS series grouping and channel metadata parsing are not yet handled.
 - IPLab files with 8/16/32-bit integer and 32/64-bit floating-point raw planes; Z/T images are exposed as planes.

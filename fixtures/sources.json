@@ -83,6 +83,7 @@
     "imaristiff": ["ome_images/Imaris-IMS/"],
     "imod": ["needs-public-sample"],
     "improvisiontiff": ["needs-public-sample"],
+    "imspector": ["ome_images/Imspector/"],
     "inr": ["needs-public-sample"],
     "inveon": ["needs-public-sample"],
     "ionpathmibi": ["needs-public-sample"],
