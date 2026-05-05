@@ -33,7 +33,7 @@
     "klb": ["ome_images/KLB/"],
     "leo": ["ome_images/LEO/"],
     "leicascn": ["ome_images/Leica-SCN/"],
-    "mrc": ["ome_images/MRC/"],
+    "mrc": ["ome_images/MRC/EMDB/EMD-2225/", "ome_images/MRC/"],
     "ndpi": ["ome_images/Hamamatsu-NDPI/"],
     "nifti": ["ome_images/NIfTI/"],
     "nrrd": ["ome_images/NRRD/"],
