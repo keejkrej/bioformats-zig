@@ -24,6 +24,11 @@ because many microscopy datasets are large or have redistribution limits.
    ignored by the user, then run the JSON-RPC binary with `metadata`, `probe`,
    and a small `readPlane` region.
 
+`implemented_format_sources` tracks formats currently advertised by
+`src/root.zig`. `pending_reader_sources` tracks fixture leads for concrete
+Bio-Formats Java readers that still need Zig implementations; do not count
+those as supported until a reader is wired into `src/root.zig`.
+
 Example smoke request:
 
 ```json

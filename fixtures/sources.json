@@ -192,5 +192,11 @@
     "zeissxrm": ["needs-public-sample"],
     "zeisszvi": ["needs-public-sample", "bioformats-docs/zeiss-zvi-says-many-datasets"],
     "zip": ["generated-fixture"]
+  },
+  "pending_reader_sources": {
+    "cellh5": ["ome_images/CellH5/samples/reduced/", "bioformats-docs/cellh5-public-sample-images"],
+    "imarishdf": ["ome_images/Imaris-IMS/", "bioformats-docs/bitplane-imaris-hdf-public-sample-images"],
+    "tissuefaxs": ["needs-public-sample", "bioformats-docs/tissuegnostics-tfcyto-several-internal-datasets"],
+    "volocity": ["vendor-downloads-unverified", "bioformats-docs/volocity-perkinelmer-downloads", "bioformats-docs/volocity-many-internal-datasets"]
   }
 }
