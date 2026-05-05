@@ -124,6 +124,7 @@ pub const ubm = @import("readers/ubm.zig");
 pub const unisoku = @import("readers/unisoku.zig");
 pub const varianfdf = @import("readers/varianfdf.zig");
 pub const vectra = @import("readers/vectra.zig");
+pub const veeco = @import("readers/veeco.zig");
 pub const ventana = @import("readers/ventana.zig");
 pub const visitech = @import("readers/visitech.zig");
 pub const vgsam = @import("readers/vgsam.zig");
@@ -1026,6 +1027,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "veeco",
+        .name = "Veeco AFM NetCDF",
+        .extensions = &.{"hdf"},
+        .can_read_pixels = true,
+    },
+    .{
         .id = "ventana",
         .name = "Ventana BIF TIFF",
         .extensions = &.{"bif"},
@@ -1193,6 +1200,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (tcs.matches(data)) return "tcs";
     if (trestle.matches(data)) return "trestle";
     if (vectra.matches(data)) return "vectra";
+    if (veeco.matches(data)) return "veeco";
     if (ventana.matches(data)) return "ventana";
     if (ometiff.matches(data)) return "ometiff";
     if (zeisslsm.matches(data)) return "zeisslsm";
@@ -1319,6 +1327,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (tcs.matches(data)) return tcs.readMetadata(data);
     if (trestle.matches(data)) return trestle.readMetadata(data);
     if (vectra.matches(data)) return vectra.readMetadata(data);
+    if (veeco.matches(data)) return veeco.readMetadata(data);
     if (ventana.matches(data)) return ventana.readMetadata(data);
     if (ometiff.matches(data)) return ometiff.readMetadata(data);
     if (zeisslsm.matches(data)) return zeisslsm.readMetadata(data);
@@ -1511,6 +1520,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (tcs.matches(data)) return tcs.readPlaneIndex(allocator, data, plane_index);
     if (trestle.matches(data)) return trestle.readPlaneIndex(allocator, data, plane_index);
     if (vectra.matches(data)) return vectra.readPlaneIndex(allocator, data, plane_index);
+    if (veeco.matches(data)) return veeco.readPlaneIndex(allocator, data, plane_index);
     if (ventana.matches(data)) return ventana.readPlaneIndex(allocator, data, plane_index);
     if (ometiff.matches(data)) return ometiff.readPlaneIndex(allocator, data, plane_index);
     if (zeisslsm.matches(data)) return zeisslsm.readPlaneIndex(allocator, data, plane_index);
@@ -1690,6 +1700,7 @@ test {
     _ = trestle;
     _ = unisoku;
     _ = vectra;
+    _ = veeco;
     _ = ventana;
     _ = visitech;
     _ = volocityclipping;

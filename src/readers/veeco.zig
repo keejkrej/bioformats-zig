@@ -7,13 +7,13 @@ const nc_dimension: u32 = 10;
 const nc_variable: u32 = 11;
 const nc_attribute: u32 = 12;
 
-const NcType = enum(u32) {
-    byte = 1,
-    char = 2,
-    short = 3,
-    int = 4,
-    float = 5,
-    double = 6,
+const NcType = enum {
+    byte,
+    char,
+    short,
+    int,
+    float,
+    double,
 };
 
 const Dim = struct {
@@ -24,41 +24,35 @@ const Dim = struct {
 const Header = struct {
     width: u32,
     height: u32,
-    size_z: u16,
-    size_t: u16,
     pixel_type: bio.PixelType,
     pixel_offset: usize,
-    plane_count: u32,
 };
 
 pub fn matches(data: []const u8) bool {
     const header = parseHeader(data) catch return false;
     const plane_len = planeByteCount(.{
-        .format = "minc",
+        .format = "veeco",
         .width = header.width,
         .height = header.height,
         .size_c = 1,
         .samples_per_pixel = 1,
         .pixel_type = header.pixel_type,
     }) catch return false;
-    const pixel_bytes = std.math.mul(usize, plane_len, header.plane_count) catch return false;
-    return data.len >= header.pixel_offset and data.len - header.pixel_offset >= pixel_bytes;
+    return data.len >= header.pixel_offset and data.len - header.pixel_offset >= plane_len;
 }
 
 pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
     const header = try parseHeader(data);
     return .{
-        .format = "minc",
+        .format = "veeco",
         .width = header.width,
         .height = header.height,
         .size_c = 1,
         .samples_per_pixel = 1,
-        .size_z = header.size_z,
-        .size_t = header.size_t,
         .pixel_type = header.pixel_type,
         .little_endian = false,
-        .plane_count = header.plane_count,
-        .dimension_order = "XYZCT",
+        .plane_count = 1,
+        .dimension_order = "XYCZT",
     };
 }
 
@@ -67,12 +61,11 @@ pub fn readPlane(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
+    if (plane_index != 0) return error.InvalidPlaneIndex;
     const metadata = try readMetadata(data);
     const header = try parseHeader(data);
-    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
     const plane_len = try planeByteCount(metadata);
-    const offset = std.math.add(usize, header.pixel_offset, std.math.mul(usize, plane_len, plane_index) catch return error.UnsupportedVariant) catch return error.UnsupportedVariant;
-    if (offset > data.len or data.len - offset < plane_len) return error.TruncatedData;
+    if (data.len < header.pixel_offset or data.len - header.pixel_offset < plane_len) return error.TruncatedData;
 
     const out = try allocator.alloc(u8, plane_len);
     errdefer allocator.free(out);
@@ -80,7 +73,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     var row: usize = 0;
     while (row < metadata.height) : (row += 1) {
         const src_row = @as(usize, metadata.height) - row - 1;
-        const src_offset = offset + src_row * row_bytes;
+        const src_offset = header.pixel_offset + src_row * row_bytes;
         const dst_offset = row * row_bytes;
         @memcpy(out[dst_offset..][0..row_bytes], data[src_offset..][0..row_bytes]);
     }
@@ -108,68 +101,39 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (var_tag == 0 and var_count == 0) return error.InvalidFormat;
     if (var_tag != nc_variable) return error.InvalidFormat;
 
-    var image: ?Header = null;
     var i: u32 = 0;
     while (i < var_count) : (i += 1) {
-        const var_name = try cursor.readName();
+        _ = try cursor.readName();
         const rank = try cursor.readU32();
-        if (rank == 0 or rank > 8) return error.UnsupportedVariant;
+        if (rank > 8) return error.UnsupportedVariant;
         var dim_ids: [8]u32 = undefined;
         var dim_i: u32 = 0;
         while (dim_i < rank) : (dim_i += 1) {
             dim_ids[dim_i] = try cursor.readU32();
             if (dim_ids[dim_i] >= dim_count) return error.InvalidFormat;
         }
-
-        const signed = try cursor.readVarAttrs();
-        const raw_type = try cursor.readU32();
-        const nc_type = parseNcType(raw_type) catch return error.UnsupportedVariant;
+        try cursor.skipAttrs();
+        const nc_type = try parseNcType(try cursor.readU32());
         _ = try cursor.readU32();
         const begin = try cursor.readBegin();
 
-        if (std.mem.eql(u8, var_name, "image")) {
-            image = try headerFromVariable(dims[0..dim_count], dim_ids[0..rank], nc_type, signed, begin);
+        if (rank == 2 and (nc_type == .byte or nc_type == .short)) {
+            const height = dims[dim_ids[0]].len;
+            const width = dims[dim_ids[1]].len;
+            if (width == 0 or height == 0) return error.InvalidFormat;
+            return .{
+                .width = width,
+                .height = height,
+                .pixel_type = switch (nc_type) {
+                    .byte => .int8,
+                    .short => .int16,
+                    else => unreachable,
+                },
+                .pixel_offset = begin,
+            };
         }
     }
-
-    return image orelse error.InvalidFormat;
-}
-
-fn headerFromVariable(dims: []const Dim, dim_ids: []const u32, nc_type: NcType, signed: bool, begin: usize) bio.ReaderError!Header {
-    if (dim_ids.len < 2) return error.InvalidFormat;
-    const width_dim = dims[dim_ids[dim_ids.len - 1]];
-    const height_dim = dims[dim_ids[dim_ids.len - 2]];
-    if (width_dim.len == 0 or height_dim.len == 0) return error.InvalidFormat;
-    if (!std.mem.eql(u8, width_dim.name, "xspace") or !std.mem.eql(u8, height_dim.name, "yspace")) return error.InvalidFormat;
-
-    var plane_count: u32 = 1;
-    var i: usize = 0;
-    while (i + 2 < dim_ids.len) : (i += 1) {
-        plane_count = std.math.mul(u32, plane_count, dims[dim_ids[i]].len) catch return error.UnsupportedVariant;
-    }
-    if (plane_count == 0) return error.InvalidFormat;
-
-    const size_z: u16 = @intCast(@min(plane_count, std.math.maxInt(u16)));
-    return .{
-        .width = width_dim.len,
-        .height = height_dim.len,
-        .size_z = size_z,
-        .size_t = 1,
-        .pixel_type = try pixelType(nc_type, signed),
-        .pixel_offset = begin,
-        .plane_count = plane_count,
-    };
-}
-
-fn pixelType(nc_type: NcType, signed: bool) bio.ReaderError!bio.PixelType {
-    return switch (nc_type) {
-        .byte => if (signed) .int8 else .uint8,
-        .short => if (signed) .int16 else .uint16,
-        .int => if (signed) .int32 else .uint32,
-        .float => .float32,
-        .double => .float64,
-        .char => error.UnsupportedVariant,
-    };
+    return error.UnsupportedVariant;
 }
 
 const Cursor = struct {
@@ -195,7 +159,6 @@ const Cursor = struct {
 
     fn readName(self: *Cursor) bio.ReaderError![]const u8 {
         const len = try self.readU32();
-        if (len > std.math.maxInt(usize)) return error.UnsupportedVariant;
         const name_len: usize = @intCast(len);
         if (self.pos > self.data.len or self.data.len - self.pos < name_len) return error.TruncatedData;
         const name = self.data[self.pos..][0..name_len];
@@ -220,48 +183,22 @@ const Cursor = struct {
     }
 
     fn skipAttrs(self: *Cursor) bio.ReaderError!void {
-        _ = try self.readAttrs(false);
-    }
-
-    fn readVarAttrs(self: *Cursor) bio.ReaderError!bool {
-        return self.readAttrs(true);
-    }
-
-    fn readAttrs(self: *Cursor, capture_signtype: bool) bio.ReaderError!bool {
         const tag = try self.readU32();
         const count = try self.readU32();
-        if (tag == 0 and count == 0) return false;
+        if (tag == 0 and count == 0) return;
         if (tag != nc_attribute) return error.InvalidFormat;
-
-        var signed = false;
         var i: u32 = 0;
         while (i < count) : (i += 1) {
-            const name = try self.readName();
-            const raw_type = try self.readU32();
-            const nc_type = parseNcType(raw_type) catch return error.UnsupportedVariant;
+            _ = try self.readName();
+            const nc_type = try parseNcType(try self.readU32());
             const len = try self.readU32();
-            const byte_len = attrByteLen(nc_type, len) catch return error.UnsupportedVariant;
+            const byte_len = try attrByteLen(nc_type, len);
             if (self.pos > self.data.len or self.data.len - self.pos < byte_len) return error.TruncatedData;
-            if (capture_signtype and nc_type == .char and std.mem.eql(u8, name, "signtype")) {
-                const value = std.mem.trim(u8, self.data[self.pos..][0..byte_len], " \t\r\n\x00");
-                signed = std.mem.startsWith(u8, value, "signed");
-            }
             self.pos += align4(byte_len);
             if (self.pos > self.data.len) return error.TruncatedData;
         }
-        return signed;
     }
 };
-
-fn attrByteLen(nc_type: NcType, count: u32) bio.ReaderError!usize {
-    const sample_bytes: usize = switch (nc_type) {
-        .byte, .char => 1,
-        .short => 2,
-        .int, .float => 4,
-        .double => 8,
-    };
-    return std.math.mul(usize, @intCast(count), sample_bytes) catch return error.UnsupportedVariant;
-}
 
 fn parseNcType(raw_type: u32) bio.ReaderError!NcType {
     return switch (raw_type) {
@@ -273,6 +210,16 @@ fn parseNcType(raw_type: u32) bio.ReaderError!NcType {
         6 => .double,
         else => error.UnsupportedVariant,
     };
+}
+
+fn attrByteLen(nc_type: NcType, count: u32) bio.ReaderError!usize {
+    const sample_bytes: usize = switch (nc_type) {
+        .byte, .char => 1,
+        .short => 2,
+        .int, .float => 4,
+        .double => 8,
+    };
+    return std.math.mul(usize, @intCast(count), sample_bytes) catch return error.UnsupportedVariant;
 }
 
 fn align4(value: usize) usize {
@@ -296,40 +243,35 @@ fn appendName(list: *std.ArrayList(u8), name: []const u8) !void {
     try list.appendNTimes(std.testing.allocator, 0, align4(name.len) - name.len);
 }
 
-fn appendAttrString(list: *std.ArrayList(u8), name: []const u8, value: []const u8) !void {
-    try appendName(list, name);
-    try appendU32(list, @intFromEnum(NcType.char));
-    try appendU32(list, @intCast(value.len));
-    try list.appendSlice(std.testing.allocator, value);
-    try list.appendNTimes(std.testing.allocator, 0, align4(value.len) - value.len);
-}
-
-fn appendClassicMinc(list: *std.ArrayList(u8), pixel_type: NcType, signtype: []const u8, width: u32, height: u32, planes: u32) !usize {
+fn appendClassicNetcdf(list: *std.ArrayList(u8), nc_type: NcType, width: u32, height: u32) !usize {
     try list.appendSlice(std.testing.allocator, magic_cdf1);
     try appendU32(list, 0);
     try appendU32(list, nc_dimension);
-    try appendU32(list, 3);
-    try appendName(list, "zspace");
-    try appendU32(list, planes);
-    try appendName(list, "yspace");
+    try appendU32(list, 2);
+    try appendName(list, "y");
     try appendU32(list, height);
-    try appendName(list, "xspace");
+    try appendName(list, "x");
     try appendU32(list, width);
     try appendU32(list, 0);
     try appendU32(list, 0);
     try appendU32(list, nc_variable);
     try appendU32(list, 1);
     try appendName(list, "image");
-    try appendU32(list, 3);
+    try appendU32(list, 2);
     try appendU32(list, 0);
     try appendU32(list, 1);
-    try appendU32(list, 2);
-    try appendU32(list, nc_attribute);
-    try appendU32(list, 1);
-    try appendAttrString(list, "signtype", signtype);
-    try appendU32(list, @intFromEnum(pixel_type));
-    const plane_bytes = width * height * try attrByteLen(pixel_type, 1);
-    try appendU32(list, @intCast(plane_bytes * planes));
+    try appendU32(list, 0);
+    try appendU32(list, 0);
+    try appendU32(list, switch (nc_type) {
+        .byte => 1,
+        .char => 2,
+        .short => 3,
+        .int => 4,
+        .float => 5,
+        .double => 6,
+    });
+    const plane_bytes = try attrByteLen(nc_type, width * height);
+    try appendU32(list, @intCast(plane_bytes));
     const begin_pos = list.items.len;
     try appendU32(list, 0);
     const pixel_offset = align4(list.items.len);
@@ -338,51 +280,42 @@ fn appendClassicMinc(list: *std.ArrayList(u8), pixel_type: NcType, signtype: []c
     return pixel_offset;
 }
 
-test "reads minc v1 uint16 z planes with row normalization" {
+test "reads veeco byte netcdf image with row normalization" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
-    _ = try appendClassicMinc(&data, .short, "unsigned", 2, 2, 2);
-    try data.appendSlice(std.testing.allocator, &.{
-        0, 1, 0, 2, 0, 3, 0, 4,
-        0, 5, 0, 6, 0, 7, 0, 8,
-    });
+    _ = try appendClassicNetcdf(&data, .byte, 2, 2);
+    try data.appendSlice(std.testing.allocator, &.{ 1, 2, 3, 4 });
 
     const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("veeco", metadata.format);
     try std.testing.expectEqual(@as(u32, 2), metadata.width);
     try std.testing.expectEqual(@as(u32, 2), metadata.height);
-    try std.testing.expectEqual(@as(u16, 2), metadata.size_z);
-    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
-    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
-    try std.testing.expect(!metadata.little_endian);
-
-    const plane = try readPlaneIndex(std.testing.allocator, data.items, 0);
-    defer std.testing.allocator.free(plane.data);
-    try std.testing.expectEqualSlices(u8, &.{ 0, 3, 0, 4, 0, 1, 0, 2 }, plane.data);
-
-    const second = try readPlaneIndex(std.testing.allocator, data.items, 1);
-    defer std.testing.allocator.free(second.data);
-    try std.testing.expectEqualSlices(u8, &.{ 0, 7, 0, 8, 0, 5, 0, 6 }, second.data);
-}
-
-test "reads minc signed byte pixels" {
-    var data: std.ArrayList(u8) = .empty;
-    defer data.deinit(std.testing.allocator);
-    _ = try appendClassicMinc(&data, .byte, "signed__", 2, 1, 1);
-    try data.appendSlice(std.testing.allocator, &.{ 0xff, 0x7f });
-
-    const metadata = try readMetadata(data.items);
     try std.testing.expectEqual(bio.PixelType.int8, metadata.pixel_type);
 
     const plane = try readPlane(std.testing.allocator, data.items);
     defer std.testing.allocator.free(plane.data);
-    try std.testing.expectEqualSlices(u8, &.{ 0xff, 0x7f }, plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 3, 4, 1, 2 }, plane.data);
 }
 
-test "rejects truncated minc pixels" {
+test "reads veeco short netcdf image" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
-    _ = try appendClassicMinc(&data, .short, "unsigned", 2, 1, 1);
-    try data.append(std.testing.allocator, 0);
+    _ = try appendClassicNetcdf(&data, .short, 2, 1);
+    try data.appendSlice(std.testing.allocator, &.{ 0, 1, 0, 2 });
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(bio.PixelType.int16, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 0, 1, 0, 2 }, plane.data);
+}
+
+test "rejects truncated veeco pixels" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    _ = try appendClassicNetcdf(&data, .byte, 2, 1);
+    try data.append(std.testing.allocator, 1);
 
     try std.testing.expect(!matches(data.items));
     try std.testing.expectError(error.TruncatedData, readPlane(std.testing.allocator, data.items));

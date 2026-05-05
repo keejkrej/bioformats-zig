@@ -138,6 +138,7 @@
     "unisoku": ["needs-public-sample"],
     "varianfdf": ["needs-public-sample"],
     "vgsam": ["needs-public-sample"],
+    "veeco": ["bioformats-docs/veeco-afm-says-few-sample-datasets"],
     "visitech": ["needs-public-sample"],
     "volocityclipping": ["needs-public-sample"],
     "watop": ["needs-public-sample"],
