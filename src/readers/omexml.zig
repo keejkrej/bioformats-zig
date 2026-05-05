@@ -43,7 +43,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    const metadata = try readMetadata(data);
+    var metadata = try readMetadata(data);
     if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
     const plane_len = try planeByteCount(metadata);
     const out = try allocator.alloc(u8, plane_len);
@@ -51,6 +51,9 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     @memset(out, 0);
 
     if (findBinData(data, plane_index)) |bin| {
+        if (bin.big_endian) |big_endian| {
+            metadata.little_endian = !big_endian;
+        }
         if (bin.compression) |compression| {
             if (compression.len != 0 and !std.ascii.eqlIgnoreCase(compression, "none") and !std.ascii.eqlIgnoreCase(compression, "zlib")) return error.UnsupportedVariant;
         }
@@ -246,6 +249,21 @@ test "reads zlib-compressed ome xml bindata plane" {
 
     const plane = try readPlaneIndex(std.testing.allocator, data, 0);
     defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, plane.data);
+}
+
+test "ome xml bindata big endian overrides pixels endian" {
+    const data =
+        \\<?xml version="1.0"?>
+        \\<OME><Image ID="Image:0"><Pixels DimensionOrder="XYZCT" Type="uint16" SizeX="1" SizeY="1" SizeZ="1" SizeC="1" SizeT="1" BigEndian="false"><BinData Compression="none" BigEndian="true">AQI=</BinData></Pixels></Image></OME>
+    ;
+
+    const metadata = try readMetadata(data);
+    try std.testing.expect(metadata.little_endian);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expect(!plane.metadata.little_endian);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, plane.data);
 }
 
