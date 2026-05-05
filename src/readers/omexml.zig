@@ -55,14 +55,14 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
             metadata.little_endian = !big_endian;
         }
         if (bin.compression) |compression| {
-            if (compression.len != 0 and !std.ascii.eqlIgnoreCase(compression, "none") and !std.ascii.eqlIgnoreCase(compression, "zlib")) return error.UnsupportedVariant;
+            if (!isRawCompression(compression) and !isZlibCompression(compression)) return error.UnsupportedVariant;
         }
         const decoded = try decodeBase64(allocator, bin.content);
         defer allocator.free(decoded);
         if (decoded.len == 0) {
             return .{ .metadata = metadata, .data = out };
         }
-        if (bin.compression != null and std.ascii.eqlIgnoreCase(bin.compression.?, "zlib")) {
+        if (bin.compression != null and isZlibCompression(bin.compression.?)) {
             try decodeZlib(decoded, out);
         } else {
             if (decoded.len < plane_len) return error.TruncatedData;
@@ -243,6 +243,15 @@ fn parseBool(text: []const u8) bool {
     return std.ascii.eqlIgnoreCase(value, "true") or std.mem.eql(u8, value, "1") or std.ascii.startsWithIgnoreCase(value, "t");
 }
 
+fn isRawCompression(text: []const u8) bool {
+    const value = std.mem.trim(u8, text, " \t\r\n");
+    return value.len == 0 or std.ascii.eqlIgnoreCase(value, "none") or std.ascii.eqlIgnoreCase(value, "uncompressed");
+}
+
+fn isZlibCompression(text: []const u8) bool {
+    return std.ascii.eqlIgnoreCase(std.mem.trim(u8, text, " \t\r\n"), "zlib");
+}
+
 fn decodeBase64(allocator: std.mem.Allocator, encoded: []const u8) bio.ReaderError![]u8 {
     const decoder = std.base64.standard.decoderWithIgnore(" \t\r\n");
     const max_len = decoder.calcSizeUpperBound(encoded.len);
@@ -306,6 +315,17 @@ test "reads namespaced ome xml bindata plane" {
 
     const metadata = try readMetadata(data);
     try std.testing.expectEqual(@as(u32, 2), metadata.width);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, plane.data);
+}
+
+test "reads uncompressed named ome xml bindata plane" {
+    const data =
+        \\<?xml version="1.0"?>
+        \\<OME><Image ID="Image:0"><Pixels DimensionOrder="XYZCT" Type="uint8" SizeX="2" SizeY="1" SizeZ="1" SizeC="1" SizeT="1"><BinData Compression="Uncompressed">AQI=</BinData></Pixels></Image></OME>
+    ;
 
     const plane = try readPlaneIndex(std.testing.allocator, data, 0);
     defer std.testing.allocator.free(plane.data);
