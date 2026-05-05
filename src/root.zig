@@ -55,6 +55,7 @@ pub const jpk = @import("readers/jpk.zig");
 pub const khoros = @import("readers/khoros.zig");
 pub const klb = @import("readers/klb.zig");
 pub const kodak = @import("readers/kodak.zig");
+pub const l2d = @import("readers/l2d.zig");
 pub const leo = @import("readers/leo.zig");
 pub const leicascn = @import("readers/leicascn.zig");
 pub const liflim = @import("readers/liflim.zig");
@@ -609,6 +610,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "l2d",
+        .name = "Li-Cor L2D",
+        .extensions = &.{ "l2d", "scn" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "leo",
         .name = "LEO TIFF",
         .extensions = &.{ "sxm", "tif", "tiff" },
@@ -1057,6 +1064,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (khoros.matches(data)) return "khoros";
     if (klb.matches(data)) return "klb";
     if (kodak.matches(data)) return "kodak";
+    if (l2d.matches(data)) return "l2d";
     if (apng.matches(data)) return "apng";
     if (png.matches(data)) return "png";
     if (pqbin.matches(data)) return "pqbin";
@@ -1180,6 +1188,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (khoros.matches(data)) return khoros.readMetadata(data);
     if (klb.matches(data)) return klb.readMetadata(data);
     if (kodak.matches(data)) return kodak.readMetadata(data);
+    if (l2d.matches(data)) return l2d.readMetadata(data);
     if (apng.matches(data)) return apng.readMetadata(data);
     if (png.matches(data)) return png.readMetadata(data);
     if (pqbin.matches(data)) return pqbin.readMetadata(data);
@@ -1333,6 +1342,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return kodak.readPlane(allocator, data);
     }
+    if (l2d.matches(data)) return l2d.readPlaneIndex(allocator, data, plane_index);
     if (apng.matches(data)) return apng.readPlaneIndex(allocator, data, plane_index);
     if (png.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
@@ -1580,6 +1590,7 @@ test {
     _ = mng;
     _ = netpbm;
     _ = klb;
+    _ = l2d;
     _ = mrw;
     _ = ndpi;
     _ = leicascn;

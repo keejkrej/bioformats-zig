@@ -189,6 +189,7 @@ plane, which can differ from logical OME `sizeC`.
 - Khoros XV raw rasters with 8/16-bit grayscale or RGB samples and 8-bit indexed LUT images expanded to RGB.
 - KLB single-file volumes with uncompressed single-block 8/16/32-bit integer or 32/64-bit floating-point scalar pixels, exposing Z slices as planes; block tiling, bzip2/zlib compression, grouped time/channel folders, projections, and physical-size metadata are not yet handled.
 - Kodak Molecular Imaging BIP files with big-endian 32-bit floating-point grayscale planes.
+- Li-Cor L2D `.l2d/.scn` datasets delegated through the first listed TIFF plane and reported as `l2d`; multi-scan/multi-channel assembly, metadata directory crawling, wavelengths, dates, and instrument metadata are not yet handled.
 - LEO TIFF files with private LEO metadata tags, decoded through the TIFF pixel path.
 - Leica SCN TIFF files identified by Leica SCN XML in the TIFF image description, decoded through the TIFF pixel path; SCN XML dimension mapping, supplemental images, subresolution hierarchy, and Leica acquisition metadata are not yet handled.
 - LI-FLIM `.fli` files with embedded version 1/2 headers and uncompressed 8/16/32-bit integer or 32/64-bit floating-point little-endian planes; gzip compression, packed 12-bit data, background/dark image series, ROI overlays, timestamps, and exposure metadata are not yet handled.

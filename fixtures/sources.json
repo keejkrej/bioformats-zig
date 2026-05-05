@@ -83,6 +83,7 @@
     "jpk": ["needs-public-sample"],
     "khoros": ["needs-public-sample"],
     "kodak": ["needs-public-sample"],
+    "l2d": ["needs-public-sample"],
     "liflim": ["needs-public-sample"],
     "lim": ["needs-public-sample"],
     "metamorph": ["ome_images/Metamorph/"],
