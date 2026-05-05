@@ -2,6 +2,7 @@ const std = @import("std");
 const bio = @import("../root.zig");
 
 const max_metadata_bytes = 64 * 1024 * 1024;
+const max_image_bytes = 512 * 1024 * 1024;
 const hdf5_signature = "\x89HDF\r\n\x1a\n";
 
 const Shape = struct {
@@ -61,12 +62,18 @@ pub fn readPlanePathRegionIndex(
     plane_index: u32,
     region: bio.Region,
 ) !bio.Plane {
-    _ = allocator;
-    _ = io;
-    _ = path;
-    _ = plane_index;
-    _ = region;
-    return error.UnsupportedVariant;
+    if (!isPath(path)) return error.InvalidFormat;
+    const data = try readFile(allocator, io, path);
+    defer allocator.free(data);
+    const plane = try readPlaneIndex(allocator, data, plane_index);
+    errdefer allocator.free(plane.data);
+    try region.validate(plane.metadata);
+    if (region.isFull(plane.metadata)) return plane;
+    defer allocator.free(plane.data);
+    return .{
+        .metadata = plane.metadata,
+        .data = try bio.cropPlane(allocator, plane, region),
+    };
 }
 
 fn hasHdf5Signature(data: []const u8) bool {
@@ -182,6 +189,10 @@ fn readFileHeader(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![
 
     const read = try file.readPositionalAll(io, buffer, 0);
     return allocator.realloc(buffer, read);
+}
+
+fn readFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
+    return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(max_image_bytes));
 }
 
 fn parseDataspaceMessage(payload: []const u8) ?[5]u64 {
@@ -381,6 +392,37 @@ test "reads cellh5 contiguous uncompressed ctzyx plane" {
     try std.testing.expectEqual(@as(u16, 2), plane.metadata.size_t);
     try std.testing.expectEqual(@as(usize, 12), plane.data.len);
     try std.testing.expectEqualSlices(u8, &.{ 21, 0, 22, 0, 23, 0, 24, 0, 25, 0, 26, 0 }, plane.data);
+}
+
+test "reads cellh5 contiguous plane through path region" {
+    const file_path = "cellh5-plane-path-test.ch5";
+    std.Io.Dir.cwd().deleteFile(std.testing.io, file_path) catch {};
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendSlice(std.testing.allocator, hdf5_signature);
+    try data.appendSlice(std.testing.allocator, "sample\x00plate\x00experiment\x00position\x00image\x00channel\x00");
+    try data.appendNTimes(std.testing.allocator, 0, 64);
+    const object_header_offset = data.items.len;
+    const raw_offset = object_header_offset + 160;
+    try appendObjectHeaderWithLayout(&data, std.testing.allocator, raw_offset, 48);
+    try data.appendSlice(std.testing.allocator, &.{
+        1,  0, 2,  0, 3,  0,
+        4,  0, 5,  0, 6,  0,
+        11, 0, 12, 0, 13, 0,
+        14, 0, 15, 0, 16, 0,
+        21, 0, 22, 0, 23, 0,
+        24, 0, 25, 0, 26, 0,
+        31, 0, 32, 0, 33, 0,
+        34, 0, 35, 0, 36, 0,
+    });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = file_path, .data = data.items });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, file_path) catch {};
+
+    const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, 2, .{ .x = 1, .y = 0, .width = 2, .height = 1 });
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("cellh5", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 22, 0, 23, 0 }, plane.data);
 }
 
 test "rejects non-cellh5 hdf data" {
