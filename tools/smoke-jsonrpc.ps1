@@ -61,6 +61,21 @@ function Invoke-LineRequest {
     return $response
 }
 
+function Invoke-LineMessage {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [object]$Message,
+        [string]$Label
+    )
+
+    Write-Utf8Bytes $Process ((ConvertTo-Json -InputObject $Message -Compress -Depth 8) + "`n")
+    $line = $Process.StandardOutput.ReadLine()
+    if ([string]::IsNullOrWhiteSpace($line)) {
+        throw "No line-delimited JSON-RPC response for '$Label'."
+    }
+    return $line | ConvertFrom-Json
+}
+
 function Read-AsciiLine {
     param([System.IO.Stream]$Stream)
 
@@ -181,6 +196,8 @@ try {
     Assert-True ($initialize.result.protocol -eq "json-rpc-2.0-stdio") "Unexpected initialize protocol."
     Assert-True ([bool]$initialize.result.capabilities.contentLengthFraming) "Content-Length framing was not advertised."
     Assert-True ([bool]$initialize.result.capabilities.inlineData) "Inline data was not advertised."
+    Assert-True ([bool]$initialize.result.capabilities.batch) "Batch requests were not advertised."
+    Assert-True ([bool]$initialize.result.capabilities.notifications) "Notifications were not advertised."
 
     $formats = Invoke-LineRequest $lineProcess @{ jsonrpc = "2.0"; id = 2; method = "formats" }
     Assert-True ($formats.result.Count -gt 0) "formats returned no readers."
@@ -202,11 +219,21 @@ try {
     Assert-True ($plane.result.metadata.width -eq 1 -and $plane.result.metadata.height -eq 1) "Inline readPlane returned unexpected dimensions."
     Assert-True ($plane.result.data -eq "ChQe") "Inline readPlane returned unexpected pixel payload."
 
+    $batch = @(Invoke-LineMessage -Process $lineProcess -Message @(
+        @{ jsonrpc = "2.0"; method = "formats" }
+        @{ jsonrpc = "2.0"; id = 4; method = "initialize" }
+        @{ jsonrpc = "2.0"; id = 5; method = "formats" }
+    ) -Label "batch")
+    Assert-True ($batch.Count -eq 2) "Batch response did not omit notification or return both request responses."
+    Assert-True ($batch[0].id -eq 4 -and $batch[0].result.server -eq "bioformats-zig") "Batch initialize response was unexpected."
+    Assert-True ($batch[1].id -eq 5 -and $batch[1].result.Count -gt 0) "Batch formats response was unexpected."
+
     [PSCustomObject]@{
         Check = "line-delimited"
         Status = "ok"
         Formats = $formats.result.Count
         InlinePixels = $plane.result.data
+        BatchResponses = $batch.Count
     }
 }
 finally {
