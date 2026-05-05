@@ -771,15 +771,15 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "jpeg",
-        .name = "JPEG metadata",
+        .name = "JPEG baseline Huffman pixels",
         .extensions = &.{ "jpg", "jpeg", "jpe" },
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "tilejpeg",
-        .name = "Tile JPEG metadata",
+        .name = "Tile JPEG baseline Huffman pixels",
         .extensions = &.{ "jpg", "jpeg" },
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "jpeg2000",

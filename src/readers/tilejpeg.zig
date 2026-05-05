@@ -23,10 +23,7 @@ pub fn readMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const 
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    _ = allocator;
-    _ = data;
-    _ = plane_index;
-    return error.UnsupportedVariant;
+    return bio.jpeg.readPlaneIndexAs(allocator, data, plane_index, "tilejpeg");
 }
 
 pub fn readPlanePathRegionIndex(
@@ -36,12 +33,17 @@ pub fn readPlanePathRegionIndex(
     plane_index: u32,
     region: bio.Region,
 ) !bio.Plane {
-    _ = allocator;
-    _ = io;
-    _ = path;
-    _ = plane_index;
-    _ = region;
-    return error.UnsupportedVariant;
+    const data = try readFile(allocator, io, path);
+    defer allocator.free(data);
+    const plane = try readPlaneIndex(allocator, data, plane_index);
+    errdefer allocator.free(plane.data);
+    try region.validate(plane.metadata);
+    if (region.isFull(plane.metadata)) return plane;
+    defer allocator.free(plane.data);
+    return .{
+        .metadata = plane.metadata,
+        .data = try bio.cropPlane(allocator, plane, region),
+    };
 }
 
 fn readFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
