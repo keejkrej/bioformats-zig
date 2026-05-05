@@ -81,8 +81,10 @@ if (-not (Test-Path -LiteralPath $cachePath)) {
 $files = @(Get-ChildItem -LiteralPath $cachePath -Recurse -File | Where-Object {
     $hasVmsSibling = @(Get-ChildItem -LiteralPath $_.DirectoryName -Filter "*.vms" -File -ErrorAction SilentlyContinue).Count -gt 0
     $hasNrrdHeaderSibling = @(Get-ChildItem -LiteralPath $_.DirectoryName -Filter "*.nhdr" -File -ErrorAction SilentlyContinue).Count -gt 0
+    $hasIcsHeaderSibling = @(Get-ChildItem -LiteralPath $_.DirectoryName -Filter "*.ics" -File -ErrorAction SilentlyContinue).Count -gt 0
     -not ($hasVmsSibling -and $_.Extension -match '^\.(jpg|jpeg|opt)$') -and
-        -not ($hasNrrdHeaderSibling -and $_.Extension -ieq ".raw")
+        -not ($hasNrrdHeaderSibling -and $_.Extension -ieq ".raw") -and
+        -not ($hasIcsHeaderSibling -and $_.Extension -ieq ".ids")
 })
 if ($files.Count -eq 0) {
     throw "No cached fixture files found under $cachePath."

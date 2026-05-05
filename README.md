@@ -256,7 +256,7 @@ plane, which can differ from logical OME `sizeC`.
 - NOAA-HRD Gridded Data Format surface wind component tables exposed as two big-endian 64-bit floating-point channel planes.
 - I2I int16 and 32-bit floating-point volumes with little/big endian data and optional extra time-like dimension exposed as planes.
 - Imacon `.fff` TIFF files identified by Imacon XML private metadata tags, decoded through the TIFF pixel path.
-- Image Cytometry Standard `.ics`/`.ids` v1 pairs and inline v2 `.ics` files with uncompressed scalar integer or floating-point planes; gzip compression, lifetime/RGB reordering, and full instrument metadata mapping are not yet handled.
+- Image Cytometry Standard `.ics`/`.ids` v1 pairs, including EOF-terminated v1 headers, and inline v2 `.ics` files with uncompressed scalar integer or floating-point planes; gzip compression, lifetime/RGB reordering, and full instrument metadata mapping are not yet handled.
 - IMAGIC `.hed`/`.img` pairs with 8-bit packed, 16-bit integer, and 32-bit floating-point planes exposed as Z slices; path-based JSON-RPC requests can open either companion file, while inline header data is metadata-only.
 - PerkinElmer Nuance IM3 files with nested `DataSet` records, `Shape` dimensions, and interleaved little-endian uint16 spectral channels exposed as planes; spectral library metadata, wavelength names, and alternate record variants are not yet handled.
 - InCell 1000/2000 `.xdce`/`.xml` companion datasets delegated through referenced or synthesized TIFF plane names and reported as `incell`; raw `.im` planes, full HCS plate/well/field multi-series mapping, duplicated missing planes, and acquisition metadata are not yet surfaced.

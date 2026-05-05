@@ -20,7 +20,7 @@ const Header = struct {
 };
 
 pub fn matches(data: []const u8) bool {
-    const line = firstLine(data) orelse return false;
+    const line = firstMeaningfulLine(data) orelse return false;
     const tokens = tokenize(line);
     return tokens.len >= 2 and eqlIgnoreCase(tokens.items[0], "ics_version");
 }
@@ -101,7 +101,7 @@ fn metadataFromHeader(header: Header) bio.Metadata {
 
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
     var cursor: usize = 0;
-    const version_line = try nextLine(data, &cursor);
+    const version_line = try nextMeaningfulLine(data, &cursor);
     const version_tokens = tokenize(version_line);
     if (version_tokens.len < 2 or !eqlIgnoreCase(version_tokens.items[0], "ics_version")) return error.InvalidFormat;
     const version_two = std.mem.eql(u8, version_tokens.items[1], "2.0");
@@ -151,6 +151,7 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
         }
     }
 
+    if (data_offset == null and !version_two) data_offset = cursor;
     if (data_offset == null) return error.InvalidFormat;
     if (axes.len == 0 or sizes.len == 0 or axes.len != sizes.len) return error.InvalidFormat;
 
@@ -330,11 +331,23 @@ fn hasExtension(path: []const u8, extension: []const u8) bool {
     return std.ascii.eqlIgnoreCase(path[dot + 1 ..], extension);
 }
 
-fn firstLine(data: []const u8) ?[]const u8 {
-    if (data.len == 0) return null;
-    var end: usize = 0;
-    while (end < data.len and data[end] != '\n' and data[end] != '\r') : (end += 1) {}
-    return data[0..end];
+fn firstMeaningfulLine(data: []const u8) ?[]const u8 {
+    var cursor: usize = 0;
+    while (cursor < data.len) {
+        const line = nextLine(data, &cursor) catch return null;
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        if (trimmed.len != 0) return trimmed;
+    }
+    return null;
+}
+
+fn nextMeaningfulLine(data: []const u8, cursor: *usize) bio.ReaderError![]const u8 {
+    while (cursor.* < data.len) {
+        const line = try nextLine(data, cursor);
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        if (trimmed.len != 0) return trimmed;
+    }
+    return error.TruncatedData;
 }
 
 fn nextLine(data: []const u8, cursor: *usize) bio.ReaderError![]const u8 {
@@ -451,6 +464,38 @@ test "reads ics ids companion pixels with crop" {
     const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, ics_path, 1, .{ .x = 1, .y = 0, .width = 1, .height = 2 });
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 6, 0, 8, 0 }, plane.data);
+}
+
+test "reads eof-terminated ics v1 metadata" {
+    const data =
+        "ics_version\t1.0\n" ++
+        "layout\torder\tbits\tx\ty\tz\n" ++
+        "layout\tsizes\t32\t2\t1\t2\n" ++
+        "representation\tformat\treal\n" ++
+        "representation\tsign\tsigned\n" ++
+        "representation\tbyte_order\t1\t2\t3\t4\n";
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqual(bio.PixelType.float32, metadata.pixel_type);
+    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
+}
+
+test "reads ics with leading blank line" {
+    const data =
+        "\t\n" ++
+        "ics_version\t2.0\n" ++
+        "layout\torder\tbits\tx\ty\n" ++
+        "layout\tsizes\t8\t1\t1\n" ++
+        "representation\tformat\tinteger\n" ++
+        "representation\tsign\tunsigned\n" ++
+        "representation\tbyte_order\t1\t2\n" ++
+        "end\n" ++
+        [_]u8{42};
+
+    try std.testing.expect(matches(data));
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{42}, plane.data);
 }
 
 test "rejects compressed ics pixels" {

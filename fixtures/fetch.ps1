@@ -272,6 +272,30 @@ function Download-NrrdCompanions {
     Download-Companion $baseUrl $name $TargetDir
 }
 
+function Download-IcsCompanions {
+    param(
+        [string]$IcsSource,
+        [string]$IcsPath,
+        [string]$TargetDir
+    )
+
+    $content = Get-Content -LiteralPath $IcsPath -Raw
+    $name = $null
+    $match = [regex]::Match($content, "(?im)^\s*filename\s+(.+?)\s*$")
+    if ($match.Success) {
+        $name = $match.Groups[1].Value.Trim()
+        if (-not ($name -match '\.[A-Za-z0-9]+$')) {
+            $name = "$name.ids"
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($name)) {
+        $leaf = [System.IO.Path]::GetFileName($IcsPath)
+        $name = [System.IO.Path]::ChangeExtension($leaf, ".ids")
+    }
+    $baseUrl = [Uri]::new([Uri]$IcsSource, ".").AbsoluteUri
+    Download-Companion $baseUrl $name $TargetDir
+}
+
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
 $zenodoRecordId = Resolve-ZenodoRecordId ([string[]]$formatEntry.Value)
 if ($null -eq $sourceUrl -and $null -eq $zenodoRecordId) {
@@ -322,4 +346,7 @@ if ($Format -eq "hamamatsuvms") {
 }
 if ($Format -eq "nrrd") {
     Download-NrrdCompanions $candidate.Url $targetPath $targetDir
+}
+if ($Format -eq "ics") {
+    Download-IcsCompanions $candidate.Url $targetPath $targetDir
 }

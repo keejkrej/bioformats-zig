@@ -27,7 +27,7 @@
     "ecat7": ["ome_images/ECAT7/"],
     "gatan": ["ome_images/Gatan/"],
     "gatandm2": ["ome_images/Gatan/"],
-    "ics": ["ome_images/ICS/"],
+    "ics": ["ome_images/ICS/jan/", "ome_images/ICS/"],
     "incell": ["ome_images/InCell2000/", "ome_images/HCS/INCELL2000/"],
     "incell3000": ["ome_images/InCell3000/"],
     "klb": ["ome_images/KLB/"],
