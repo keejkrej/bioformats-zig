@@ -56,9 +56,9 @@ Supported methods:
 
 For companion-file formats, path-based requests may use neighboring files. For
 example, Analyze 7.5 `.hdr`/`.img`, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`,
-Perkin Elmer Densitometer `.hdr`/`.img`, and Unisoku STM `.HDR`/`.DAT`
-datasets can be opened by selecting either file; inline `data` can identify the
-header but cannot provide the paired pixel file.
+Inveon `.hdr`/data pairs, Perkin Elmer Densitometer `.hdr`/`.img`, and Unisoku
+STM `.HDR`/`.DAT` datasets can be opened by selecting either file; inline
+`data` can identify the header but cannot provide the paired pixel file.
 
 Example:
 
@@ -161,6 +161,7 @@ plane, which can differ from logical OME `sizeC`.
 - IMAGIC `.hed`/`.img` pairs with 8-bit packed, 16-bit integer, and 32-bit floating-point planes exposed as Z slices; path-based JSON-RPC requests can open either companion file, while inline header data is metadata-only.
 - PerkinElmer Nuance IM3 files with nested `DataSet` records, `Shape` dimensions, and interleaved little-endian uint16 spectral channels exposed as planes; spectral library metadata, wavelength names, and alternate record variants are not yet handled.
 - InCell 3000 `.frm` files with little-endian 16-bit planes expanded from Bio-Formats' packed delta runs; acquisition timestamps and auxiliary metadata are not yet surfaced.
+- Inveon text `.hdr` datasets with companion raw image data, signed integer and 32-bit floating-point pixel types, Z/T planes, explicit data offsets, and path-based JSON-RPC requests that can open either the header or data file; multiple bed-position series, renamed-file discovery, and medical metadata expansion are not yet handled.
 - Bitplane Imaris raw `.ims` files with big-endian fixed headers and uncompressed 8-bit grayscale Z/C planes; metadata, physical sizes, timestamps, detector/channel settings, and newer HDF/Imaris TIFF variants are not yet handled.
 - IMOD `.mod` model files identified by `IMODV1.2`, exposing blank RGB planes with parsed model dimensions to match Bio-Formats' disabled point-rendering path; ROI/model object metadata and contour drawing are not yet surfaced.
 - Improvision TIFF files identified by Improvision image descriptions, decoded through the TIFF pixel path; multi-file grouping and Improvision axis metadata interpretation are not yet handled.

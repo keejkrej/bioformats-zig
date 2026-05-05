@@ -498,6 +498,9 @@ pub const Server = struct {
             if (bio.pds.isPath(path)) {
                 if (bio.pds.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
             }
+            if (bio.inveon.isPath(path)) {
+                if (bio.inveon.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+            }
             if (bio.imagic.isPath(path)) {
                 if (bio.imagic.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
             }
@@ -517,6 +520,9 @@ pub const Server = struct {
         }
         if (bio.pds.isPath(path)) {
             if (bio.pds.readMetadataPath(self.allocator, self.io, path)) |_| return "pds" else |_| {}
+        }
+        if (bio.inveon.isPath(path)) {
+            if (bio.inveon.readMetadataPath(self.allocator, self.io, path)) |_| return "inveon" else |_| {}
         }
         if (bio.imagic.isPath(path)) {
             if (bio.imagic.readMetadataPath(self.allocator, self.io, path)) |_| return "imagic" else |_| {}
@@ -543,6 +549,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "pds")) {
             return bio.pds.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "inveon")) {
+            return bio.inveon.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "imagic")) {
             return bio.imagic.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -562,6 +571,7 @@ pub const Server = struct {
     fn isCompanionFormat(format: []const u8) bool {
         return std.mem.eql(u8, format, "analyze") or
             std.mem.eql(u8, format, "pds") or
+            std.mem.eql(u8, format, "inveon") or
             std.mem.eql(u8, format, "imagic") or
             std.mem.eql(u8, format, "ics") or
             std.mem.eql(u8, format, "unisoku");
@@ -1125,6 +1135,7 @@ test "formats response includes expanded readers" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imod\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"improvisiontiff\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"inr\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"inveon\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"ionpathmibi\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"iplab\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"jeol\"") != null);
@@ -1396,6 +1407,48 @@ test "server opens ics ids path and reads companion pixels" {
     );
     try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"ics\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":1,\"y\":0,\"width\":1,\"height\":2}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"region\":{\"x\":1,\"y\":0,\"width\":1,\"height\":2}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AgAEAA==\"") != null);
+}
+
+test "server opens inveon dat path and reads companion pixels" {
+    const hdr_path = "protocol-inveon-test.dat.hdr";
+    const dat_path = "protocol-inveon-test.dat";
+    const header =
+        "# Header file for data file\n" ++
+        "file_name protocol-inveon-test.dat\n" ++
+        "data_type 2\n" ++
+        "x_dimension 2\n" ++
+        "y_dimension 2\n" ++
+        "z_dimension 1\n" ++
+        "data_file_pointer 0\n";
+    const pixels = [_]u8{
+        1, 0, 2, 0,
+        3, 0, 4, 0,
+    };
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = hdr_path, .data = header });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, hdr_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = dat_path, .data = &pixels });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, dat_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-inveon-test.dat\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"inveon\"") != null);
     out.clearRetainingCapacity();
 
     _ = try server.handleLine(
