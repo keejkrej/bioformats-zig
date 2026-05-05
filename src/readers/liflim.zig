@@ -11,6 +11,7 @@ const Header = struct {
     size_t: u16,
     pixel_type: bio.PixelType,
     data_offset: usize,
+    gzip: bool,
 };
 
 pub fn matches(data: []const u8) bool {
@@ -41,10 +42,20 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
     const header = try parseHeader(data);
     const plane_len = try planeByteCount(metadata);
-    const offset = std.math.add(usize, header.data_offset, std.math.mul(usize, plane_index, plane_len) catch return error.InvalidPlaneIndex) catch return error.InvalidPlaneIndex;
-    if (offset > data.len or data.len - offset < plane_len) return error.TruncatedData;
     const out = try allocator.alloc(u8, plane_len);
-    @memcpy(out, data[offset..][0..plane_len]);
+    errdefer allocator.free(out);
+    if (header.gzip) {
+        const total = std.math.mul(usize, plane_len, metadata.plane_count) catch return error.UnsupportedVariant;
+        const decoded = try allocator.alloc(u8, total);
+        defer allocator.free(decoded);
+        try decodeGzip(data[header.data_offset..], decoded);
+        const offset = std.math.mul(usize, plane_index, plane_len) catch return error.InvalidPlaneIndex;
+        @memcpy(out, decoded[offset..][0..plane_len]);
+    } else {
+        const offset = std.math.add(usize, header.data_offset, std.math.mul(usize, plane_index, plane_len) catch return error.InvalidPlaneIndex) catch return error.InvalidPlaneIndex;
+        if (offset > data.len or data.len - offset < plane_len) return error.TruncatedData;
+        @memcpy(out, data[offset..][0..plane_len]);
+    }
     return .{ .metadata = metadata, .data = out };
 }
 
@@ -57,7 +68,8 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     const version = value(header_data, "FLIMIMAGE: INFO", "version") orelse value(header_data, "", "version") orelse "1.0";
     const is_v2 = std.mem.eql(u8, version, "2.0");
     const compression = if (is_v2) "0" else value(header_data, "FLIMIMAGE: INFO", "compression") orelse "0";
-    if (!std.mem.eql(u8, compression, "0")) return error.UnsupportedVariant;
+    const gzip = std.mem.eql(u8, compression, "1");
+    if (!std.mem.eql(u8, compression, "0") and !gzip) return error.UnsupportedVariant;
 
     const datatype = if (is_v2)
         value(header_data, "", "pixelFormat") orelse return error.InvalidFormat
@@ -85,6 +97,7 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
         .size_t = @intCast(size_t),
         .pixel_type = try pixelType(datatype),
         .data_offset = offset,
+        .gzip = gzip,
     };
     const metadata = bio.Metadata{
         .format = "liflim",
@@ -97,8 +110,10 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
         .pixel_type = header.pixel_type,
         .plane_count = std.math.mul(u32, header.size_z, header.size_t) catch return error.UnsupportedVariant,
     };
-    const total = std.math.mul(usize, try planeByteCount(metadata), metadata.plane_count) catch return error.UnsupportedVariant;
-    if (offset > data.len or data.len - offset < total) return error.TruncatedData;
+    if (!gzip) {
+        const total = std.math.mul(usize, try planeByteCount(metadata), metadata.plane_count) catch return error.UnsupportedVariant;
+        if (offset > data.len or data.len - offset < total) return error.TruncatedData;
+    }
     return header;
 }
 
@@ -168,6 +183,14 @@ fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
     return std.math.mul(usize, samples, metadata.pixel_type.bytesPerSample()) catch return error.UnsupportedVariant;
 }
 
+fn decodeGzip(src: []const u8, dst: []u8) bio.ReaderError!void {
+    var input: std.Io.Reader = .fixed(src);
+    var output: std.Io.Writer = .fixed(dst);
+    var decompress: std.compress.flate.Decompress = .init(&input, .gzip, &.{});
+    const written = decompress.reader.streamRemaining(&output) catch return error.TruncatedData;
+    if (written != dst.len) return error.TruncatedData;
+}
+
 test "reads liflim v1 uncompressed plane" {
     const data =
         \\[FLIMIMAGE: INFO]
@@ -218,17 +241,18 @@ test "reads liflim v2 float32 second frame" {
     try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0x80, 0x3f }, plane.data);
 }
 
-test "rejects compressed liflim" {
+test "reads gzip-compressed liflim plane" {
     const data =
         \\[FLIMIMAGE: INFO]
         \\compression=1
         \\[FLIMIMAGE: LAYOUT]
         \\datatype=UINT8
-        \\x=1
+        \\x=2
         \\y=1
         \\{END}
-    ++ [_]u8{0};
+    ++ [_]u8{ 0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0x63, 0x64, 0x02, 0x00, 0x92, 0x42, 0xcc, 0xb6, 0x02, 0x00, 0x00, 0x00 };
 
-    try std.testing.expect(!matches(data));
-    try std.testing.expectError(error.UnsupportedVariant, readMetadata(data));
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, plane.data);
 }
