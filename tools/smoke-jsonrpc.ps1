@@ -140,6 +140,32 @@ function Invoke-FramedMessage {
     $Process.StandardInput.BaseStream.Write($bodyBytes, 0, $bodyBytes.Length)
     $Process.StandardInput.BaseStream.Flush()
 
+    return Read-FramedResponse -Process $Process -Label $Label
+}
+
+function Invoke-FramedRawBody {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [string]$Body,
+        [string]$Label
+    )
+
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    $bodyBytes = $utf8.GetBytes($Body)
+    Write-Utf8Bytes $Process ("Content-Length: $($bodyBytes.Length)`r`n`r`n")
+    $Process.StandardInput.BaseStream.Write($bodyBytes, 0, $bodyBytes.Length)
+    $Process.StandardInput.BaseStream.Flush()
+
+    return Read-FramedResponse -Process $Process -Label $Label
+}
+
+function Read-FramedResponse {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [string]$Label
+    )
+
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
     $contentLength = $null
     while ($true) {
         $line = Read-AsciiLine $Process.StandardOutput.BaseStream
@@ -398,12 +424,15 @@ try {
     } -Label "framed unknown method"
     Assert-True ($unknownMethod.id -eq 6 -and $unknownMethod.error.code -eq -32601) "Framed unknown method did not return Method not found."
 
+    $parseError = Invoke-FramedRawBody -Process $framedProcess -Body "{" -Label "framed malformed JSON"
+    Assert-True ($null -eq $parseError.id -and $parseError.error.code -eq -32700) "Framed malformed JSON did not return Parse error."
+
     [PSCustomObject]@{
         Check = "content-length"
         Status = "ok"
         Server = $initialize.result.server
         InlinePixels = $plane.result.data
-        ErrorCode = $unknownMethod.error.code
+        ErrorCodes = "$($unknownMethod.error.code)/$($parseError.error.code)"
     }
 }
 finally {
