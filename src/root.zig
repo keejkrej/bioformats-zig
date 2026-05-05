@@ -18,6 +18,7 @@ pub const bruker = @import("readers/bruker.zig");
 pub const burleigh = @import("readers/burleigh.zig");
 pub const canonraw = @import("readers/canonraw.zig");
 pub const cellomics = @import("readers/cellomics.zig");
+pub const cellvoyager = @import("readers/cellvoyager.zig");
 pub const cellworx = @import("readers/cellworx.zig");
 pub const columbus = @import("readers/columbus.zig");
 pub const cv7000 = @import("readers/cv7000.zig");
@@ -411,6 +412,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "cellomics",
         .name = "Cellomics C01/DIB",
         .extensions = &.{ "c01", "dib" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "cellvoyager",
+        .name = "Yokogawa CellVoyager TIFF dataset",
+        .extensions = &.{ "xml", "tif", "tiff" },
         .can_read_pixels = true,
     },
     .{
@@ -1230,6 +1237,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (bmp.matches(data)) return "bmp";
     if (burleigh.matches(data)) return "burleigh";
     if (cellomics.matches(data)) return "cellomics";
+    if (cellvoyager.matches(data)) return "cellvoyager";
     if (cellworx.matches(data)) return "cellworx";
     if (columbus.matches(data)) return "columbus";
     if (cv7000.matches(data)) return "cv7000";
@@ -1366,6 +1374,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (bmp.matches(data)) return bmp.readMetadata(data);
     if (burleigh.matches(data)) return burleigh.readMetadata(data);
     if (cellomics.matches(data)) return cellomics.readMetadata(data);
+    if (cellvoyager.matches(data)) return cellvoyager.readMetadata(data);
     if (cellworx.matches(data)) return cellworx.readMetadata(data);
     if (columbus.matches(data)) return columbus.readMetadata(data);
     if (cv7000.matches(data)) return cv7000.readMetadata(data);
@@ -1516,6 +1525,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return burleigh.readPlane(allocator, data);
     }
     if (cellomics.matches(data)) return cellomics.readPlaneIndex(allocator, data, plane_index);
+    if (cellvoyager.matches(data)) return cellvoyager.readPlaneIndex(allocator, data, plane_index);
     if (cellworx.matches(data)) return cellworx.readPlaneIndex(allocator, data, plane_index);
     if (columbus.matches(data)) return columbus.readPlaneIndex(allocator, data, plane_index);
     if (cv7000.matches(data)) return cv7000.readPlaneIndex(allocator, data, plane_index);
@@ -1786,6 +1796,7 @@ test {
     _ = bruker;
     _ = canonraw;
     _ = cellomics;
+    _ = cellvoyager;
     _ = cellworx;
     _ = columbus;
     _ = cv7000;

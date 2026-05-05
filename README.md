@@ -69,7 +69,8 @@ Supported methods:
 
 For companion-file formats, path-based requests may use neighboring files. For
 example, Analyze 7.5 `.hdr`/`.img`, Olympus APL `.apl/.tnb/.mtb` plus TIFF
-planes, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`, CellWorx `.htd` plus
+planes, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`, CellVoyager
+`MeasurementResult.xml` plus `Image` TIFF planes, CellWorx `.htd` plus
 Deltavision `.pnl` planes, Columbus
 `MeasurementIndex.ColumbusIDX.xml` plus TIFF planes, Yokogawa CV7000
 `.wpi`/`MeasurementData.mlf` datasets plus TIFF planes, Fuji LAS 3000
@@ -166,6 +167,7 @@ plane, which can differ from logical OME `sizeC`.
 - Canon DNG/RAW TIFF-like files identified by Canon TIFF-EP/private tags, decoded through the TIFF pixel path when the stored image is directly TIFF-readable; non-TIFF Canon CRW variants beyond the fixed-length legacy RAW reader and white-balance metadata expansion are not yet handled.
 - Bio-Rad SCN multipart files identified by Image Lab headers, with dimensions and pixel type parsed from XML and one raw octet-stream image block decoded; acquisition metadata, detector metadata, and physical pixel sizes are not yet surfaced.
 - Cellomics C01/DIB files with uncompressed little-endian raw planes at the standard offset; compressed `.c01` streams, multi-file plate/channel grouping, MDB metadata, and missing-channel fill behavior are not yet handled.
+- Yokogawa CellVoyager/CV1000 `MeasurementResult.xml` datasets delegated through TIFF planes in the `Image` directory using the Bio-Formats filename pattern; tile stitching, well/area series assembly, malformed OME-XML repair, plate metadata, and physical/acquisition metadata are not yet surfaced.
 - CellWorx `.htd` plate files delegated through matching Deltavision `.pnl` planes and reported as `cellworx`; full HCS multi-series assembly, field mapping beyond the first selected field, log files, and OME plate metadata are not yet surfaced.
 - Columbus `MeasurementIndex.ColumbusIDX.xml` datasets delegated through recursively discovered neighboring TIFF planes and reported as `columbus`; full HCS plate/well/field mapping, missing-plane fill, acquisition metadata, and OME plate metadata are not yet surfaced.
 - Yokogawa CV7000 `.wpi`/`MeasurementData.mlf` datasets delegated through the TIFF plane paths listed in measurement records and reported as `cv7000`; HCS plate/well/field multi-series mapping, duplicate-plane fill behavior, companion `.mrf/.mes/.ppf` metadata, and physical/acquisition metadata are not yet surfaced.

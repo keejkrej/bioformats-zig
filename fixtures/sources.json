@@ -56,6 +56,7 @@
     "bruker": ["needs-public-sample"],
     "burleigh": ["needs-public-sample"],
     "canonraw": ["needs-public-sample"],
+    "cellvoyager": ["needs-public-sample"],
     "cellworx": ["ome_images/CellWorX/"],
     "dng": ["needs-public-sample"],
     "columbus": ["ome_images/PerkinElmer-Columbus/"],
