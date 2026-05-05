@@ -66,6 +66,7 @@ pub const lim = @import("readers/lim.zig");
 pub const metamorph = @import("readers/metamorph.zig");
 pub const metaxpress = @import("readers/metaxpress.zig");
 pub const mias = @import("readers/mias.zig");
+pub const micromanager = @import("readers/micromanager.zig");
 pub const microct = @import("readers/microct.zig");
 pub const mikroscan = @import("readers/mikroscan.zig");
 pub const minc = @import("readers/minc.zig");
@@ -709,6 +710,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "micromanager",
+        .name = "Micro-Manager TIFF dataset",
+        .extensions = &.{ "txt", "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "microct",
         .name = "MicroCT VFF",
         .extensions = &.{"vff"},
@@ -1230,6 +1237,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (liflim.matches(data)) return "liflim";
     if (metamorph.matches(data)) return "metamorph";
     if (mias.matches(data)) return "mias";
+    if (micromanager.matches(data)) return "micromanager";
     if (microct.matches(data)) return "microct";
     if (mikroscan.matches(data)) return "mikroscan";
     if (minc.matches(data)) return "minc";
@@ -1357,6 +1365,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (liflim.matches(data)) return liflim.readMetadata(data);
     if (metamorph.matches(data)) return metamorph.readMetadata(data);
     if (mias.matches(data)) return mias.readMetadata(data);
+    if (micromanager.matches(data)) return micromanager.readMetadata(data);
     if (microct.matches(data)) return microct.readMetadata(data);
     if (mikroscan.matches(data)) return mikroscan.readMetadata(data);
     if (minc.matches(data)) return minc.readMetadata(data);
@@ -1550,6 +1559,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (liflim.matches(data)) return liflim.readPlaneIndex(allocator, data, plane_index);
     if (metamorph.matches(data)) return metamorph.readPlaneIndex(allocator, data, plane_index);
     if (mias.matches(data)) return mias.readPlaneIndex(allocator, data, plane_index);
+    if (micromanager.matches(data)) return micromanager.readPlaneIndex(allocator, data, plane_index);
     if (microct.matches(data)) return microct.readPlaneIndex(allocator, data, plane_index);
     if (mikroscan.matches(data)) return mikroscan.readPlaneIndex(allocator, data, plane_index);
     if (minc.matches(data)) return minc.readPlaneIndex(allocator, data, plane_index);
@@ -1709,6 +1719,7 @@ test {
     _ = metamorph;
     _ = metaxpress;
     _ = mias;
+    _ = micromanager;
     _ = microct;
     _ = mikroscan;
     _ = minc;

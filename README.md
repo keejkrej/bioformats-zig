@@ -70,9 +70,10 @@ Supported methods:
 For companion-file formats, path-based requests may use neighboring files. For
 example, Analyze 7.5 `.hdr`/`.img`, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`,
 Fuji LAS 3000 `.inf`/`.img`, Inveon `.hdr`/data pairs, MetaXpress `.htd`
-plus neighboring TIFF planes, Perkin Elmer Densitometer `.hdr`/`.img`,
-Hitachi S-4800 `.txt` plus neighboring TIFF/BMP, PCO-RAW `.pcoraw`/`.rec`,
-and Unisoku STM `.HDR`/`.DAT` datasets can be opened
+plus neighboring TIFF planes, Micro-Manager `metadata.txt` plus TIFF planes,
+Perkin Elmer Densitometer `.hdr`/`.img`, Hitachi S-4800 `.txt` plus
+neighboring TIFF/BMP, PCO-RAW `.pcoraw`/`.rec`, and Unisoku STM `.HDR`/`.DAT`
+datasets can be opened
 by selecting either file; inline `data` can identify the header but cannot
 provide the paired pixel file.
 
@@ -206,6 +207,7 @@ plane, which can differ from logical OME `sizeC`.
 - Metamorph STK/TIFF files identified by Metamorph software strings or UIC private tags, decoded through the TIFF pixel path; `.nd/.scan` grouping and UIC metadata interpretation are not yet handled.
 - MetaXpress `.htd` plate files delegated through matching neighboring TIFF planes and reported as `metaxpress`; full CellWorx-style HCS series assembly, well metadata, log files, thumbnails, and directory fallbacks beyond the first selected well are not yet handled.
 - MIAS TIFF files identified by eaZYX, SCIL_Image, or IDL software tags, decoded through the TIFF pixel path; plate/well grouping, tile stitching, masks, overlays, and analysis-result metadata are not yet handled.
+- Micro-Manager 1.x-style `metadata.txt` datasets delegated through neighboring TIFF planes and reported as `micromanager`; multi-position series separation, acquisition XML metadata, display colors, physical sizes, and full per-plane metadata maps are not yet surfaced.
 - MicroCT VFF files with inline `ncaa` headers and signed 8/16/32-bit raw planes, including row-order normalization; directory file-pattern grouping, XML side metadata, dates, exposure time, and physical size metadata are not yet surfaced.
 - Mikroscan TIFF files identified by Mikroscan image descriptions, decoded through the TIFF pixel path; SVS-style subresolution/label/macro series mapping and Mikroscan-specific metadata parsing are not yet handled.
 - MINC MRI v1 classic NetCDF `.mnc` files with 8/16/32-bit integer and 32/64-bit floating-point scalar planes; MINC2/HDF5, per-slice scaling, spatial coordinate metadata, and medical metadata expansion are not yet handled.
