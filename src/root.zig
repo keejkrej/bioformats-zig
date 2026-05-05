@@ -78,6 +78,7 @@ pub const pyramidtiff = @import("readers/pyramidtiff.zig");
 pub const quesant = @import("readers/quesant.zig");
 pub const rhk = @import("readers/rhk.zig");
 pub const sbig = @import("readers/sbig.zig");
+pub const scanr = @import("readers/scanr.zig");
 pub const seiko = @import("readers/seiko.zig");
 pub const seq = @import("readers/seq.zig");
 pub const sif = @import("readers/sif.zig");
@@ -631,6 +632,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "scanr",
+        .name = "Olympus ScanR TIFF",
+        .extensions = &.{ "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "seiko",
         .name = "Seiko XQD/XQF",
         .extensions = &.{ "xqd", "xqf" },
@@ -929,6 +936,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (quesant.matches(data)) return "quesant";
     if (rhk.matches(data)) return "rhk";
     if (sbig.matches(data)) return "sbig";
+    if (scanr.matches(data)) return "scanr";
     if (smcamera.matches(data)) return "smcamera";
     if (lim.matches(data)) return "lim";
     if (molecularimaging.matches(data)) return "molecularimaging";
@@ -1037,6 +1045,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (quesant.matches(data)) return quesant.readMetadata(data);
     if (rhk.matches(data)) return rhk.readMetadata(data);
     if (sbig.matches(data)) return sbig.readMetadata(data);
+    if (scanr.matches(data)) return scanr.readMetadata(data);
     if (smcamera.matches(data)) return smcamera.readMetadata(data);
     if (lim.matches(data)) return lim.readMetadata(data);
     if (molecularimaging.matches(data)) return molecularimaging.readMetadata(data);
@@ -1193,6 +1202,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return sbig.readPlane(allocator, data);
     }
+    if (scanr.matches(data)) return scanr.readPlaneIndex(allocator, data, plane_index);
     if (smcamera.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return smcamera.readPlane(allocator, data);
@@ -1303,6 +1313,7 @@ pub fn readPlaneRegionIndex(
     if (photoshoptiff.matches(data)) return photoshoptiff.readRegionIndex(allocator, data, plane_index, region);
     if (ionpathmibi.matches(data)) return ionpathmibi.readRegionIndex(allocator, data, plane_index, region);
     if (pyramidtiff.matches(data)) return pyramidtiff.readRegionIndex(allocator, data, plane_index, region);
+    if (scanr.matches(data)) return scanr.readRegionIndex(allocator, data, plane_index, region);
     if (seq.matches(data)) return seq.readRegionIndex(allocator, data, plane_index, region);
     if (simplepci.matches(data)) return simplepci.readRegionIndex(allocator, data, plane_index, region);
     if (sis.matches(data)) return sis.readRegionIndex(allocator, data, plane_index, region);
@@ -1398,6 +1409,7 @@ test {
     _ = png;
     _ = psd;
     _ = pyramidtiff;
+    _ = scanr;
     _ = seq;
     _ = seiko;
     _ = simplepci;

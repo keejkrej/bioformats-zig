@@ -78,6 +78,7 @@ const pyramidtiff = @import("pyramidtiff.zig");
 const quesant = @import("quesant.zig");
 const rhk = @import("rhk.zig");
 const sbig = @import("sbig.zig");
+const scanr = @import("scanr.zig");
 const seiko = @import("seiko.zig");
 const seq = @import("seq.zig");
 const sif = @import("sif.zig");
@@ -115,7 +116,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -239,6 +240,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .quesant => quesant.readMetadata(entry.data),
         .rhk => rhk.readMetadata(entry.data),
         .sbig => sbig.readMetadata(entry.data),
+        .scanr => scanr.readMetadata(entry.data),
         .seiko => seiko.readMetadata(entry.data),
         .seq => seq.readMetadata(entry.data),
         .sif => sif.readMetadata(entry.data),
@@ -347,6 +349,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .quesant => if (plane_index == 0) quesant.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .rhk => if (plane_index == 0) rhk.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .sbig => if (plane_index == 0) sbig.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
+        .scanr => scanr.readPlaneIndex(allocator, entry.data, plane_index),
         .seiko => if (plane_index == 0) seiko.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .seq => seq.readPlaneIndex(allocator, entry.data, plane_index),
         .sif => sif.readPlaneIndex(allocator, entry.data, plane_index),
@@ -403,6 +406,7 @@ fn readInnerRegionIndex(
     if (entry.kind == .trestle) return trestle.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .photoshoptiff) return photoshoptiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .pyramidtiff) return pyramidtiff.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .scanr) return scanr.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .seq) return seq.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .simplepci) return simplepci.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .sis) return sis.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -537,6 +541,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (quesant.matches(data)) return .quesant;
     if (rhk.matches(data)) return .rhk;
     if (sbig.matches(data)) return .sbig;
+    if (scanr.matches(data)) return .scanr;
     if (seiko.matches(data)) return .seiko;
     if (seq.matches(data)) return .seq;
     if (sif.matches(data)) return .sif;
@@ -2152,6 +2157,63 @@ test "reads stored sbig zip entry through inner reader" {
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 1, 0, 2, 0 }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
+}
+
+test "reads stored scanr zip entry before baseline tiff" {
+    var scanr_data: std.ArrayList(u8) = .empty;
+    defer scanr_data.deinit(std.testing.allocator);
+
+    try scanr_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&scanr_data, 42);
+    try appendU32Le(&scanr_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const software = "National Instruments IMAQ\x00";
+    const software_offset = ifd_end;
+    const pixel_offset = software_offset + software.len;
+
+    try appendU16Le(&scanr_data, entry_count);
+    try appendTiffEntry(&scanr_data, 256, 4, 1, 2);
+    try appendTiffEntry(&scanr_data, 257, 4, 1, 1);
+    try appendTiffEntry(&scanr_data, 258, 3, 1, 8);
+    try appendTiffEntry(&scanr_data, 259, 3, 1, 1);
+    try appendTiffEntry(&scanr_data, 262, 3, 1, 1);
+    try appendTiffEntry(&scanr_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&scanr_data, 277, 3, 1, 1);
+    try appendTiffEntry(&scanr_data, 278, 4, 1, 1);
+    try appendTiffEntry(&scanr_data, 279, 4, 1, 2);
+    try appendTiffEntry(&scanr_data, 305, 2, software.len, @intCast(software_offset));
+    try appendU32Le(&scanr_data, 0);
+    try scanr_data.appendSlice(std.testing.allocator, software);
+    try scanr_data.appendSlice(std.testing.allocator, &.{ 71, 72 });
+
+    try std.testing.expectEqual(Entry.Kind.scanr, detectInner("image.tif", scanr_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.tif", scanr_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 71, 72 }, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 1,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{72}, region_plane.data);
 }
 
 test "reads stored seiko zip entry through inner reader" {
