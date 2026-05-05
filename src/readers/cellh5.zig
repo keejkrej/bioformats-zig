@@ -13,6 +13,12 @@ const Shape = struct {
     pixel_type: bio.PixelType,
 };
 
+const Dataset = struct {
+    shape: Shape,
+    data_offset: usize,
+    data_size: usize,
+};
+
 pub fn matches(data: []const u8) bool {
     return hasHdf5Signature(data) and hasCellH5Markers(data);
 }
@@ -24,21 +30,7 @@ pub fn isPath(path: []const u8) bool {
 pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
     if (!matches(data)) return error.InvalidFormat;
     const shape = scanFirstCtzyxShape(data) orelse return error.InvalidFormat;
-    const zc = std.math.mul(u32, shape.size_z, shape.size_c) catch return error.UnsupportedVariant;
-    const plane_count = std.math.mul(u32, zc, shape.size_t) catch return error.UnsupportedVariant;
-    return .{
-        .format = "cellh5",
-        .width = shape.width,
-        .height = shape.height,
-        .size_c = shape.size_c,
-        .samples_per_pixel = 1,
-        .size_z = shape.size_z,
-        .size_t = shape.size_t,
-        .pixel_type = shape.pixel_type,
-        .little_endian = true,
-        .plane_count = plane_count,
-        .dimension_order = "XYZTC",
-    };
+    return metadataFromShape(shape);
 }
 
 pub fn readMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !bio.Metadata {
@@ -49,10 +41,17 @@ pub fn readMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const 
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    _ = allocator;
-    _ = data;
-    _ = plane_index;
-    return error.UnsupportedVariant;
+    if (!matches(data)) return error.InvalidFormat;
+    const dataset = scanFirstCtzyxDataset(data, true) orelse return error.UnsupportedVariant;
+    const metadata = try metadataFromShape(dataset.shape);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
+    const plane_len = try planeByteCount(metadata);
+    const plane_offset = try ctzyxPlaneOffset(metadata, plane_index, plane_len);
+    if (plane_offset + plane_len > dataset.data_size) return error.TruncatedData;
+    const offset = dataset.data_offset + plane_offset;
+    if (offset + plane_len > data.len) return error.TruncatedData;
+    const out = try allocator.dupe(u8, data[offset..][0..plane_len]);
+    return .{ .metadata = metadata, .data = out };
 }
 
 pub fn readPlanePathRegionIndex(
@@ -83,16 +82,40 @@ fn hasCellH5Markers(data: []const u8) bool {
         std.mem.indexOf(u8, data, "channel") != null;
 }
 
+fn metadataFromShape(shape: Shape) bio.ReaderError!bio.Metadata {
+    const zc = std.math.mul(u32, shape.size_z, shape.size_c) catch return error.UnsupportedVariant;
+    const plane_count = std.math.mul(u32, zc, shape.size_t) catch return error.UnsupportedVariant;
+    return .{
+        .format = "cellh5",
+        .width = shape.width,
+        .height = shape.height,
+        .size_c = shape.size_c,
+        .samples_per_pixel = 1,
+        .size_z = shape.size_z,
+        .size_t = shape.size_t,
+        .pixel_type = shape.pixel_type,
+        .little_endian = true,
+        .plane_count = plane_count,
+        .dimension_order = "XYZTC",
+    };
+}
+
 fn scanFirstCtzyxShape(data: []const u8) ?Shape {
+    const dataset = scanFirstCtzyxDataset(data, false) orelse return null;
+    return dataset.shape;
+}
+
+fn scanFirstCtzyxDataset(data: []const u8, require_layout: bool) ?Dataset {
     var offset: usize = 0;
     while (offset + 64 <= data.len) : (offset += 1) {
         const candidate = parseObjectHeaderForCtzyx(data, offset) orelse continue;
+        if (require_layout and candidate.data_size == 0) continue;
         return candidate;
     }
     return null;
 }
 
-fn parseObjectHeaderForCtzyx(data: []const u8, offset: usize) ?Shape {
+fn parseObjectHeaderForCtzyx(data: []const u8, offset: usize) ?Dataset {
     if (data[offset] != 1 or data[offset + 1] != 0) return null;
     const message_count = readU16(data, offset + 2);
     if (message_count == 0 or message_count > 32) return null;
@@ -102,6 +125,9 @@ fn parseObjectHeaderForCtzyx(data: []const u8, offset: usize) ?Shape {
 
     var shape: ?Shape = null;
     var element_size: ?u8 = null;
+    var data_offset: ?usize = null;
+    var data_size: ?usize = null;
+    var has_filter_pipeline = false;
     var pos = offset + 16;
     var i: u16 = 0;
     while (i < message_count) : (i += 1) {
@@ -122,12 +148,27 @@ fn parseObjectHeaderForCtzyx(data: []const u8, offset: usize) ?Shape {
                 element_size = size;
                 if (shape) |*existing| existing.pixel_type = pixelTypeForElementSize(size);
             }
+        } else if (message_type == 8) {
+            if (parseContiguousLayoutMessage(data[payload..end])) |layout| {
+                data_offset = layout.offset;
+                data_size = layout.size;
+            }
+        } else if (message_type == 11) {
+            has_filter_pipeline = true;
         }
 
         pos = end;
-        if (pos % 8 != 0) pos += 8 - (pos % 8);
+        const relative = pos - offset;
+        if (relative % 8 != 0) pos += 8 - (relative % 8);
     }
-    return shape;
+    const final_shape = shape orelse return null;
+    const final_offset = data_offset orelse return .{ .shape = final_shape, .data_offset = 0, .data_size = 0 };
+    if (has_filter_pipeline) return .{ .shape = final_shape, .data_offset = 0, .data_size = 0 };
+    return .{
+        .shape = final_shape,
+        .data_offset = final_offset,
+        .data_size = data_size orelse return null,
+    };
 }
 
 fn readFileHeader(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
@@ -159,6 +200,20 @@ fn parseDataspaceMessage(payload: []const u8) ?[5]u64 {
     return dims;
 }
 
+const Layout = struct {
+    offset: usize,
+    size: usize,
+};
+
+fn parseContiguousLayoutMessage(payload: []const u8) ?Layout {
+    if (payload.len < 18 or payload[0] != 3 or payload[1] != 1) return null;
+    const offset = std.mem.readInt(u64, payload[2..][0..8], .little);
+    const size = std.mem.readInt(u64, payload[10..][0..8], .little);
+    if (offset > std.math.maxInt(usize) or size > std.math.maxInt(usize)) return null;
+    if (size == 0) return null;
+    return .{ .offset = @intCast(offset), .size = @intCast(size) };
+}
+
 fn shapeFromDims(dims: [5]u64, element_size: u8) ?Shape {
     if (dims[0] > std.math.maxInt(u16) or dims[1] > std.math.maxInt(u16) or dims[2] > std.math.maxInt(u16)) return null;
     if (dims[3] > std.math.maxInt(u32) or dims[4] > std.math.maxInt(u32)) return null;
@@ -170,6 +225,21 @@ fn shapeFromDims(dims: [5]u64, element_size: u8) ?Shape {
         .width = @intCast(dims[4]),
         .pixel_type = pixelTypeForElementSize(element_size),
     };
+}
+
+fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
+    const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
+    return std.math.mul(usize, pixels, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
+}
+
+fn ctzyxPlaneOffset(metadata: bio.Metadata, plane_index: u32, plane_len: usize) bio.ReaderError!usize {
+    const z: u32 = plane_index % metadata.size_z;
+    const t: u32 = (plane_index / metadata.size_z) % metadata.size_t;
+    const c: u32 = plane_index / (@as(u32, metadata.size_z) * metadata.size_t);
+    if (c >= metadata.size_c) return error.InvalidPlaneIndex;
+    const ct = std.math.mul(usize, c, metadata.size_t) catch return error.UnsupportedVariant;
+    const ctz = std.math.mul(usize, ct + t, metadata.size_z) catch return error.UnsupportedVariant;
+    return std.math.mul(usize, ctz + z, plane_len) catch return error.UnsupportedVariant;
 }
 
 fn pixelTypeForElementSize(element_size: u8) bio.PixelType {
@@ -223,6 +293,45 @@ fn appendObjectHeader(list: *std.ArrayList(u8), allocator: std.mem.Allocator) !v
     });
 }
 
+fn appendObjectHeaderWithLayout(list: *std.ArrayList(u8), allocator: std.mem.Allocator, data_offset: usize, data_size: usize) !void {
+    try list.appendSlice(allocator, &.{
+        1,   0, 3,  0,
+        1,   0, 0,  0,
+        160, 0, 0,  0,
+        0,   0, 0,  0,
+        1,   0, 88, 0,
+        0,   0, 0,  0,
+        1,   5, 1,  0,
+        0,   0, 0,  0,
+    });
+    for ([_]u64{ 2, 2, 1, 2, 3 }) |value| {
+        var bytes: [8]u8 = undefined;
+        std.mem.writeInt(u64, &bytes, value, .little);
+        try list.appendSlice(allocator, &bytes);
+    }
+    for ([_]u64{ 2, 2, 1, 2, 3 }) |value| {
+        var bytes: [8]u8 = undefined;
+        std.mem.writeInt(u64, &bytes, value, .little);
+        try list.appendSlice(allocator, &bytes);
+    }
+    try list.appendSlice(allocator, &.{
+        3, 0, 8,  0,
+        0, 0, 0,  0,
+        1, 3, 0,  2,
+        0, 0, 0,  0,
+        8, 0, 24, 0,
+        0, 0, 0,  0,
+        3, 1,
+    });
+    var offset_bytes: [8]u8 = undefined;
+    std.mem.writeInt(u64, &offset_bytes, @intCast(data_offset), .little);
+    try list.appendSlice(allocator, &offset_bytes);
+    var size_bytes: [8]u8 = undefined;
+    std.mem.writeInt(u64, &size_bytes, @intCast(data_size), .little);
+    try list.appendSlice(allocator, &size_bytes);
+    try list.appendNTimes(allocator, 0, 6);
+}
+
 test "reads cellh5 metadata from hdf5 ctzyx dataspace" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
@@ -239,6 +348,39 @@ test "reads cellh5 metadata from hdf5 ctzyx dataspace" {
     try std.testing.expectEqual(@as(u16, 206), metadata.size_t);
     try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
     try std.testing.expectEqual(@as(u32, 412), metadata.plane_count);
+}
+
+test "reads cellh5 contiguous uncompressed ctzyx plane" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendSlice(std.testing.allocator, hdf5_signature);
+    try data.appendSlice(std.testing.allocator, "sample\x00plate\x00experiment\x00position\x00image\x00channel\x00");
+    try data.appendNTimes(std.testing.allocator, 0, 64);
+    const object_header_offset = data.items.len;
+    const object_header_len: usize = 160;
+    const raw_offset = object_header_offset + object_header_len;
+    const raw_size: usize = 48;
+    try appendObjectHeaderWithLayout(&data, std.testing.allocator, raw_offset, raw_size);
+    try data.appendSlice(std.testing.allocator, &.{
+        1,  0, 2,  0, 3,  0,
+        4,  0, 5,  0, 6,  0,
+        11, 0, 12, 0, 13, 0,
+        14, 0, 15, 0, 16, 0,
+        21, 0, 22, 0, 23, 0,
+        24, 0, 25, 0, 26, 0,
+        31, 0, 32, 0, 33, 0,
+        34, 0, 35, 0, 36, 0,
+    });
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 2);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("cellh5", plane.metadata.format);
+    try std.testing.expectEqual(@as(u32, 3), plane.metadata.width);
+    try std.testing.expectEqual(@as(u32, 2), plane.metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), plane.metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 2), plane.metadata.size_t);
+    try std.testing.expectEqual(@as(usize, 12), plane.data.len);
+    try std.testing.expectEqualSlices(u8, &.{ 21, 0, 22, 0, 23, 0, 24, 0, 25, 0, 26, 0 }, plane.data);
 }
 
 test "rejects non-cellh5 hdf data" {

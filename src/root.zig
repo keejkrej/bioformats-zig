@@ -453,9 +453,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "cellh5",
-        .name = "CellH5 HDF metadata",
+        .name = "CellH5 HDF contiguous planes",
         .extensions = &.{"ch5"},
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "cellomics",
