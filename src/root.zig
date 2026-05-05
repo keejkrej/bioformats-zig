@@ -77,6 +77,7 @@ pub const operetta = @import("readers/operetta.zig");
 pub const openlabraw = @import("readers/openlabraw.zig");
 pub const oxfordinstruments = @import("readers/oxfordinstruments.zig");
 pub const pcx = @import("readers/pcx.zig");
+pub const pcoraw = @import("readers/pcoraw.zig");
 pub const pds = @import("readers/pds.zig");
 pub const photoshoptiff = @import("readers/photoshoptiff.zig");
 pub const png = @import("readers/png.zig");
@@ -790,6 +791,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "pcx",
         .name = "PCX 8-bit grayscale/palette and planar RGB",
         .extensions = &.{"pcx"},
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "pcoraw",
+        .name = "PCO-RAW",
+        .extensions = &.{ "pcoraw", "rec" },
         .can_read_pixels = true,
     },
     .{

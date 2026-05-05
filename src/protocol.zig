@@ -166,6 +166,10 @@ pub const Server = struct {
                 return .{ .wrote_response = true };
             };
             defer self.allocator.free(bytes);
+            if (try self.probePathPriorityFormat(path)) |format| {
+                try writeProbeFormat(writer, id, path, format);
+                return .{ .wrote_response = true };
+            }
             if (bio.detect(bytes) == null) {
                 if (try self.probeCompanionFormat(path)) |format| {
                     try writeProbeFormat(writer, id, path, format);
@@ -491,6 +495,9 @@ pub const Server = struct {
     }
 
     fn metadataFromPathBytes(self: *Server, path: []const u8, bytes: []const u8) !bio.Metadata {
+        if (bio.pcoraw.isPath(path)) {
+            if (bio.pcoraw.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         return bio.readMetadata(bytes) catch |err| {
             if (bio.analyze.isPath(path)) {
                 if (bio.analyze.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
@@ -518,6 +525,13 @@ pub const Server = struct {
             }
             return err;
         };
+    }
+
+    fn probePathPriorityFormat(self: *Server, path: []const u8) !?[]const u8 {
+        if (bio.pcoraw.isPath(path)) {
+            if (bio.pcoraw.readMetadataPath(self.allocator, self.io, path)) |_| return "pcoraw" else |_| {}
+        }
+        return null;
     }
 
     fn probeCompanionFormat(self: *Server, path: []const u8) !?[]const u8 {
@@ -561,6 +575,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "pds")) {
             return bio.pds.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "pcoraw")) {
+            return bio.pcoraw.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "inveon")) {
             return bio.inveon.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -589,6 +606,7 @@ pub const Server = struct {
     fn isCompanionFormat(format: []const u8) bool {
         return std.mem.eql(u8, format, "analyze") or
             std.mem.eql(u8, format, "pds") or
+            std.mem.eql(u8, format, "pcoraw") or
             std.mem.eql(u8, format, "inveon") or
             std.mem.eql(u8, format, "fuji") or
             std.mem.eql(u8, format, "hitachi") or
@@ -1181,6 +1199,7 @@ test "formats response includes expanded readers" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"openlabraw\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"oxfordinstruments\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"pcx\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"pcoraw\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"pds\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"photoshoptiff\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"pqbin\"") != null);
@@ -1357,6 +1376,53 @@ test "server opens pds img path and reads companion pixels" {
     );
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"region\":{\"x\":1,\"y\":0,\"width\":1,\"height\":2}") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AgAEAA==\"") != null);
+}
+
+test "server opens pcoraw rec path and reads tiff pixels" {
+    const rec_path = "protocol-pcoraw-test.rec";
+    const image_path = "protocol-pcoraw-test.pcoraw";
+    const image = [_]u8{
+        'I', 'I', 42, 0, 8, 0, 0,   0,
+        9,   0,   0,  1, 4, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 1,   1,
+        4,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   2,  1, 3, 0, 1,   0,
+        0,   0,   8,  0, 0, 0, 3,   1,
+        3,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   6,  1, 3, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 17,  1,
+        4,   0,   1,  0, 0, 0, 122, 0,
+        0,   0,   21, 1, 3, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 22,  1,
+        4,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   23, 1, 4, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 0,   0,
+        0,   0,   77,
+    };
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = rec_path, .data = "Exposure / Delay: 10 ms\n" });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, rec_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = &image });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-pcoraw-test.rec\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"pcoraw\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
 }
 
 test "server opens fuji img path and reads companion pixels" {

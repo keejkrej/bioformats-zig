@@ -22,6 +22,14 @@ zig build
 
 The executable is written to `zig-out/bin/bioformats-zig`.
 
+## Fixture Sources
+
+Public fixture discovery is tracked in `fixtures/`. The current catalog points
+to OME's public sample image download tree and the Bio-Formats Zenodo community,
+with per-format source status for the implemented readers. Large sample images
+should be downloaded into a local cache outside git and exercised through the
+JSON-RPC `probe`, `metadata`, and small-region `readPlane` methods.
+
 ## Web Viewer
 
 A small local testing UI lives in `webapp/`. It uses React/Vite in the browser,
@@ -57,9 +65,10 @@ Supported methods:
 For companion-file formats, path-based requests may use neighboring files. For
 example, Analyze 7.5 `.hdr`/`.img`, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`,
 Fuji LAS 3000 `.inf`/`.img`, Inveon `.hdr`/data pairs, Perkin Elmer
-Densitometer `.hdr`/`.img`, and Unisoku STM `.HDR`/`.DAT` datasets can be
-opened by selecting either file; inline `data` can identify the header but
-cannot provide the paired pixel file.
+Densitometer `.hdr`/`.img`, Hitachi S-4800 `.txt` plus neighboring TIFF/BMP,
+PCO-RAW `.pcoraw`/`.rec`, and Unisoku STM `.HDR`/`.DAT` datasets can be opened
+by selecting either file; inline `data` can identify the header but cannot
+provide the paired pixel file.
 
 Example:
 
@@ -156,6 +165,7 @@ plane, which can differ from logical OME `sizeC`.
 - Amersham Biosciences GEL TIFF files identified by Molecular Dynamics private tags, decoded through the TIFF pixel path for single-IFD linear files; square-root scaled GEL images and two-IFD merge variants are rejected as unsupported.
 - GIF87a/GIF89a indexed color images exposed as planes, with global or local palettes, image descriptor offsets on the logical canvas, interlaced row reordering, Graphic Control transparency, and LZW image data, returned as RGB/RGBA.
 - Hamamatsu HIS single-series files with little-endian 8/16-bit grayscale or RGB planes; packed 12-bit and multi-series HIS files are not yet supported.
+- Hitachi S-4800 `.txt` sidecars with neighboring TIFF/BMP pixel files delegated through the existing image readers; selecting JPEG companions is detected but pixels are unsupported until a JPEG reader is added.
 - NOAA-HRD Gridded Data Format surface wind component tables exposed as two big-endian 64-bit floating-point channel planes.
 - I2I int16 and 32-bit floating-point volumes with little/big endian data and optional extra time-like dimension exposed as planes.
 - Imacon `.fff` TIFF files identified by Imacon XML private metadata tags, decoded through the TIFF pixel path.
@@ -201,6 +211,7 @@ plane, which can differ from logical OME `sizeC`.
 - Openlab RAW files with fixed per-image records, 8/16-bit grayscale, and RGB byte planes.
 - Oxford Instruments TOP files identified by fixed headers, with little-endian 16-bit pixels read after the LUT block; descriptive metadata strings, acquisition timestamps, and physical calibration are not yet surfaced.
 - PCX 8-bit grayscale, 256-color palette, and three-plane RGB files with PCX RLE compression, returned as grayscale or RGB.
+- PCO-RAW `.pcoraw` TIFF datasets with optional neighboring `.rec` metadata sidecar, delegated through the TIFF pixel path; `.rec` exposure metadata and >4 GiB offset repair are not yet surfaced.
 - Perkin Elmer Densitometer `.hdr`/`.img` pairs with little-endian 16-bit grayscale planes, fixed-record row padding, and stored-axis reversal; RGB/LUT variants and acquisition metadata are not yet surfaced.
 - Photoshop TIFF files identified by image source data private tags, with the merged TIFF image decoded; Photoshop layer extraction is not yet handled.
 - PicoQuant BIN FLIM files with little-endian 32-bit unsigned lifetime bins exposed as time planes.
