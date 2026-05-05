@@ -7,8 +7,10 @@ const model_tag = 272;
 const software_tag = 305;
 const canon_tag = 34665;
 const tiff_ep_standard_tag = 37398;
+const dng_version_tag = 50706;
 
 pub fn matches(data: []const u8) bool {
+    if (tiff.firstIfdContainsTag(data, dng_version_tag)) return true;
     const make = tiff.firstIfdAsciiTag(data, make_tag) orelse return false;
     if (std.mem.indexOf(u8, make, "Canon") == null) return false;
     if (!tiff.containsTag(data, tiff_ep_standard_tag) and !tiff.containsTag(data, canon_tag)) return false;
@@ -141,4 +143,35 @@ test "rejects excluded canon s1 is model" {
     try data.append(std.testing.allocator, 1);
 
     try std.testing.expect(!matches(data.items));
+}
+
+test "matches generic dng version tag" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    try data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&data, 42);
+    try appendU32Le(&data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const pixel_offset = ifd_end;
+
+    try appendU16Le(&data, entry_count);
+    try appendEntry(&data, 256, 4, 1, 1);
+    try appendEntry(&data, 257, 4, 1, 1);
+    try appendEntry(&data, 258, 3, 1, 8);
+    try appendEntry(&data, 259, 3, 1, 1);
+    try appendEntry(&data, 262, 3, 1, 1);
+    try appendEntry(&data, 273, 4, 1, @intCast(pixel_offset));
+    try appendEntry(&data, 277, 3, 1, 1);
+    try appendEntry(&data, 278, 4, 1, 1);
+    try appendEntry(&data, 279, 4, 1, 1);
+    try appendEntry(&data, dng_version_tag, 1, 4, 0x00000601);
+    try appendU32Le(&data, 0);
+    try data.append(std.testing.allocator, 17);
+
+    try std.testing.expect(matches(data.items));
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("dng", metadata.format);
 }

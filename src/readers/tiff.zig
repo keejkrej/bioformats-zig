@@ -1,5 +1,6 @@
 const std = @import("std");
 const bio = @import("../root.zig");
+const jpeg = @import("jpeg.zig");
 
 const max_strips = 1024;
 const max_tiles = 4096;
@@ -173,6 +174,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     const header = try parseHeaderAtIndex(data, info, plane_index);
     try validateReadable(header);
     const metadata = try readMetadata(data);
+    if (header.compression == 7) return readJpegCompressedPlane(allocator, data, header, metadata);
     const row_bytes = std.math.mul(usize, header.width, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
     const out_len = std.math.mul(usize, row_bytes, header.height) catch return error.UnsupportedVariant;
     const out = try allocator.alloc(u8, out_len);
@@ -244,6 +246,11 @@ pub fn readRegionIndex(
     const metadata = try readMetadata(data);
     try region.validate(metadata);
     if (region.isFull(metadata)) return readPlaneIndex(allocator, data, plane_index);
+    if (header.compression == 7) {
+        const plane = try readPlaneIndex(allocator, data, plane_index);
+        defer allocator.free(plane.data);
+        return .{ .metadata = metadata, .data = try bio.cropPlane(allocator, plane, region) };
+    }
 
     if (header.bits_per_sample[0] < 8 and header.photometric != 3) {
         const plane = try readPlaneIndex(allocator, data, plane_index);
@@ -566,16 +573,23 @@ fn parseHeaderAtOffset(data: []const u8, info: TiffInfo, ifd_offset_u64: u64) bi
 }
 
 fn validateReadable(header: Header) bio.ReaderError!void {
-    if (header.compression != 1 and header.compression != 5 and header.compression != 8 and header.compression != 32773 and header.compression != 32946) return error.UnsupportedVariant;
+    if (header.compression != 1 and header.compression != 5 and header.compression != 7 and header.compression != 8 and header.compression != 32773 and header.compression != 32946) return error.UnsupportedVariant;
     if (header.predictor != 1 and header.predictor != 2) return error.UnsupportedVariant;
     if (header.fill_order != 1 and header.fill_order != 2) return error.UnsupportedVariant;
     if (header.samples_per_pixel != 1 and header.samples_per_pixel != 3 and header.samples_per_pixel != 4) return error.UnsupportedVariant;
     if (header.planar_configuration != 1 and header.planar_configuration != 2) return error.UnsupportedVariant;
-    if (header.photometric != 0 and header.photometric != 1 and header.photometric != 2 and header.photometric != 3) return error.UnsupportedVariant;
+    if (header.photometric != 0 and header.photometric != 1 and header.photometric != 2 and header.photometric != 3 and header.photometric != 6) return error.UnsupportedVariant;
+    if (header.photometric == 6 and header.compression != 7) return error.UnsupportedVariant;
     if (header.bits_count < header.samples_per_pixel) return error.UnsupportedVariant;
     if (header.sample_format_count < header.samples_per_pixel and header.sample_format_count != 1) return error.UnsupportedVariant;
     const first_bits = header.bits_per_sample[0];
     const first_sample_format = header.sample_format[0];
+    if (header.compression == 7) {
+        if (header.photometric != 6 and header.photometric != 2) return error.UnsupportedVariant;
+        if (header.samples_per_pixel != 3 or first_bits != 8 or first_sample_format != 1) return error.UnsupportedVariant;
+        if (header.predictor != 1 or header.fill_order != 1 or header.planar_configuration != 1) return error.UnsupportedVariant;
+        if (header.strip_count != 1 or header.tile_count != 0) return error.UnsupportedVariant;
+    }
     if (first_sample_format != 1 and first_sample_format != 2 and first_sample_format != 3) return error.UnsupportedVariant;
     var i: usize = 0;
     while (i < header.samples_per_pixel) : (i += 1) {
@@ -597,7 +611,7 @@ fn validateReadable(header: Header) bio.ReaderError!void {
         if (header.tile_width == 0 or header.tile_length == 0) return error.InvalidFormat;
     }
     if (header.photometric == 0 and (first_sample_format != 1 or header.samples_per_pixel != 1)) return error.UnsupportedVariant;
-    if (header.photometric == 2 and header.samples_per_pixel != 3 and header.samples_per_pixel != 4) return error.UnsupportedVariant;
+    if ((header.photometric == 2 or header.photometric == 6) and header.samples_per_pixel != 3 and header.samples_per_pixel != 4) return error.UnsupportedVariant;
     if (header.photometric != 2 and header.samples_per_pixel == 4) return error.UnsupportedVariant;
     if (header.photometric == 3) {
         if (first_bits != 1 and first_bits != 2 and first_bits != 4 and first_bits != 8) return error.UnsupportedVariant;
@@ -608,6 +622,7 @@ fn validateReadable(header: Header) bio.ReaderError!void {
 
 fn pixelType(header: Header) bio.PixelType {
     if (header.photometric == 3) return .rgb8;
+    if (header.photometric == 6) return .rgb8;
     if (header.sample_format[0] == 2) {
         return switch (header.bits_per_sample[0]) {
             8 => .int8,
@@ -621,6 +636,23 @@ fn pixelType(header: Header) bio.PixelType {
         16 => if (header.samples_per_pixel == 4) .rgba16 else if (header.samples_per_pixel == 3) .rgb16 else .uint16,
         else => if (header.samples_per_pixel == 4) .rgba8 else if (header.samples_per_pixel == 3) .rgb8 else .uint8,
     };
+}
+
+fn readJpegCompressedPlane(
+    allocator: std.mem.Allocator,
+    data: []const u8,
+    header: Header,
+    metadata: bio.Metadata,
+) bio.ReaderError!bio.Plane {
+    if (header.strip_count != 1) return error.UnsupportedVariant;
+    const src_offset = try checkedUsize(header.strip_offsets[0]);
+    const compressed_bytes = try checkedUsize(header.strip_byte_counts[0]);
+    if (src_offset > data.len or data.len - src_offset < compressed_bytes) return error.TruncatedData;
+    const decoded = try jpeg.readPlaneIndexAs(allocator, data[src_offset..][0..compressed_bytes], 0, metadata.format);
+    errdefer allocator.free(decoded.data);
+    if (decoded.metadata.width != metadata.width or decoded.metadata.height != metadata.height) return error.UnsupportedVariant;
+    if (decoded.metadata.pixel_type != metadata.pixel_type) return error.UnsupportedVariant;
+    return .{ .metadata = metadata, .data = decoded.data };
 }
 
 fn readSeparatedStripPlane(
@@ -2046,6 +2078,47 @@ test "reads zlib deflate compressed grayscale tiff strip" {
     const plane = try readPlane(std.testing.allocator, data.items);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3 }, plane.data);
+}
+
+test "reads jpeg compressed rgb tiff strip" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    try data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&data, 42);
+    try appendU32Le(&data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const bits_offset = ifd_end;
+    const pixel_offset = bits_offset + 6;
+
+    try appendU16Le(&data, entry_count);
+    try appendEntry(&data, 256, 4, 1, 1);
+    try appendEntry(&data, 257, 4, 1, 1);
+    try appendEntry(&data, 258, 3, 3, bits_offset);
+    try appendEntry(&data, 259, 3, 1, 7);
+    try appendEntry(&data, 262, 3, 1, 6);
+    try appendEntry(&data, 273, 4, 1, pixel_offset);
+    try appendEntry(&data, 277, 3, 1, 3);
+    try appendEntry(&data, 278, 4, 1, 1);
+    try appendEntry(&data, 279, 4, 1, jpeg.baseline_red_jpeg.len);
+    try appendEntry(&data, 284, 3, 1, 1);
+    try appendU32Le(&data, 0);
+    try appendU16Le(&data, 8);
+    try appendU16Le(&data, 8);
+    try appendU16Le(&data, 8);
+    try data.appendSlice(std.testing.allocator, &jpeg.baseline_red_jpeg);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(@as(usize, 3), plane.data.len);
+    try std.testing.expect(plane.data[0] > 200);
 }
 
 test "reads packbits compressed grayscale tiff tiles" {
