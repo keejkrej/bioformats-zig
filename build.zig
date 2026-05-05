@@ -3,7 +3,8 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const openjpeg_root = b.option([]const u8, "openjpeg-root", "OpenJPEG/vcpkg installed root") orelse findOpenJpegRoot(b);
+    const enable_openjpeg = b.option(bool, "openjpeg", "Enable OpenJPEG JPEG-2000 pixel decoding") orelse true;
+    const openjpeg_root = if (enable_openjpeg) resolveOpenJpegRoot(b) else null;
     const has_openjpeg = openjpeg_root != null;
 
     const options = b.addOptions();
@@ -67,7 +68,12 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_exe_tests.step);
 }
 
-fn findOpenJpegRoot(b: *std.Build) ?[]const u8 {
+fn resolveOpenJpegRoot(b: *std.Build) ?[]const u8 {
+    if (b.option([]const u8, "openjpeg-root", "OpenJPEG/vcpkg installed root")) |root| {
+        if (isOpenJpegRoot(b, root)) return root;
+        std.debug.panic("invalid -Dopenjpeg-root: expected include/openjpeg-2.5/openjpeg.h and lib/openjp2", .{});
+    }
+
     if (b.graph.environ_map.get("VCPKG_ROOT")) |root| {
         if (isOpenJpegRoot(b, root)) return root;
         const installed = b.pathJoin(&.{ root, "installed", "x64-windows" });

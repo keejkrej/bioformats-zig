@@ -30,11 +30,13 @@ The executable is written to `zig-out/bin/bioformats-zig`.
 
 JPEG-2000 and JPX pixel reads use OpenJPEG when it is found at build time. The
 build checks `-Dopenjpeg-root=...`, then `VCPKG_ROOT`, then the local Windows
-vcpkg locations used during development. The root must contain
+vcpkg locations used during development. Pass `-Dopenjpeg=false` to force a
+dependency-free build without JPEG-2000 pixels. The root must contain
 `include/openjpeg-2.5/openjpeg.h` and an `openjp2` library under `lib/`.
 
 ```sh
 zig build -Dopenjpeg-root=/path/to/openjpeg-or-vcpkg-installed-triplet
+zig build -Dopenjpeg=false
 ```
 
 On Windows, `zig build` also copies `openjp2.dll` beside the executable when
