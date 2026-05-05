@@ -193,7 +193,7 @@
     "volocity": ["vendor-downloads-unverified", "bioformats-docs/volocity-perkinelmer-downloads", "bioformats-docs/volocity-many-internal-datasets"],
     "volocityclipping": ["needs-public-sample"],
     "watop": ["needs-public-sample"],
-    "xlef": ["ome_images/Leica-XLEF/"],
+    "xlef": ["ome_images/Leica-XLEF/format test/format test TIF/", "ome_images/Leica-XLEF/"],
     "zeissczi": ["ome_images/Zeiss-CZI/"],
     "zeisslms": ["needs-public-sample"],
     "zeisslsm": ["zenodo/10.5281/zenodo.14510432"],

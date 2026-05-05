@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|lof|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|jdce|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|lof|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|jdce|xlef|xlif|xml)$',
     [switch]$List
 )
 
@@ -135,6 +135,7 @@ function Preferred-NamePattern {
         "nrrd" { return '\.(nrrd|nhdr)$' }
         "obf" { return 'uncompressed\.obf$' }
         "spc" { return '\.set$' }
+        "xlef" { return '\.xlef$' }
         default { return $null }
     }
 }
@@ -252,12 +253,16 @@ function Download-RelativeCompanion {
     if ([string]::IsNullOrWhiteSpace($Name)) {
         return $null
     }
-    $uri = [Uri]::new([Uri]$BaseUrl, $Name)
+    $relativeName = [Uri]::UnescapeDataString($Name).Replace('\', '/')
+    if ($relativeName.StartsWith("./")) {
+        $relativeName = $relativeName.Substring(2)
+    }
+    $uri = [Uri]::new([Uri]$BaseUrl, $relativeName)
     $length = Get-RemoteLength $uri.AbsoluteUri
     if ($length -ne $null -and $length -gt $MaxBytes) {
         throw "Companion '$Name' is $length bytes, above MaxBytes $MaxBytes."
     }
-    $relative = [Uri]::UnescapeDataString($Name).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+    $relative = $relativeName.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
     $targetPath = Join-Path $TargetDir $relative
     $targetParent = Split-Path -Parent $targetPath
     New-Item -ItemType Directory -Force -Path $targetParent | Out-Null
@@ -389,6 +394,53 @@ function Download-JdceCompanions {
     Download-RelativeCompanion $baseUrl $relative $TargetDir
 }
 
+function Get-XmlAttributeValue {
+    param(
+        [string]$Content,
+        [string]$Element,
+        [string]$Attribute
+    )
+
+    $pattern = "<[^>]*\b$([regex]::Escape($Element))\b[^>]*\b$([regex]::Escape($Attribute))\s*=\s*['""]([^'""]+)['""]"
+    $match = [regex]::Match($Content, $pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) {
+        return $null
+    }
+    return [System.Net.WebUtility]::HtmlDecode($match.Groups[1].Value)
+}
+
+function Download-XlefCompanions {
+    param(
+        [string]$XlefSource,
+        [string]$XlefPath,
+        [string]$TargetDir
+    )
+
+    $xlefContent = Get-Content -LiteralPath $XlefPath -Raw
+    $xlifName = Get-XmlAttributeValue $xlefContent "Reference" "File"
+    if ([string]::IsNullOrWhiteSpace($xlifName)) {
+        return
+    }
+    $xlifName = [Uri]::UnescapeDataString($xlifName).Replace('\', '/')
+    if ($xlifName -match '^\./metadata/') {
+        $xlifName = $xlifName -replace '^\./metadata/', './Metadata/'
+    }
+    $baseUrl = [Uri]::new([Uri]$XlefSource, ".").AbsoluteUri
+    $xlif = Download-RelativeCompanion $baseUrl $xlifName $TargetDir
+    if (-not $xlif) {
+        return
+    }
+
+    $xlifContent = Get-Content -LiteralPath $xlif.Path -Raw
+    $frameName = Get-XmlAttributeValue $xlifContent "Frame" "File"
+    if ([string]::IsNullOrWhiteSpace($frameName)) {
+        return
+    }
+    $xlifBaseUrl = [Uri]::new([Uri]$xlif.Source, ".").AbsoluteUri
+    $xlifTargetDir = Split-Path -Parent $xlif.Path
+    Download-RelativeCompanion $xlifBaseUrl $frameName $xlifTargetDir
+}
+
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
 $zenodoRecordId = Resolve-ZenodoRecordId ([string[]]$formatEntry.Value)
 if ($null -eq $sourceUrl -and $null -eq $zenodoRecordId) {
@@ -448,4 +500,7 @@ if ($Format -eq "spc") {
 }
 if ($Format -eq "jdce") {
     Download-JdceCompanions $candidate.Url $targetPath $targetDir
+}
+if ($Format -eq "xlef") {
+    Download-XlefCompanions $candidate.Url $targetPath $targetDir
 }
