@@ -55,9 +55,9 @@ Supported methods:
 - `shutdown`
 
 For companion-file formats, path-based requests may use neighboring files. For
-example, Unisoku STM `.HDR`/`.DAT` datasets can be opened by selecting either
-file; inline `data` can identify the `.HDR` header but cannot provide the
-paired pixel file.
+example, Analyze 7.5 `.hdr`/`.img` and Unisoku STM `.HDR`/`.DAT` datasets can
+be opened by selecting either file; inline `data` can identify the header but
+cannot provide the paired pixel file.
 
 Example:
 
@@ -125,6 +125,7 @@ plane, which can differ from logical OME `sizeC`.
 - AIM int16 volumes with legacy and V030 dimension headers; Z slices are exposed as planes.
 - Alicona AL3D files with single-channel 8/16-bit texture planes or 32-bit floating-point depth planes; color texture variants are not yet supported.
 - AmiraMesh/Avizo raw binary single-stream lattice files with 8/16/32-bit integer and 32-bit floating-point scalar planes; ASCII, compressed, and multi-stream variants are not yet supported.
+- Analyze 7.5 `.hdr`/`.img` pairs with scalar 8-bit, signed 16/32-bit, 32/64-bit floating-point, and RGB8 pixel data; path-based JSON-RPC requests can open either companion file, while inline header data is metadata-only.
 - Animated PNG files identified by the `acTL` chunk, with the default PNG image decoded through the PNG reader; subsequent animation frames, frame coordinates, blending/disposal, and loop metadata are not yet handled.
 - ARF files with little/big-endian unsigned 8/16/32-bit raw planes; version 2 image stacks are exposed as time planes.
 - AVI files with uncompressed DIB `00db`/`00dc` frames for 8-bit grayscale, 24-bit RGB, and 32-bit RGBA planes; compressed AVI codecs, palettes, audio streams, and metadata beyond core dimensions are not yet handled.

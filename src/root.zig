@@ -3,6 +3,7 @@ const std = @import("std");
 pub const aim = @import("readers/aim.zig");
 pub const alicona = @import("readers/alicona.zig");
 pub const amira = @import("readers/amira.zig");
+pub const analyze = @import("readers/analyze.zig");
 pub const apng = @import("readers/apng.zig");
 pub const arf = @import("readers/arf.zig");
 pub const avi = @import("readers/avi.zig");
@@ -273,6 +274,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "amira",
         .name = "AmiraMesh raw binary lattice",
         .extensions = &.{ "am", "amiramesh", "grey", "hx", "labels" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "analyze",
+        .name = "Analyze 7.5",
+        .extensions = &.{ "hdr", "img" },
         .can_read_pixels = true,
     },
     .{
@@ -918,6 +925,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (zip.matches(data)) return "zip";
     if (alicona.matches(data)) return "alicona";
     if (amira.matches(data)) return "amira";
+    if (analyze.matches(data)) return "analyze";
     if (arf.matches(data)) return "arf";
     if (avi.matches(data)) return "avi";
     if (bdpathway.matches(data)) return "bdpathway";
@@ -1030,6 +1038,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (zip.matches(data)) return zip.readMetadata(data);
     if (alicona.matches(data)) return alicona.readMetadata(data);
     if (amira.matches(data)) return amira.readMetadata(data);
+    if (analyze.matches(data)) return analyze.readMetadata(data);
     if (arf.matches(data)) return arf.readMetadata(data);
     if (avi.matches(data)) return avi.readMetadata(data);
     if (bdpathway.matches(data)) return bdpathway.readMetadata(data);
@@ -1147,6 +1156,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (zip.matches(data)) return zip.readPlaneIndex(allocator, data, plane_index);
     if (alicona.matches(data)) return alicona.readPlaneIndex(allocator, data, plane_index);
     if (amira.matches(data)) return amira.readPlaneIndex(allocator, data, plane_index);
+    if (analyze.matches(data)) return analyze.readPlaneIndex(allocator, data, plane_index);
     if (arf.matches(data)) return arf.readPlaneIndex(allocator, data, plane_index);
     if (avi.matches(data)) return avi.readPlaneIndex(allocator, data, plane_index);
     if (bdpathway.matches(data)) return bdpathway.readPlaneIndex(allocator, data, plane_index);
@@ -1402,6 +1412,7 @@ pub fn cropPlane(allocator: std.mem.Allocator, plane: Plane, region: Region) Rea
 }
 
 test {
+    _ = analyze;
     _ = bdpathway;
     _ = apng;
     _ = avi;

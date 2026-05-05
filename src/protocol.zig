@@ -166,13 +166,11 @@ pub const Server = struct {
                 return .{ .wrote_response = true };
             };
             defer self.allocator.free(bytes);
-            if (bio.detect(bytes) == null and bio.unisoku.isPath(path)) {
-                _ = bio.unisoku.readMetadataPath(self.allocator, self.io, path) catch {
-                    try writeProbe(writer, id, path, bytes);
+            if (bio.detect(bytes) == null) {
+                if (try self.probeCompanionFormat(path)) |format| {
+                    try writeProbeFormat(writer, id, path, format);
                     return .{ .wrote_response = true };
-                };
-                try writeProbeFormat(writer, id, path, "unisoku");
-                return .{ .wrote_response = true };
+                }
             }
             try writeProbe(writer, id, path, bytes);
         } else if (std.mem.eql(u8, method, "open")) {
@@ -261,8 +259,8 @@ pub const Server = struct {
                         try writeError(writer, id, -32602, "Invalid plane region");
                         return .{ .wrote_response = true };
                     };
-                    const plane = if (isPathBackedUnisoku(handle))
-                        bio.unisoku.readPlanePathRegionIndex(self.allocator, self.io, handle.path, plane_index, region) catch |err| {
+                    const plane = if (isPathBackedCompanion(handle))
+                        self.readCompanionPlane(handle.metadata.format, handle.path, plane_index, region) catch |err| {
                             try writeReaderError(writer, id, err);
                             return .{ .wrote_response = true };
                         }
@@ -336,8 +334,8 @@ pub const Server = struct {
                         try writeError(writer, id, -32602, "Invalid plane region");
                         return .{ .wrote_response = true };
                     };
-                    const plane = if (std.mem.eql(u8, metadata.format, "unisoku"))
-                        bio.unisoku.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region) catch |err| {
+                    const plane = if (isCompanionFormat(metadata.format))
+                        self.readCompanionPlane(metadata.format, path, plane_index, region) catch |err| {
                             try writeReaderError(writer, id, err);
                             return .{ .wrote_response = true };
                         }
@@ -494,6 +492,9 @@ pub const Server = struct {
 
     fn metadataFromPathBytes(self: *Server, path: []const u8, bytes: []const u8) !bio.Metadata {
         return bio.readMetadata(bytes) catch |err| {
+            if (bio.analyze.isPath(path)) {
+                return bio.analyze.readMetadataPath(self.allocator, self.io, path);
+            }
             if (bio.unisoku.isPath(path)) {
                 return bio.unisoku.readMetadataPath(self.allocator, self.io, path);
             }
@@ -501,8 +502,40 @@ pub const Server = struct {
         };
     }
 
-    fn isPathBackedUnisoku(handle: *const Handle) bool {
-        return std.mem.eql(u8, handle.metadata.format, "unisoku") and !std.mem.eql(u8, handle.path, "<inline>");
+    fn probeCompanionFormat(self: *Server, path: []const u8) !?[]const u8 {
+        if (bio.analyze.isPath(path)) {
+            _ = bio.analyze.readMetadataPath(self.allocator, self.io, path) catch return null;
+            return "analyze";
+        }
+        if (bio.unisoku.isPath(path)) {
+            _ = bio.unisoku.readMetadataPath(self.allocator, self.io, path) catch return null;
+            return "unisoku";
+        }
+        return null;
+    }
+
+    fn readCompanionPlane(
+        self: *Server,
+        format: []const u8,
+        path: []const u8,
+        plane_index: u32,
+        region: bio.Region,
+    ) !bio.Plane {
+        if (std.mem.eql(u8, format, "analyze")) {
+            return bio.analyze.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
+        if (std.mem.eql(u8, format, "unisoku")) {
+            return bio.unisoku.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
+        return error.UnsupportedFormat;
+    }
+
+    fn isPathBackedCompanion(handle: *const Handle) bool {
+        return isCompanionFormat(handle.metadata.format) and !std.mem.eql(u8, handle.path, "<inline>");
+    }
+
+    fn isCompanionFormat(format: []const u8) bool {
+        return std.mem.eql(u8, format, "analyze") or std.mem.eql(u8, format, "unisoku");
     }
 };
 
@@ -1033,6 +1066,7 @@ test "formats response includes expanded readers" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"aim\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"alicona\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"amira\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"analyze\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"arf\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"avi\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"biorad\"") != null);
@@ -1173,6 +1207,49 @@ test "server opens path and reads through returned handle" {
     );
     try std.testing.expectEqual(@as(usize, 0), server.handles.items.len);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"result\":true") != null);
+}
+
+test "server opens analyze img path and reads companion pixels" {
+    const hdr_path = "protocol-analyze-test.hdr";
+    const img_path = "protocol-analyze-test.img";
+    var header = [_]u8{0} ** 348;
+    std.mem.writeInt(i32, header[0..4], 348, .little);
+    std.mem.writeInt(u16, header[40..42], 4, .little);
+    std.mem.writeInt(u16, header[42..44], 2, .little);
+    std.mem.writeInt(u16, header[44..46], 2, .little);
+    std.mem.writeInt(u16, header[46..48], 1, .little);
+    std.mem.writeInt(u16, header[48..50], 1, .little);
+    std.mem.writeInt(u16, header[70..72], 4, .little);
+    std.mem.writeInt(u32, header[108..112], @bitCast(@as(f32, 0)), .little);
+    const pixels = [_]u8{
+        1, 0, 2, 0,
+        3, 0, 4, 0,
+    };
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = hdr_path, .data = &header });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, hdr_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = img_path, .data = &pixels });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, img_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-analyze-test.img\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"analyze\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":1,\"y\":0,\"width\":1,\"height\":2}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"region\":{\"x\":1,\"y\":0,\"width\":1,\"height\":2}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AgAEAA==\"") != null);
 }
 
 test "server opens unisoku dat path and reads companion pixels" {
