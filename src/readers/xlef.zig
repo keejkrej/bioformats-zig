@@ -180,6 +180,33 @@ fn decodePathValue(allocator: std.mem.Allocator, encoded: []const u8) ![]u8 {
     errdefer out.deinit(allocator);
     var i: usize = 0;
     while (i < encoded.len) {
+        if (encoded[i] == '&') {
+            if (std.mem.startsWith(u8, encoded[i..], "&amp;")) {
+                try out.append(allocator, '&');
+                i += "&amp;".len;
+                continue;
+            }
+            if (std.mem.startsWith(u8, encoded[i..], "&quot;")) {
+                try out.append(allocator, '"');
+                i += "&quot;".len;
+                continue;
+            }
+            if (std.mem.startsWith(u8, encoded[i..], "&apos;")) {
+                try out.append(allocator, '\'');
+                i += "&apos;".len;
+                continue;
+            }
+            if (std.mem.startsWith(u8, encoded[i..], "&lt;")) {
+                try out.append(allocator, '<');
+                i += "&lt;".len;
+                continue;
+            }
+            if (std.mem.startsWith(u8, encoded[i..], "&gt;")) {
+                try out.append(allocator, '>');
+                i += "&gt;".len;
+                continue;
+            }
+        }
         if (encoded[i] == '%' and i + 2 < encoded.len) {
             const hi = std.fmt.charToDigit(encoded[i + 1], 16) catch null;
             const lo = std.fmt.charToDigit(encoded[i + 2], 16) catch null;
@@ -384,4 +411,20 @@ test "reads xlef metadata through xlif bmp frame" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("xlef", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 255, 0, 0 }, plane.data);
+}
+
+test "reads xlef frame path with xml entity escaping" {
+    const root = "xlef-entity-test";
+    const xlif_path = "xlef-entity-test/first.xlif";
+    const image_path = "xlef-entity-test/a&b.tif";
+    std.Io.Dir.cwd().deleteTree(std.testing.io, root) catch {};
+    defer std.Io.Dir.cwd().deleteTree(std.testing.io, root) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root, .default_dir);
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = &tiny_tiff });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xlif_path, .data = "<LMSDataContainerHeader><Element><Memory><Frame File=\"a&amp;b.tif\" /></Memory></Element></LMSDataContainerHeader>" });
+
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, xlif_path);
+    try std.testing.expectEqualStrings("xlef", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
 }
