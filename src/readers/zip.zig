@@ -67,6 +67,7 @@ const nrrd = @import("nrrd.zig");
 const omexml = @import("omexml.zig");
 const openlabraw = @import("openlabraw.zig");
 const ometiff = @import("ometiff.zig");
+const operetta = @import("operetta.zig");
 const oxfordinstruments = @import("oxfordinstruments.zig");
 const pcx = @import("pcx.zig");
 const photoshoptiff = @import("photoshoptiff.zig");
@@ -116,7 +117,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -229,6 +230,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .omexml => omexml.readMetadata(entry.data),
         .openlabraw => openlabraw.readMetadata(entry.data),
         .ometiff => ometiff.readMetadata(entry.data),
+        .operetta => operetta.readMetadata(entry.data),
         .oxfordinstruments => oxfordinstruments.readMetadata(entry.data),
         .pcx => pcx.readMetadata(entry.data),
         .photoshoptiff => photoshoptiff.readMetadata(entry.data),
@@ -338,6 +340,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .omexml => omexml.readPlaneIndex(allocator, entry.data, plane_index),
         .openlabraw => openlabraw.readPlaneIndex(allocator, entry.data, plane_index),
         .ometiff => ometiff.readPlaneIndex(allocator, entry.data, plane_index),
+        .operetta => operetta.readPlaneIndex(allocator, entry.data, plane_index),
         .oxfordinstruments => oxfordinstruments.readPlaneIndex(allocator, entry.data, plane_index),
         .pcx => if (plane_index == 0) pcx.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .photoshoptiff => photoshoptiff.readPlaneIndex(allocator, entry.data, plane_index),
@@ -385,6 +388,7 @@ fn readInnerRegionIndex(
     region: bio.Region,
 ) bio.ReaderError!bio.Plane {
     if (entry.kind == .ometiff) return ometiff.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .operetta) return operetta.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .bdpathway) return bdpathway.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .dng) return dng.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .feitiff) return feitiff.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -529,6 +533,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (nrrd.matches(data)) return .nrrd;
     if (omexml.matches(data)) return .omexml;
     if (openlabraw.matches(data)) return .openlabraw;
+    if (operetta.matches(data)) return .operetta;
     if (ometiff.matches(data)) return .ometiff;
     if (oxfordinstruments.matches(data)) return .oxfordinstruments;
     if (pcx.matches(data)) return .pcx;
@@ -1827,6 +1832,62 @@ test "detects stored ome-tiff zip entry before baseline tiff" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{17}, plane.data);
+}
+
+test "reads stored operetta zip entry before baseline tiff" {
+    var operetta_data: std.ArrayList(u8) = .empty;
+    defer operetta_data.deinit(std.testing.allocator);
+    try operetta_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&operetta_data, 42);
+    try appendU32Le(&operetta_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const xml = "<Root><Name>Harmony Operetta</Name></Root>\x00";
+    const xml_offset = ifd_end;
+    const pixel_offset = xml_offset + xml.len;
+
+    try appendU16Le(&operetta_data, entry_count);
+    try appendTiffEntry(&operetta_data, 256, 4, 1, 2);
+    try appendTiffEntry(&operetta_data, 257, 4, 1, 1);
+    try appendTiffEntry(&operetta_data, 258, 3, 1, 8);
+    try appendTiffEntry(&operetta_data, 259, 3, 1, 1);
+    try appendTiffEntry(&operetta_data, 262, 3, 1, 1);
+    try appendTiffEntry(&operetta_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&operetta_data, 277, 3, 1, 1);
+    try appendTiffEntry(&operetta_data, 278, 4, 1, 1);
+    try appendTiffEntry(&operetta_data, 279, 4, 1, 2);
+    try appendTiffEntry(&operetta_data, 65500, 2, xml.len, @intCast(xml_offset));
+    try appendU32Le(&operetta_data, 0);
+    try operetta_data.appendSlice(std.testing.allocator, xml);
+    try operetta_data.appendSlice(std.testing.allocator, &.{ 81, 82 });
+
+    try std.testing.expectEqual(Entry.Kind.operetta, detectInner("image.tif", operetta_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.tif", operetta_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 81, 82 }, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 1,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{82}, region_plane.data);
 }
 
 test "reads stored ome-xml zip entry through inner reader" {

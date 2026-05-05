@@ -66,6 +66,7 @@ pub const nikontiff = @import("readers/nikontiff.zig");
 pub const nrrd = @import("readers/nrrd.zig");
 pub const omexml = @import("readers/omexml.zig");
 pub const ometiff = @import("readers/ometiff.zig");
+pub const operetta = @import("readers/operetta.zig");
 pub const openlabraw = @import("readers/openlabraw.zig");
 pub const oxfordinstruments = @import("readers/oxfordinstruments.zig");
 pub const pcx = @import("readers/pcx.zig");
@@ -710,6 +711,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "operetta",
+        .name = "PerkinElmer Operetta TIFF",
+        .extensions = &.{ "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "openlabraw",
         .name = "Openlab RAW",
         .extensions = &.{"raw"},
@@ -927,6 +934,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (nifti.matches(data)) return "nifti";
     if (nrrd.matches(data)) return "nrrd";
     if (omexml.matches(data)) return "omexml";
+    if (operetta.matches(data)) return "operetta";
     if (openlabraw.matches(data)) return "openlabraw";
     if (oxfordinstruments.matches(data)) return "oxfordinstruments";
     if (pcx.matches(data)) return "pcx";
@@ -1036,6 +1044,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (nifti.matches(data)) return nifti.readMetadata(data);
     if (nrrd.matches(data)) return nrrd.readMetadata(data);
     if (omexml.matches(data)) return omexml.readMetadata(data);
+    if (operetta.matches(data)) return operetta.readMetadata(data);
     if (openlabraw.matches(data)) return openlabraw.readMetadata(data);
     if (oxfordinstruments.matches(data)) return oxfordinstruments.readMetadata(data);
     if (pcx.matches(data)) return pcx.readMetadata(data);
@@ -1181,6 +1190,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (nifti.matches(data)) return nifti.readPlaneIndex(allocator, data, plane_index);
     if (nrrd.matches(data)) return nrrd.readPlaneIndex(allocator, data, plane_index);
     if (omexml.matches(data)) return omexml.readPlaneIndex(allocator, data, plane_index);
+    if (operetta.matches(data)) return operetta.readPlaneIndex(allocator, data, plane_index);
     if (openlabraw.matches(data)) return openlabraw.readPlaneIndex(allocator, data, plane_index);
     if (oxfordinstruments.matches(data)) return oxfordinstruments.readPlaneIndex(allocator, data, plane_index);
     if (pcx.matches(data)) {
@@ -1323,6 +1333,7 @@ pub fn readPlaneRegionIndex(
     if (trestle.matches(data)) return trestle.readRegionIndex(allocator, data, plane_index, region);
     if (vectra.matches(data)) return vectra.readRegionIndex(allocator, data, plane_index, region);
     if (ventana.matches(data)) return ventana.readRegionIndex(allocator, data, plane_index, region);
+    if (operetta.matches(data)) return operetta.readRegionIndex(allocator, data, plane_index, region);
     if (ometiff.matches(data)) return ometiff.readRegionIndex(allocator, data, plane_index, region);
     if (zeisslsm.matches(data)) return zeisslsm.readRegionIndex(allocator, data, plane_index, region);
     if (tiff.matches(data)) return tiff.readRegionIndex(allocator, data, plane_index, region);
@@ -1404,6 +1415,7 @@ test {
     _ = nikontiff;
     _ = omexml;
     _ = ometiff;
+    _ = operetta;
     _ = oxfordinstruments;
     _ = photoshoptiff;
     _ = png;
