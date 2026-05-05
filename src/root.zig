@@ -120,6 +120,7 @@ pub const unisoku = @import("readers/unisoku.zig");
 pub const varianfdf = @import("readers/varianfdf.zig");
 pub const vectra = @import("readers/vectra.zig");
 pub const ventana = @import("readers/ventana.zig");
+pub const visitech = @import("readers/visitech.zig");
 pub const vgsam = @import("readers/vgsam.zig");
 pub const volocityclipping = @import("readers/volocityclipping.zig");
 pub const watop = @import("readers/watop.zig");
@@ -995,6 +996,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "visitech",
+        .name = "Visitech XYS",
+        .extensions = &.{ "html", "xys" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "vgsam",
         .name = "VG SAM",
         .extensions = &.{"dti"},
@@ -1631,6 +1638,7 @@ test {
     _ = unisoku;
     _ = vectra;
     _ = ventana;
+    _ = visitech;
     _ = volocityclipping;
     _ = zeisslms;
     _ = zeisslsm;

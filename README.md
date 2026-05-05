@@ -253,6 +253,7 @@ plane, which can differ from logical OME `sizeC`.
 - Varian FDF single-file images with 8/16/32-bit unsigned and 32-bit floating-point raw planes; rows are normalized to top-down output. Directory-based multifile FDF grouping is not yet handled.
 - PerkinElmer Vectra/QPTIFF files identified by QPI software tags, decoded through the TIFF pixel path; profile XML, annotation companion files, subresolution modeling, and Vectra channel metadata parsing are not yet handled.
 - Ventana BIF TIFF files identified by iScan XML private metadata, decoded through the TIFF pixel path; tile stitching, split-tile mode, subresolution mapping, and Ventana XML metadata extraction are not yet handled.
+- Visitech XYS datasets with HTML report-derived dimensions and raw `.xys` companion pixels; multi-position splitting, per-plane padding heuristics, acquisition metadata, and physical sizes are not yet handled.
 - VG SAM DTI files with big-endian 8/16-bit unsigned or 32-bit floating-point grayscale planes.
 - Volocity Library Clipping `.acff` files with inline uncompressed 8-bit planes; LZO-compressed clipping payloads are not yet handled.
 - WA Technology TOP `.wat` files with fixed-header little-endian signed 16-bit grayscale planes.
