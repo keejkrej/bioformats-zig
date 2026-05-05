@@ -1431,9 +1431,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "zeisszvi",
-        .name = "Zeiss Vision Image metadata",
+        .name = "Zeiss Vision Image raw streams",
         .extensions = &.{"zvi"},
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "zip",

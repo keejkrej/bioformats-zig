@@ -197,7 +197,7 @@
     "zeisslsm": ["needs-public-sample"],
     "zeisstiff": ["ome_images/Zeiss-AxioVision-TIFF/"],
     "zeissxrm": ["needs-public-sample"],
-    "zeisszvi": ["needs-public-sample", "bioformats-docs/zeiss-zvi-says-many-datasets"],
+    "zeisszvi": ["bioformats-docs/zeiss-zvi-many-datasets-no-public-download-url", "needs-public-download-url"],
     "zip": ["generated-fixture"]
   },
   "pending_reader_sources": {}

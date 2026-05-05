@@ -36,6 +36,18 @@ const UniqueValues = struct {
     }
 };
 
+const ImageInfo = struct {
+    width: u32,
+    height: u32,
+    bpp: u32,
+    jpeg: bool,
+    zlib: bool,
+    pixel_offset: usize,
+    z: u32,
+    c: u32,
+    t: u32,
+};
+
 pub fn matches(data: []const u8) bool {
     if (!cfb.matches(data)) return false;
     const streams = cfb.listStreams(std.heap.page_allocator, data) catch return false;
@@ -83,11 +95,35 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    _ = allocator;
-    _ = data;
-    _ = plane_index;
-    return error.UnsupportedVariant;
+    const metadata = try readMetadata(data);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
+
+    const image = try findImage(allocator, data, plane_index);
+    defer allocator.free(image.stream_name);
+    if (image.jpeg or image.zlib) return error.UnsupportedVariant;
+    if (image.width != metadata.width or image.height != metadata.height) return error.UnsupportedVariant;
+
+    const stream = try cfb.readStream(allocator, data, image.stream_name);
+    defer allocator.free(stream);
+
+    const plane_len = try planeByteCount(metadata);
+    if (image.pixel_offset > stream.len or stream.len - image.pixel_offset < plane_len) return error.TruncatedData;
+    const out = try allocator.alloc(u8, plane_len);
+    errdefer allocator.free(out);
+    @memcpy(out, stream[image.pixel_offset..][0..plane_len]);
+
+    if (metadata.samples_per_pixel == 3) reverseBgr(out, metadata.pixel_type.bytesPerSample());
+    return .{ .metadata = metadata, .data = out };
 }
+
+const ImageRef = struct {
+    stream_name: []const u8,
+    width: u32,
+    height: u32,
+    jpeg: bool,
+    zlib: bool,
+    pixel_offset: usize,
+};
 
 fn isImageContentsStream(name: []const u8) bool {
     if (!std.ascii.endsWithIgnoreCase(name, contents)) return false;
@@ -95,6 +131,19 @@ fn isImageContentsStream(name: []const u8) bool {
 }
 
 fn parseImageStream(data: []const u8, scan: *Scan) bio.ReaderError!void {
+    const image = try imageInfoFromStream(data);
+    scan.width = if (scan.width == 0) image.width else @min(scan.width, image.width);
+    scan.height = @max(scan.height, image.height);
+    if (scan.bpp == 0) scan.bpp = image.bpp;
+    scan.z_values.add(image.z);
+    scan.c_values.add(image.c);
+    scan.t_values.add(image.t);
+    scan.images += 1;
+    if (image.zlib) scan.zlib = true;
+    if (image.jpeg) scan.jpeg = true;
+}
+
+fn imageInfoFromStream(data: []const u8) bio.ReaderError!ImageInfo {
     if (data.len <= min_image_stream_size) return error.InvalidFormat;
     var reader = Reader{ .data = data };
 
@@ -126,18 +175,48 @@ fn parseImageStream(data: []const u8, scan: *Scan) bio.ReaderError!void {
     const bpp = try reader.readU32();
     try reader.skip(4);
     const valid = try reader.readU32();
+    const check_offset = reader.pos;
     const check = std.mem.trim(u8, try reader.readBytes(4), " \x00\t\r\n");
 
     if (width == 0 or height == 0) return error.InvalidFormat;
-    scan.width = if (scan.width == 0) width else @min(scan.width, width);
-    scan.height = @max(scan.height, height);
-    if (scan.bpp == 0) scan.bpp = bpp;
-    scan.z_values.add(z);
-    scan.c_values.add(c);
-    scan.t_values.add(t);
-    scan.images += 1;
-    if ((valid == 0 or valid == 1) and std.mem.eql(u8, check, "WZL")) scan.zlib = true;
-    if ((valid == 0 or valid == 1) and !scan.zlib) scan.jpeg = true;
+    const zlib = (valid == 0 or valid == 1) and std.mem.eql(u8, check, "WZL");
+    return .{
+        .width = width,
+        .height = height,
+        .bpp = bpp,
+        .jpeg = (valid == 0 or valid == 1) and !zlib,
+        .zlib = zlib,
+        .pixel_offset = if (zlib) check_offset + 8 else check_offset,
+        .z = z,
+        .c = c,
+        .t = t,
+    };
+}
+
+fn findImage(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!ImageRef {
+    if (!cfb.matches(data)) return error.InvalidFormat;
+    const streams = try cfb.listStreams(allocator, data);
+    defer cfb.freeStreamList(allocator, streams);
+
+    var image_index: u32 = 0;
+    for (streams) |stream_info| {
+        if (!isImageContentsStream(stream_info.name) or stream_info.size <= min_image_stream_size) continue;
+        const bytes = cfb.readStream(allocator, data, stream_info.name) catch continue;
+        defer allocator.free(bytes);
+        const image = imageInfoFromStream(bytes) catch continue;
+        if (image_index == plane_index) {
+            return .{
+                .stream_name = try allocator.dupe(u8, stream_info.name),
+                .width = image.width,
+                .height = image.height,
+                .jpeg = image.jpeg,
+                .zlib = image.zlib,
+                .pixel_offset = image.pixel_offset,
+            };
+        }
+        image_index += 1;
+    }
+    return error.InvalidPlaneIndex;
 }
 
 const Reader = struct {
@@ -232,6 +311,22 @@ fn boundedDimension(value: u32) u16 {
     return @intCast(@min(@max(value, 1), std.math.maxInt(u16)));
 }
 
+fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
+    const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
+    return std.math.mul(usize, pixels, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
+}
+
+fn reverseBgr(data: []u8, bytes_per_sample: usize) void {
+    const stride = bytes_per_sample * 3;
+    var i: usize = 0;
+    while (i + stride <= data.len) : (i += stride) {
+        var j: usize = 0;
+        while (j < bytes_per_sample) : (j += 1) {
+            std.mem.swap(u8, &data[i + j], &data[i + 2 * bytes_per_sample + j]);
+        }
+    }
+}
+
 fn startsWithIgnoreCase(value: []const u8, prefix: []const u8) bool {
     return value.len >= prefix.len and std.ascii.eqlIgnoreCase(value[0..prefix.len], prefix);
 }
@@ -248,7 +343,7 @@ fn appendU32Le(out: *std.ArrayList(u8), value: u32) !void {
     try out.appendSlice(std.testing.allocator, &bytes);
 }
 
-fn appendSyntheticImageStream(out: *std.ArrayList(u8), width: u32, height: u32, z: u32, c: u32, t: u32, bpp: u32) !void {
+fn appendSyntheticImageStream(out: *std.ArrayList(u8), width: u32, height: u32, z: u32, c: u32, t: u32, bpp: u32, pixels: []const u8) !void {
     try out.appendNTimes(std.testing.allocator, 0, 11 * 2);
     try appendU16Le(out, 0);
     try appendU32Le(out, 28);
@@ -266,7 +361,7 @@ fn appendSyntheticImageStream(out: *std.ArrayList(u8), width: u32, height: u32, 
     try appendU32Le(out, bpp);
     try appendU32Le(out, 0);
     try appendU32Le(out, 2);
-    try out.appendSlice(std.testing.allocator, "RAW ");
+    try out.appendSlice(std.testing.allocator, pixels);
     try out.appendNTimes(std.testing.allocator, 0, 4096 - out.items.len);
 }
 
@@ -328,7 +423,7 @@ fn appendSyntheticCfb(out: *std.ArrayList(u8), stream_name: []const u8, stream: 
 test "reads zeiss zvi metadata from cfb image stream" {
     var stream: std.ArrayList(u8) = .empty;
     defer stream.deinit(std.testing.allocator);
-    try appendSyntheticImageStream(&stream, 13, 9, 0, 0, 0, 2);
+    try appendSyntheticImageStream(&stream, 13, 9, 0, 0, 0, 2, &.{ 0, 0 });
 
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
@@ -344,7 +439,26 @@ test "reads zeiss zvi metadata from cfb image stream" {
     try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
     try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
     try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
-    try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data.items, 0));
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 0);
+    defer std.testing.allocator.free(plane.data);
+    const expected = [_]u8{0} ** (13 * 9 * 2);
+    try std.testing.expectEqualSlices(u8, &expected, plane.data);
+}
+
+test "reads raw rgb zvi plane and swaps bgr storage" {
+    var stream: std.ArrayList(u8) = .empty;
+    defer stream.deinit(std.testing.allocator);
+    try appendSyntheticImageStream(&stream, 1, 1, 0, 0, 0, 3, &.{ 10, 20, 30 });
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendSyntheticCfb(&data, "Image/Item(0)/CONTENTS", stream.items);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(bio.PixelType.rgb8, plane.metadata.pixel_type);
+    try std.testing.expectEqualSlices(u8, &.{ 30, 20, 10 }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
 }
 
 test "rejects plain cfb without zvi image stream" {
