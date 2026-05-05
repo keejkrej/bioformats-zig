@@ -13,6 +13,7 @@ const bmp = @import("bmp.zig");
 const dcimg = @import("dcimg.zig");
 const dicom = @import("dicom.zig");
 const ecat7 = @import("ecat7.zig");
+const eps = @import("eps.zig");
 const fits = @import("fits.zig");
 const gatandm2 = @import("gatandm2.zig");
 const gif = @import("gif.zig");
@@ -64,7 +65,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, openlabraw, oxfordinstruments, pcx, png, povray, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, openlabraw, oxfordinstruments, pcx, png, povray, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -123,6 +124,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .dcimg => dcimg.readMetadata(entry.data),
         .dicom => dicom.readMetadata(entry.data),
         .ecat7 => ecat7.readMetadata(entry.data),
+        .eps => eps.readMetadata(entry.data),
         .fits => fits.readMetadata(entry.data),
         .gatandm2 => gatandm2.readMetadata(entry.data),
         .gif => gif.readMetadata(entry.data),
@@ -180,6 +182,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .dcimg => dcimg.readPlaneIndex(allocator, entry.data, plane_index),
         .dicom => dicom.readPlaneIndex(allocator, entry.data, plane_index),
         .ecat7 => ecat7.readPlaneIndex(allocator, entry.data, plane_index),
+        .eps => if (plane_index == 0) eps.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .fits => fits.readPlaneIndex(allocator, entry.data, plane_index),
         .gatandm2 => gatandm2.readPlaneIndex(allocator, entry.data, plane_index),
         .gif => gif.readPlaneIndex(allocator, entry.data, plane_index),
@@ -290,6 +293,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (dcimg.matches(data)) return .dcimg;
     if (dicom.matches(data)) return .dicom;
     if (ecat7.matches(data)) return .ecat7;
+    if (eps.matches(data)) return .eps;
     if (fits.matches(data)) return .fits;
     if (gatandm2.matches(data)) return .gatandm2;
     if (gif.matches(data)) return .gif;
@@ -1332,6 +1336,30 @@ test "reads stored fits zip entry through inner reader" {
     const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 0xab, 0xcd }, plane.data);
+}
+
+test "reads stored eps zip entry through inner reader" {
+    const eps_data =
+        \\%!PS-Adobe-3.0 EPSF-3.0
+        \\2 1 8 image
+        \\0a ff
+    ;
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.eps", eps_data);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 0x0a, 0xff }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
 }
 
 test "reads stored dcimg zip entry through inner reader" {

@@ -91,7 +91,7 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
             if (!std.mem.startsWith(u8, line, image_marker)) {
                 if (std.mem.indexOf(u8, line, "colorimage") != null) samples = 3;
                 const tokens = tokenize(line);
-                if (tokens.len >= 3) {
+                if (tokens.len >= 3 and startsWithDigit(tokens.items[0])) {
                     width = try parsePositive(tokens.items[0]);
                     height = try parsePositive(tokens.items[1]);
                     const bits = try parsePositive(tokens.items[2]);
@@ -115,6 +115,10 @@ fn stripQuotes(token: []const u8) []const u8 {
         return token[1 .. token.len - 1];
     }
     return token;
+}
+
+fn startsWithDigit(text: []const u8) bool {
+    return text.len > 0 and text[0] >= '0' and text[0] <= '9';
 }
 
 fn parsePositive(text: []const u8) bio.ReaderError!u32 {
