@@ -119,8 +119,22 @@ function Invoke-FramedRequest {
         [hashtable]$Request
     )
 
+    $response = Invoke-FramedMessage -Process $Process -Message $Request -Label $Request.method
+    if ($response.error) {
+        throw "$($Request.method) failed: $($response.error.message)"
+    }
+    return $response
+}
+
+function Invoke-FramedMessage {
+    param(
+        [System.Diagnostics.Process]$Process,
+        [object]$Message,
+        [string]$Label
+    )
+
     $utf8 = [System.Text.UTF8Encoding]::new($false)
-    $body = ConvertTo-Json -InputObject $Request -Compress -Depth 8
+    $body = ConvertTo-Json -InputObject $Message -Compress -Depth 8
     $bodyBytes = $utf8.GetBytes($body)
     Write-Utf8Bytes $Process ("Content-Length: $($bodyBytes.Length)`r`n`r`n")
     $Process.StandardInput.BaseStream.Write($bodyBytes, 0, $bodyBytes.Length)
@@ -137,15 +151,11 @@ function Invoke-FramedRequest {
         }
     }
     if ($null -eq $contentLength) {
-        throw "Missing Content-Length response header."
+        throw "Missing Content-Length response header for '$Label'."
     }
 
     $responseBytes = Read-ExactBytes $Process.StandardOutput.BaseStream $contentLength
-    $response = $utf8.GetString($responseBytes) | ConvertFrom-Json
-    if ($response.error) {
-        throw "$($Request.method) failed: $($response.error.message)"
-    }
-    return $response
+    return $utf8.GetString($responseBytes) | ConvertFrom-Json
 }
 
 function Stop-BioformatsProcess {
@@ -381,11 +391,19 @@ try {
     Assert-True ($plane.result.metadata.format -eq "netpbm") "Framed readPlane did not return netpbm metadata."
     Assert-True ($plane.result.data -eq "ChQe") "Framed readPlane returned unexpected pixel payload."
 
+    $unknownMethod = Invoke-FramedMessage -Process $framedProcess -Message @{
+        jsonrpc = "2.0"
+        id = 6
+        method = "notARealMethod"
+    } -Label "framed unknown method"
+    Assert-True ($unknownMethod.id -eq 6 -and $unknownMethod.error.code -eq -32601) "Framed unknown method did not return Method not found."
+
     [PSCustomObject]@{
         Check = "content-length"
         Status = "ok"
         Server = $initialize.result.server
         InlinePixels = $plane.result.data
+        ErrorCode = $unknownMethod.error.code
     }
 }
 finally {
