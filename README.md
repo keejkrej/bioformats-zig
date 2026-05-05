@@ -225,6 +225,7 @@ plane, which can differ from logical OME `sizeC`.
 - KLB single-file volumes with uncompressed single-block 8/16/32-bit integer or 32/64-bit floating-point scalar pixels, exposing Z slices as planes; block tiling, bzip2/zlib compression, grouped time/channel folders, projections, and physical-size metadata are not yet handled.
 - Kodak Molecular Imaging BIP files with big-endian 32-bit floating-point grayscale planes.
 - Li-Cor L2D `.l2d/.scn` datasets delegated through the first listed TIFF plane and reported as `l2d`; multi-scan/multi-channel assembly, metadata directory crawling, wavelengths, dates, and instrument metadata are not yet handled.
+- Leica TIFF files identified by the Leica private TIFF tag and delegated through the TIFF pixel path; full `.lei` companion metadata parsing, raw companion planes, timestamps, and Leica-specific instrument metadata are not yet handled.
 - LEO TIFF files with private LEO metadata tags, decoded through the TIFF pixel path.
 - Leica SCN TIFF files identified by Leica SCN XML in the TIFF image description, decoded through the TIFF pixel path; SCN XML dimension mapping, supplemental images, subresolution hierarchy, and Leica acquisition metadata are not yet handled.
 - Leica LIF files are detected from the LAS AF memory/XML header and parsed as metadata-only `lif` from `DimensionDescription` and `ChannelDescription` XML; memory-block pixel reads, tiled fields, physical sizes, LUTs, ROIs, timestamps, and instrument metadata are not yet implemented.

@@ -107,6 +107,7 @@
     "khoros": ["needs-public-sample"],
     "kodak": ["needs-public-sample"],
     "l2d": ["needs-public-sample"],
+    "leica": ["needs-public-sample", "bioformats-docs/leica-reader-lei-tiff"],
     "lif": ["ome_images/Leica-LIF/"],
     "liflim": ["needs-public-sample"],
     "lim": ["needs-public-sample"],

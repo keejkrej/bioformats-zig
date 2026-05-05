@@ -76,6 +76,7 @@ pub const khoros = @import("readers/khoros.zig");
 pub const klb = @import("readers/klb.zig");
 pub const kodak = @import("readers/kodak.zig");
 pub const l2d = @import("readers/l2d.zig");
+pub const leica = @import("readers/leica.zig");
 pub const leo = @import("readers/leo.zig");
 pub const leicascn = @import("readers/leicascn.zig");
 pub const lif = @import("readers/lif.zig");
@@ -801,6 +802,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "leica",
+        .name = "Leica TIFF",
+        .extensions = &.{ "lei", "tif", "tiff", "raw" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "leo",
         .name = "LEO TIFF",
         .extensions = &.{ "sxm", "tif", "tiff" },
@@ -1460,6 +1467,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (klb.matches(data)) return "klb";
     if (kodak.matches(data)) return "kodak";
     if (l2d.matches(data)) return "l2d";
+    if (leica.matches(data)) return "leica";
     if (apng.matches(data)) return "apng";
     if (png.matches(data)) return "png";
     if (pqbin.matches(data)) return "pqbin";
@@ -1624,6 +1632,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (klb.matches(data)) return klb.readMetadata(data);
     if (kodak.matches(data)) return kodak.readMetadata(data);
     if (l2d.matches(data)) return l2d.readMetadata(data);
+    if (leica.matches(data)) return leica.readMetadata(data);
     if (apng.matches(data)) return apng.readMetadata(data);
     if (png.matches(data)) return png.readMetadata(data);
     if (pqbin.matches(data)) return pqbin.readMetadata(data);
@@ -1818,6 +1827,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return kodak.readPlane(allocator, data);
     }
     if (l2d.matches(data)) return l2d.readPlaneIndex(allocator, data, plane_index);
+    if (leica.matches(data)) return leica.readPlaneIndex(allocator, data, plane_index);
     if (apng.matches(data)) return apng.readPlaneIndex(allocator, data, plane_index);
     if (png.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
@@ -1988,6 +1998,7 @@ pub fn readPlaneRegionIndex(
     if (imacon.matches(data)) return imacon.readRegionIndex(allocator, data, plane_index, region);
     if (im3.matches(data)) return im3.readRegionIndex(allocator, data, plane_index, region);
     if (improvisiontiff.matches(data)) return improvisiontiff.readRegionIndex(allocator, data, plane_index, region);
+    if (leica.matches(data)) return leica.readRegionIndex(allocator, data, plane_index, region);
     if (leo.matches(data)) return leo.readRegionIndex(allocator, data, plane_index, region);
     if (leicascn.matches(data)) return leicascn.readRegionIndex(allocator, data, plane_index, region);
     if (prairie.matches(data)) return prairie.readRegionIndex(allocator, data, plane_index, region);
@@ -2105,6 +2116,7 @@ test {
     _ = jpeg2000;
     _ = jpx;
     _ = leo;
+    _ = leica;
     _ = lif;
     _ = liflim;
     _ = lof;

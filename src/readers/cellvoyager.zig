@@ -21,7 +21,9 @@ pub fn matches(data: []const u8) bool {
 }
 
 pub fn isPath(path: []const u8) bool {
-    return hasExtension(path, "xml") or hasExtension(path, "tif") or hasExtension(path, "tiff");
+    if (hasExtension(path, "xml")) return true;
+    if (hasExtension(path, "tif") or hasExtension(path, "tiff")) return pathHasComponent(path, image_dir_name);
+    return false;
 }
 
 pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
@@ -252,12 +254,26 @@ fn isDirectory(io: std.Io, path: []const u8) bool {
 fn parentPath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     const sep = lastSeparator(path) orelse return allocator.dupe(u8, ".");
     if (sep == 0) return allocator.dupe(u8, path[0..1]);
-    return allocator.dupe(u8, path[0..sep]);
+    const out = try allocator.alloc(u8, sep);
+    std.mem.copyForwards(u8, out, path[0..sep]);
+    return out;
 }
 
 fn basename(path: []const u8) []const u8 {
     const sep = lastSeparator(path) orelse return path;
     return path[sep + 1 ..];
+}
+
+fn pathHasComponent(path: []const u8, component: []const u8) bool {
+    var start: usize = 0;
+    while (start <= path.len) {
+        var end = start;
+        while (end < path.len and path[end] != '/' and path[end] != '\\') : (end += 1) {}
+        if (end > start and std.ascii.eqlIgnoreCase(path[start..end], component)) return true;
+        if (end == path.len) break;
+        start = end + 1;
+    }
+    return false;
 }
 
 fn joinPath(allocator: std.mem.Allocator, base: []const u8, name: []const u8) ![]u8 {
@@ -266,9 +282,9 @@ fn joinPath(allocator: std.mem.Allocator, base: []const u8, name: []const u8) ![
     const needs_sep = base.len != 0 and base[base.len - 1] != '/' and base[base.len - 1] != '\\';
     const extra: usize = if (needs_sep) 1 else 0;
     const out = try allocator.alloc(u8, base.len + extra + name.len);
-    @memcpy(out[0..base.len], base);
+    std.mem.copyForwards(u8, out[0..base.len], base);
     if (needs_sep) out[base.len] = sep;
-    @memcpy(out[base.len + extra ..], name);
+    std.mem.copyForwards(u8, out[base.len + extra ..], name);
     return out;
 }
 
@@ -317,6 +333,12 @@ test "parses cellvoyager image names" {
     try std.testing.expectEqual(@as(u32, 1), parsed.t);
     try std.testing.expectEqual(@as(u32, 3), parsed.z);
     try std.testing.expectEqual(@as(u32, 1), parsed.c);
+}
+
+test "does not claim unrelated tiff paths" {
+    try std.testing.expect(!isPath("sample.tif"));
+    try std.testing.expect(!isPath("C:\\data\\sample.tif"));
+    try std.testing.expect(isPath("dataset/Image/sample.tif"));
 }
 
 test "reads cellvoyager measurement directory through image tiff" {
