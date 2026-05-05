@@ -329,6 +329,17 @@ try {
     Assert-True ($batch[0].id -eq 4 -and $batch[0].result.server -eq "bioformats-zig") "Batch initialize response was unexpected."
     Assert-True ($batch[1].id -eq 5 -and $batch[1].result.Count -gt 0) "Batch formats response was unexpected."
 
+    $unknownMethod = Invoke-LineMessage -Process $lineProcess -Message @{
+        jsonrpc = "2.0"
+        id = 13
+        method = "notARealMethod"
+    } -Label "unknown method"
+    Assert-True ($unknownMethod.id -eq 13 -and $unknownMethod.error.code -eq -32601) "Unknown method did not return Method not found."
+
+    Write-Utf8Bytes $lineProcess "{`n"
+    $parseError = $lineProcess.StandardOutput.ReadLine() | ConvertFrom-Json
+    Assert-True ($null -eq $parseError.id -and $parseError.error.code -eq -32700) "Malformed JSON did not return Parse error."
+
     [PSCustomObject]@{
         Check = "line-delimited"
         Status = "ok"
@@ -340,6 +351,7 @@ try {
         RegionPixels = $regionPlane.result.data
         ZctMarkers = "$($zctBytes[0])/$($zctBytes[10])/$($zctBytes[20])/$($zctBytes[30])"
         BatchResponses = $batch.Count
+        ErrorCodes = "$($unknownMethod.error.code)/$($parseError.error.code)"
     }
 }
 finally {
