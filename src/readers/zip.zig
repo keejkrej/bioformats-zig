@@ -2122,6 +2122,47 @@ test "reads stored varian fdf zip entry through inner reader" {
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
 }
 
+test "reads stored zeiss lms zip entry through inner reader" {
+    const lms_width = 1280;
+    const lms_height = 1024;
+    const thumbnail_bytes = lms_width * lms_height * 3;
+    const lut_bytes = 256 * 4;
+    const plane_len = lms_width * lms_height * 2;
+
+    var lms_data: std.ArrayList(u8) = .empty;
+    defer lms_data.deinit(std.testing.allocator);
+    try lms_data.appendNTimes(std.testing.allocator, 0, 22);
+    @memcpy(lms_data.items[0.."LMSFLE".len], "LMSFLE");
+    try lms_data.appendSlice(std.testing.allocator, "BM6!");
+    try lms_data.appendNTimes(std.testing.allocator, 0, 50);
+    try lms_data.appendNTimes(std.testing.allocator, 0, thumbnail_bytes);
+    try lms_data.appendSlice(std.testing.allocator, "BM6!");
+    try lms_data.appendNTimes(std.testing.allocator, 0, 50);
+    try lms_data.appendNTimes(std.testing.allocator, 0, lut_bytes);
+    const pixel_offset = lms_data.items.len;
+    try lms_data.appendNTimes(std.testing.allocator, 0, plane_len);
+    lms_data.items[pixel_offset] = 0x34;
+    lms_data.items[pixel_offset + 1] = 0x12;
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.lms", lms_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, lms_width), metadata.width);
+    try std.testing.expectEqual(@as(u32, lms_height), metadata.height);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqual(@as(usize, plane_len), plane.data.len);
+    try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x12 }, plane.data[0..2]);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
+}
+
 test "rejects unsupported zip compression methods" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
