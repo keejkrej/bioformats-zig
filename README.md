@@ -341,7 +341,7 @@ plane, which can differ from logical OME `sizeC`.
 - Olympus ScanR TIFF files identified by National Instruments IMAQ software tags, decoded through the TIFF pixel path; `experiment_descriptor.xml`/`.dat` grouping, HCS plate/well/field mapping, channel metadata, exposure times, and stage positions are not yet handled.
 - Becker & Hickl SPCImage SDT files with uncompressed uint16 FLIM blocks exposed as lifetime/time planes; ZIP-compressed blocks, intensity projection mode, multiple data-block series, and full measurement metadata are not yet handled.
 - Seiko `.xqd/.xqf` files with fixed-header little-endian 16-bit grayscale planes.
-- Image-Pro Sequence TIFF files identified by Image-Pro private array tags, decoded through the TIFF pixel path; `.ips` grouping files, channel names, and multi-file Z/T/position expansion are not yet handled.
+- Image-Pro Sequence TIFF files identified by Image-Pro private array tags, decoded through the TIFF pixel path with multi-IFD stacks exposed as Z planes; `.ips` grouping files, channel names, and multi-file Z/T/position expansion are not yet handled.
 - Andor SIF files with little-endian 32-bit floating-point image planes.
 - SimplePCI TIFF files identified by Hamamatsu SimplePCI image descriptions, decoded through the TIFF pixel path; channel splitting from SimplePCI metadata is not yet handled.
 - Olympus SIS TIFF files identified by SIS private tags with analySIS/Olympus metadata, decoded through the TIFF pixel path with SIS INI Z/C/T dimension reshaping; SIS-specific physical size and channel metadata parsing are not yet handled.

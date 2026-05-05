@@ -18,6 +18,11 @@ pub fn matches(data: []const u8) bool {
 pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
     var metadata = try tiff.readMetadata(data);
     metadata.format = "seq";
+    if (metadata.size_z == 1 and metadata.size_t == 1 and metadata.plane_count > 1) {
+        if (metadata.plane_count > std.math.maxInt(u16)) return error.UnsupportedVariant;
+        metadata.size_z = @intCast(metadata.plane_count);
+        metadata.dimension_order = "XYZCT";
+    }
     return metadata;
 }
 
@@ -126,4 +131,56 @@ test "rejects scalar image-pro private tag" {
     try data.append(std.testing.allocator, 1);
 
     try std.testing.expect(!matches(data.items));
+}
+
+test "maps multi-ifd image-pro seq planes to z" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    try data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&data, 42);
+    try appendU32Le(&data, 8);
+
+    const first_entry_count = 10;
+    const first_ifd_size = 2 + first_entry_count * 12 + 4;
+    const second_entry_count = 9;
+    const second_ifd_size = 2 + second_entry_count * 12 + 4;
+    const second_ifd_offset = 8 + first_ifd_size;
+    const tag_values_offset = second_ifd_offset + second_ifd_size;
+    const first_pixel_offset = tag_values_offset + 24;
+    const second_pixel_offset = first_pixel_offset + 1;
+
+    try appendU16Le(&data, first_entry_count);
+    try appendEntry(&data, 256, 4, 1, 1);
+    try appendEntry(&data, 257, 4, 1, 1);
+    try appendEntry(&data, 258, 3, 1, 8);
+    try appendEntry(&data, 259, 3, 1, 1);
+    try appendEntry(&data, 262, 3, 1, 1);
+    try appendEntry(&data, 273, 4, 1, @intCast(first_pixel_offset));
+    try appendEntry(&data, 277, 3, 1, 1);
+    try appendEntry(&data, 278, 4, 1, 1);
+    try appendEntry(&data, 279, 4, 1, 1);
+    try appendEntry(&data, image_pro_tag_1, 3, 12, @intCast(tag_values_offset));
+    try appendU32Le(&data, @intCast(second_ifd_offset));
+
+    try appendU16Le(&data, second_entry_count);
+    try appendEntry(&data, 256, 4, 1, 1);
+    try appendEntry(&data, 257, 4, 1, 1);
+    try appendEntry(&data, 258, 3, 1, 8);
+    try appendEntry(&data, 259, 3, 1, 1);
+    try appendEntry(&data, 262, 3, 1, 1);
+    try appendEntry(&data, 273, 4, 1, @intCast(second_pixel_offset));
+    try appendEntry(&data, 277, 3, 1, 1);
+    try appendEntry(&data, 278, 4, 1, 1);
+    try appendEntry(&data, 279, 4, 1, 1);
+    try appendU32Le(&data, 0);
+
+    var i: usize = 0;
+    while (i < 12) : (i += 1) try appendU16Le(&data, 7);
+    try data.appendSlice(std.testing.allocator, &.{ 11, 22 });
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_z);
+    try std.testing.expectEqualStrings("XYZCT", metadata.dimension_order.?);
 }
