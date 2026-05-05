@@ -5,6 +5,7 @@ pub const aim = @import("readers/aim.zig");
 pub const alicona = @import("readers/alicona.zig");
 pub const amira = @import("readers/amira.zig");
 pub const analyze = @import("readers/analyze.zig");
+pub const apl = @import("readers/apl.zig");
 pub const apng = @import("readers/apng.zig");
 pub const arf = @import("readers/arf.zig");
 pub const avi = @import("readers/avi.zig");
@@ -316,6 +317,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "analyze",
         .name = "Analyze 7.5",
         .extensions = &.{ "hdr", "img" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "apl",
+        .name = "Olympus APL TIFF dataset",
+        .extensions = &.{ "apl", "tnb", "mtb", "tif", "tiff" },
         .can_read_pixels = true,
     },
     .{
@@ -1729,6 +1736,7 @@ pub fn cropPlane(allocator: std.mem.Allocator, plane: Plane, region: Region) Rea
 test {
     _ = afi;
     _ = analyze;
+    _ = apl;
     _ = bdpathway;
     _ = apng;
     _ = avi;

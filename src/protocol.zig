@@ -498,6 +498,9 @@ pub const Server = struct {
         if (bio.afi.isPath(path)) {
             if (bio.afi.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.apl.isPath(path)) {
+            if (bio.apl.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.l2d.isPath(path)) {
             if (bio.l2d.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -590,6 +593,9 @@ pub const Server = struct {
     fn probePathPriorityFormat(self: *Server, path: []const u8) !?[]const u8 {
         if (bio.afi.isPath(path)) {
             if (bio.afi.readMetadataPath(self.allocator, self.io, path)) |_| return "afi" else |_| {}
+        }
+        if (bio.apl.isPath(path)) {
+            if (bio.apl.readMetadataPath(self.allocator, self.io, path)) |_| return "apl" else |_| {}
         }
         if (bio.l2d.isPath(path)) {
             if (bio.l2d.readMetadataPath(self.allocator, self.io, path)) |_| return "l2d" else |_| {}
@@ -695,6 +701,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "afi")) {
             return bio.afi.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "apl")) {
+            return bio.apl.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "pds")) {
             return bio.pds.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -783,6 +792,7 @@ pub const Server = struct {
     fn isCompanionFormat(format: []const u8) bool {
         return std.mem.eql(u8, format, "analyze") or
             std.mem.eql(u8, format, "afi") or
+            std.mem.eql(u8, format, "apl") or
             std.mem.eql(u8, format, "pds") or
             std.mem.eql(u8, format, "ndpis") or
             std.mem.eql(u8, format, "perkinelmer") or

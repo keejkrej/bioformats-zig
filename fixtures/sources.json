@@ -45,6 +45,7 @@
     "aim": ["needs-public-sample"],
     "alicona": ["needs-public-sample"],
     "analyze": ["needs-public-sample"],
+    "apl": ["needs-public-sample"],
     "apng": ["generated-fixture"],
     "arf": ["needs-public-sample"],
     "avi": ["generated-fixture"],
