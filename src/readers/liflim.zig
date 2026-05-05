@@ -12,6 +12,8 @@ const Header = struct {
     pixel_type: bio.PixelType,
     data_offset: usize,
     gzip: bool,
+    packed_12: bool,
+    msb_packing: bool,
 };
 
 pub fn matches(data: []const u8) bool {
@@ -51,6 +53,11 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         try decodeGzip(data[header.data_offset..], decoded);
         const offset = std.math.mul(usize, plane_index, plane_len) catch return error.InvalidPlaneIndex;
         @memcpy(out, decoded[offset..][0..plane_len]);
+    } else if (header.packed_12) {
+        const source_len = try packed12ByteCount(plane_len);
+        const offset = std.math.add(usize, header.data_offset, std.math.mul(usize, plane_index, source_len) catch return error.InvalidPlaneIndex) catch return error.InvalidPlaneIndex;
+        if (offset > data.len or data.len - offset < source_len) return error.TruncatedData;
+        unpack12(data[offset..][0..source_len], out, header.msb_packing) catch return error.UnsupportedVariant;
     } else {
         const offset = std.math.add(usize, header.data_offset, std.math.mul(usize, plane_index, plane_len) catch return error.InvalidPlaneIndex) catch return error.InvalidPlaneIndex;
         if (offset > data.len or data.len - offset < plane_len) return error.TruncatedData;
@@ -75,6 +82,9 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
         value(header_data, "", "pixelFormat") orelse return error.InvalidFormat
     else
         value(header_data, "FLIMIMAGE: LAYOUT", "datatype") orelse return error.InvalidFormat;
+    const packing = if (is_v2) "lsb" else value(header_data, "FLIMIMAGE: LAYOUT", "packing") orelse "lsb";
+    const packed_12 = std.mem.eql(u8, datatype, "UINT12");
+    if (gzip and packed_12) return error.UnsupportedVariant;
     const width = try parseU32(value(header_data, if (is_v2) "" else "FLIMIMAGE: LAYOUT", "x") orelse return error.InvalidFormat);
     const height = try parseU32(value(header_data, if (is_v2) "" else "FLIMIMAGE: LAYOUT", "y") orelse return error.InvalidFormat);
     const z = try parseU32(value(header_data, if (is_v2) "" else "FLIMIMAGE: LAYOUT", "z") orelse "1");
@@ -95,9 +105,11 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
         .size_z = @intCast(size_z),
         .size_c = @intCast(channels),
         .size_t = @intCast(size_t),
-        .pixel_type = try pixelType(datatype),
+        .pixel_type = if (packed_12) .uint16 else try pixelType(datatype),
         .data_offset = offset,
         .gzip = gzip,
+        .packed_12 = packed_12,
+        .msb_packing = std.mem.eql(u8, packing, "msb"),
     };
     const metadata = bio.Metadata{
         .format = "liflim",
@@ -111,7 +123,9 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
         .plane_count = std.math.mul(u32, header.size_z, header.size_t) catch return error.UnsupportedVariant,
     };
     if (!gzip) {
-        const total = std.math.mul(usize, try planeByteCount(metadata), metadata.plane_count) catch return error.UnsupportedVariant;
+        const plane_len = try planeByteCount(metadata);
+        const source_len = if (packed_12) try packed12ByteCount(plane_len) else plane_len;
+        const total = std.math.mul(usize, source_len, metadata.plane_count) catch return error.UnsupportedVariant;
         if (offset > data.len or data.len - offset < total) return error.TruncatedData;
     }
     return header;
@@ -177,6 +191,11 @@ fn pixelType(name: []const u8) bio.ReaderError!bio.PixelType {
     return error.UnsupportedVariant;
 }
 
+fn packed12ByteCount(output_len: usize) bio.ReaderError!usize {
+    if (output_len % 4 != 0) return error.UnsupportedVariant;
+    return output_len / 4 * 3;
+}
+
 fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
     const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
     const samples = std.math.mul(usize, pixels, metadata.samples_per_pixel) catch return error.UnsupportedVariant;
@@ -189,6 +208,28 @@ fn decodeGzip(src: []const u8, dst: []u8) bio.ReaderError!void {
     var decompress: std.compress.flate.Decompress = .init(&input, .gzip, &.{});
     const written = decompress.reader.streamRemaining(&output) catch return error.TruncatedData;
     if (written != dst.len) return error.TruncatedData;
+}
+
+fn unpack12(src: []const u8, dst: []u8, msb: bool) bio.ReaderError!void {
+    if (dst.len / 4 != src.len / 3) return error.UnsupportedVariant;
+    var i: usize = 0;
+    var o: usize = 0;
+    while (i + 2 < src.len and o + 3 < dst.len) : ({
+        i += 3;
+        o += 4;
+    }) {
+        if (msb) {
+            dst[o] = ((src[i] & 0x0f) << 4) | ((src[i + 1] & 0xf0) >> 4);
+            dst[o + 1] = (src[i] & 0xf0) >> 4;
+            dst[o + 2] = src[i + 2];
+            dst[o + 3] = src[i + 1] & 0x0f;
+        } else {
+            dst[o] = src[i];
+            dst[o + 1] = src[i + 1] & 0x0f;
+            dst[o + 2] = ((src[i + 1] & 0xf0) >> 4) | ((src[i + 2] & 0x0f) << 4);
+            dst[o + 3] = (src[i + 2] & 0xf0) >> 4;
+        }
+    }
 }
 
 test "reads liflim v1 uncompressed plane" {
@@ -255,4 +296,39 @@ test "reads gzip-compressed liflim plane" {
     const plane = try readPlaneIndex(std.testing.allocator, data, 0);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2 }, plane.data);
+}
+
+test "unpacks lsb liflim uint12 plane" {
+    const data =
+        \\[FLIMIMAGE: INFO]
+        \\compression=0
+        \\[FLIMIMAGE: LAYOUT]
+        \\datatype=UINT12
+        \\packing=lsb
+        \\x=2
+        \\y=1
+        \\{END}
+    ++ [_]u8{ 0x23, 0xc1, 0xab };
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(bio.PixelType.uint16, plane.metadata.pixel_type);
+    try std.testing.expectEqualSlices(u8, &.{ 0x23, 0x01, 0xbc, 0x0a }, plane.data);
+}
+
+test "unpacks msb liflim uint12 plane" {
+    const data =
+        \\[FLIMIMAGE: INFO]
+        \\compression=0
+        \\[FLIMIMAGE: LAYOUT]
+        \\datatype=UINT12
+        \\packing=msb
+        \\x=2
+        \\y=1
+        \\{END}
+    ++ [_]u8{ 0x12, 0x3a, 0xbc };
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 0x23, 0x01, 0xbc, 0x0a }, plane.data);
 }
