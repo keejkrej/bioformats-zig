@@ -82,8 +82,8 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
         value(header_data, "", "pixelFormat") orelse return error.InvalidFormat
     else
         value(header_data, "FLIMIMAGE: LAYOUT", "datatype") orelse return error.InvalidFormat;
-    const packing = if (is_v2) "lsb" else value(header_data, "FLIMIMAGE: LAYOUT", "packing") orelse "lsb";
-    const packed_12 = std.mem.eql(u8, datatype, "UINT12");
+    const packing = if (is_v2) pixelFormatPacking(datatype) else value(header_data, "FLIMIMAGE: LAYOUT", "packing") orelse "lsb";
+    const packed_12 = std.mem.eql(u8, datatype, "UINT12") or (pixelFormatBitSize(datatype) == 12 and packing.len != 0);
     if (gzip and packed_12) return error.UnsupportedVariant;
     const width = try parseU32(value(header_data, if (is_v2) "" else "FLIMIMAGE: LAYOUT", "x") orelse return error.InvalidFormat);
     const height = try parseU32(value(header_data, if (is_v2) "" else "FLIMIMAGE: LAYOUT", "y") orelse return error.InvalidFormat);
@@ -188,7 +188,33 @@ fn pixelType(name: []const u8) bio.ReaderError!bio.PixelType {
     if (std.mem.eql(u8, name, "INT32")) return .int32;
     if (std.mem.eql(u8, name, "REAL32")) return .float32;
     if (std.mem.eql(u8, name, "REAL64")) return .float64;
-    return error.UnsupportedVariant;
+    return switch (pixelFormatBitSize(name)) {
+        8 => .uint8,
+        10, 12, 14, 16 => .uint16,
+        else => error.UnsupportedVariant,
+    };
+}
+
+fn pixelFormatPacking(name: []const u8) []const u8 {
+    if (isOneOf(name, &.{ "BayerBG12p", "BayerGB12p", "BayerGR12p", "BayerRG12P", "Mono10P", "Mono12p", "Mono14p" })) return "lsb";
+    if (isOneOf(name, &.{ "Mono12Packed", "BayerRG12Packed", "Mono10pmsb", "BayerGB12pmsb", "BayerGR12psmb", "BayerRG12", "BayerBG12pmsb" })) return "msb";
+    return "";
+}
+
+fn pixelFormatBitSize(name: []const u8) u8 {
+    if (isOneOf(name, &.{ "Mono8", "BGR8", "BGR8Packed", "RGB8", "RGB8Packed", "BayerBG8", "BayerGB8", "BayerGR8", "BayerRG8" })) return 8;
+    if (isOneOf(name, &.{ "Mono10", "Mono10P", "Mono10pmsb", "BayerGR10", "BayerRG10" })) return 10;
+    if (isOneOf(name, &.{ "Mono12", "Mono12p", "Mono12pmsb", "Mono12Packed", "BayerBG12", "BayerBG12p", "BayerBG12pmsb", "BayerGB12", "BayerGB12p", "BayerGB12pmsb", "BayerGR12", "BayerGR12p", "BayerGR12psmb", "BayerRG12", "BayerRG12P", "BayerRG12Packed" })) return 12;
+    if (isOneOf(name, &.{ "Mono14", "Mono14p" })) return 14;
+    if (isOneOf(name, &.{ "Mono16", "BayerBG16", "BayerGB16", "BayerGR16", "BayerRG16" })) return 16;
+    return 0;
+}
+
+fn isOneOf(name: []const u8, values: []const []const u8) bool {
+    for (values) |candidate| {
+        if (std.mem.eql(u8, name, candidate)) return true;
+    }
+    return false;
 }
 
 fn packed12ByteCount(output_len: usize) bio.ReaderError!usize {
@@ -331,4 +357,36 @@ test "unpacks msb liflim uint12 plane" {
     const plane = try readPlaneIndex(std.testing.allocator, data, 0);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 0x23, 0x01, 0xbc, 0x0a }, plane.data);
+}
+
+test "unpacks v2 mono12p liflim plane" {
+    const data =
+        \\version=2.0
+        \\pixelFormat=Mono12p
+        \\x=2
+        \\y=1
+        \\numberOfFrames=1
+        \\{END}
+    ++ [_]u8{ 0x23, 0xc1, 0xab };
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(bio.PixelType.uint16, plane.metadata.pixel_type);
+    try std.testing.expectEqualSlices(u8, &.{ 0x23, 0x01, 0xbc, 0x0a }, plane.data);
+}
+
+test "reads v2 mono10 liflim as uint16" {
+    const data =
+        \\version=2.0
+        \\pixelFormat=Mono10
+        \\x=1
+        \\y=1
+        \\numberOfFrames=1
+        \\{END}
+    ++ [_]u8{ 0x34, 0x02 };
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(bio.PixelType.uint16, plane.metadata.pixel_type);
+    try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x02 }, plane.data);
 }
