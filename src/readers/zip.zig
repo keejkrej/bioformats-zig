@@ -50,6 +50,7 @@ const smcamera = @import("smcamera.zig");
 const spe = @import("spe.zig");
 const spider = @import("spider.zig");
 const tga = @import("tga.zig");
+const text = @import("text.zig");
 const tiff = @import("tiff.zig");
 const topometrix = @import("topometrix.zig");
 const varianfdf = @import("varianfdf.zig");
@@ -68,7 +69,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -163,6 +164,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .smcamera => smcamera.readMetadata(entry.data),
         .spe => spe.readMetadata(entry.data),
         .spider => spider.readMetadata(entry.data),
+        .text => text.readMetadata(entry.data),
         .tga => tga.readMetadata(entry.data),
         .tiff => tiff.readMetadata(entry.data),
         .topometrix => topometrix.readMetadata(entry.data),
@@ -224,6 +226,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .smcamera => if (plane_index == 0) smcamera.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .spe => spe.readPlaneIndex(allocator, entry.data, plane_index),
         .spider => spider.readPlaneIndex(allocator, entry.data, plane_index),
+        .text => text.readPlaneIndex(allocator, entry.data, plane_index),
         .tga => if (plane_index == 0) tga.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .tiff => tiff.readPlaneIndex(allocator, entry.data, plane_index),
         .topometrix => if (plane_index == 0) topometrix.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
@@ -339,6 +342,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (smcamera.matches(data)) return .smcamera;
     if (hasExtension(filename, ".spe") and spe.matches(data)) return .spe;
     if (hasExtension(filename, ".spi") and spider.matches(data)) return .spider;
+    if (text.matches(data)) return .text;
     if (hasExtension(filename, ".tga") and tga.matches(data)) return .tga;
     if (tiff.matches(data)) return .tiff;
     if (topometrix.matches(data)) return .topometrix;
@@ -1309,6 +1313,34 @@ test "reads stored tga zip entry through extension-gated inner reader" {
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 4, 5, 6 }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
+}
+
+test "reads stored text zip entry through inner reader" {
+    const text_data =
+        \\x,y,a,b
+        \\0,0,1.5,2.5
+        \\1,0,3.5,4.5
+    ;
+
+    try std.testing.expectEqual(Entry.Kind.text, detectInner("table.csv", text_data).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "table.csv", text_data);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
+    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
+    try std.testing.expectEqual(bio.PixelType.float32, metadata.pixel_type);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqual(@as(u32, @bitCast(@as(f32, 2.5))), std.mem.readInt(u32, plane.data[0..4], .big));
+    try std.testing.expectEqual(@as(u32, @bitCast(@as(f32, 4.5))), std.mem.readInt(u32, plane.data[4..8], .big));
 }
 
 test "reads stored sm camera zip entry through inner reader" {
