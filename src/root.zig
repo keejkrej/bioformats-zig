@@ -1227,9 +1227,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "slidebook7",
-        .name = "SlideBook 7 metadata",
+        .name = "SlideBook 7 NPY",
         .extensions = &.{ "sldy", "sldyz" },
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "slidebooktiff",

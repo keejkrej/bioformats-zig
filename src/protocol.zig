@@ -851,6 +851,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "olympustile")) {
             return bio.olympustile.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "slidebook7")) {
+            return bio.slidebook7.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "cellvoyager")) {
             return bio.cellvoyager.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -969,6 +972,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "cellworx") or
             std.mem.eql(u8, format, "cellsens") or
             std.mem.eql(u8, format, "olympustile") or
+            std.mem.eql(u8, format, "slidebook7") or
             std.mem.eql(u8, format, "cellvoyager") or
             std.mem.eql(u8, format, "incell") or
             std.mem.eql(u8, format, "columbus") or
@@ -2527,6 +2531,77 @@ test "server readPlane path returns cropped region" {
     try std.testing.expect(!should_shutdown);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"region\":{\"x\":0,\"y\":1,\"width\":2,\"height\":1}") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AwQ=\"") != null);
+}
+
+fn makeTestNpy(allocator: std.mem.Allocator, pixels: []const u8) ![]u8 {
+    const header_text = "{'descr': '<u2', 'fortran_order': False, 'shape': (2, 2, 3), }";
+    var header_len = header_text.len + 1;
+    while ((10 + header_len) % 16 != 0) header_len += 1;
+
+    var out: std.ArrayList(u8) = .empty;
+    errdefer out.deinit(allocator);
+    try out.appendSlice(allocator, "\x93NUMPY");
+    try out.append(allocator, 1);
+    try out.append(allocator, 0);
+    var len_bytes: [2]u8 = undefined;
+    std.mem.writeInt(u16, &len_bytes, @intCast(header_len), .little);
+    try out.appendSlice(allocator, &len_bytes);
+    try out.appendSlice(allocator, header_text);
+    try out.appendNTimes(allocator, ' ', header_len - header_text.len - 1);
+    try out.append(allocator, '\n');
+    try out.appendSlice(allocator, pixels);
+    return out.toOwnedSlice(allocator);
+}
+
+test "server readPlane path returns slidebook7 npy pixels" {
+    const root_dir = "protocol-slidebook7-test.dir";
+    const image_dir = "protocol-slidebook7-test.dir/Capture.imgdir";
+    const slide_path = "protocol-slidebook7-test.sldy";
+    const record_path = "protocol-slidebook7-test.dir/Capture.imgdir/ImageRecord.yaml";
+    const npy_path = "protocol-slidebook7-test.dir/Capture.imgdir/ImageData_Ch0_TP0000000.npy";
+    std.Io.Dir.cwd().deleteTree(std.testing.io, root_dir) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, slide_path) catch {};
+    defer std.Io.Dir.cwd().deleteTree(std.testing.io, root_dir) catch {};
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, slide_path) catch {};
+
+    try std.Io.Dir.cwd().createDir(std.testing.io, root_dir, .default_dir);
+    try std.Io.Dir.cwd().createDir(std.testing.io, image_dir, .default_dir);
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = slide_path, .data = "" });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{
+        .sub_path = record_path,
+        .data =
+        \\StartClass:
+        \\  ClassName: CImageRecord70
+        \\  mWidth: 3
+        \\  mHeight: 2
+        \\  mNumPlanes: 2
+        \\  mNumChannels: 1
+        \\  mNumTimepoints: 1
+        \\EndClass:
+        ,
+    });
+    const pixels = [_]u8{
+        1,  0, 2,  0, 3,  0,
+        4,  0, 5,  0, 6,  0,
+        7,  0, 8,  0, 9,  0,
+        10, 0, 11, 0, 12, 0,
+    };
+    const npy = try makeTestNpy(std.testing.allocator, &pixels);
+    defer std.testing.allocator.free(npy);
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = npy_path, .data = npy });
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+    const should_shutdown = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"readPlane\",\"params\":{\"path\":\"protocol-slidebook7-test.sldy\",\"planeIndex\":1,\"x\":1,\"y\":0,\"width\":2,\"height\":2}}",
+        &out.writer,
+    );
+
+    try std.testing.expect(!should_shutdown);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"slidebook7\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"CAAJAAsADAA=\"") != null);
 }
 
 test "server readPlane handle returns indexed gif plane" {
