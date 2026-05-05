@@ -63,7 +63,6 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     var size_z: u32 = 0;
     var size_t: u32 = 0;
     var roi_line: ?[]const u8 = null;
-    var pixel_offset: ?usize = null;
     while (readLine(data, &pos)) |raw_line| {
         const line = std.mem.trim(u8, raw_line.text, " \t\r");
         if (std.mem.startsWith(u8, line, "Pixel number")) {
@@ -81,9 +80,6 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
             }
             if (readLine(data, &pos)) |roi| {
                 roi_line = roi.text;
-                pixel_offset = roi.next_offset;
-            } else {
-                pixel_offset = pos;
             }
             break;
         }
@@ -98,9 +94,9 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     const plane_count = std.math.mul(u32, size_c, std.math.mul(u32, size_z, size_t) catch return error.UnsupportedVariant) catch return error.UnsupportedVariant;
     const plane_len = std.math.mul(usize, size_x, std.math.mul(usize, size_y, 4) catch return error.UnsupportedVariant) catch return error.UnsupportedVariant;
     const pixel_bytes = std.math.mul(usize, plane_len, plane_count) catch return error.UnsupportedVariant;
-    const pixel_start = pixel_offset orelse return error.InvalidFormat;
     const needed = std.math.add(usize, pixel_bytes, footer_len) catch return error.UnsupportedVariant;
-    if (pixel_start > data.len or data.len - pixel_start < needed) return error.TruncatedData;
+    if (needed > data.len) return error.TruncatedData;
+    const pixel_start = data.len - needed;
     return .{
         .width = size_x,
         .height = size_y,
@@ -196,11 +192,25 @@ test "reads second sif channel plane" {
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data, 2));
 }
 
-test "rejects truncated sif pixels" {
+test "reads sif pixels anchored before footer" {
     const data =
         "Andor Technology\n" ++
         "Pixel number 1 1 1 1 1\n" ++
         "0 0 0 0 0 1 1\n" ++
+        "timestamp or metadata line before pixels\n" ++
+        [_]u8{ 0, 0, 0x80, 0x3f } ++
+        [_]u8{0} ** footer_len;
+
+    const plane = try readPlane(std.testing.allocator, data);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0x80, 0x3f }, plane.data);
+}
+
+test "rejects truncated sif pixels" {
+    const data =
+        "Andor Technology\n" ++
+        "Pixel number 1 1000 1000 1 1\n" ++
+        "0 0 0 999 999 1 1\n" ++
         [_]u8{0} ** footer_len;
 
     try std.testing.expectError(error.TruncatedData, readMetadata(data));
