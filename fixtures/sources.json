@@ -39,6 +39,7 @@
     "trestle": ["ome_images/Trestle/"],
     "vectra": ["ome_images/Vectra-QPTIFF/"],
     "ventana": ["ome_images/Ventana/"],
+    "afi": ["needs-public-sample"],
     "aim": ["needs-public-sample"],
     "alicona": ["needs-public-sample"],
     "analyze": ["needs-public-sample"],

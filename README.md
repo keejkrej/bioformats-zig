@@ -133,6 +133,7 @@ plane, which can differ from logical OME `sizeC`.
 
 ## Implemented Readers
 
+- Aperio AFI XML sidecars that list neighboring SVS files, delegated through the first referenced SVS image and reported as `afi`; multi-channel AFI assembly and per-channel SVS metadata merging are not yet handled.
 - AIM int16 volumes with legacy and V030 dimension headers; Z slices are exposed as planes.
 - Alicona AL3D files with single-channel 8/16-bit texture planes or 32-bit floating-point depth planes; color texture variants are not yet supported.
 - AmiraMesh/Avizo raw binary single-stream lattice files with 8/16/32-bit integer and 32-bit floating-point scalar planes; ASCII, compressed, and multi-stream variants are not yet supported.

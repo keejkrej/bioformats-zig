@@ -1,5 +1,6 @@
 const std = @import("std");
 
+pub const afi = @import("readers/afi.zig");
 pub const aim = @import("readers/aim.zig");
 pub const alicona = @import("readers/alicona.zig");
 pub const amira = @import("readers/amira.zig");
@@ -271,6 +272,12 @@ pub const FormatDescriptor = struct {
 };
 
 pub const formats = [_]FormatDescriptor{
+    .{
+        .id = "afi",
+        .name = "Aperio AFI",
+        .extensions = &.{"afi"},
+        .can_read_pixels = true,
+    },
     .{
         .id = "aim",
         .name = "AIM int16 volume",
@@ -1012,6 +1019,7 @@ pub const formats = [_]FormatDescriptor{
 };
 
 pub fn detect(data: []const u8) ?[]const u8 {
+    if (afi.matches(data)) return "afi";
     if (aim.matches(data)) return "aim";
     if (zip.matches(data)) return "zip";
     if (alicona.matches(data)) return "alicona";
@@ -1133,6 +1141,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
 }
 
 pub fn readMetadata(data: []const u8) ReaderError!Metadata {
+    if (afi.matches(data)) return afi.readMetadata(data);
     if (aim.matches(data)) return aim.readMetadata(data);
     if (zip.matches(data)) return zip.readMetadata(data);
     if (alicona.matches(data)) return alicona.readMetadata(data);
@@ -1259,6 +1268,7 @@ pub fn readPlane(allocator: std.mem.Allocator, data: []const u8) ReaderError!Pla
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) ReaderError!Plane {
+    if (afi.matches(data)) return afi.readPlaneIndex(allocator, data, plane_index);
     if (aim.matches(data)) return aim.readPlaneIndex(allocator, data, plane_index);
     if (zip.matches(data)) return zip.readPlaneIndex(allocator, data, plane_index);
     if (alicona.matches(data)) return alicona.readPlaneIndex(allocator, data, plane_index);
@@ -1527,6 +1537,7 @@ pub fn cropPlane(allocator: std.mem.Allocator, plane: Plane, region: Region) Rea
 }
 
 test {
+    _ = afi;
     _ = analyze;
     _ = bdpathway;
     _ = apng;
