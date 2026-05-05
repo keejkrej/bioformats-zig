@@ -98,10 +98,11 @@ fn parseStack(data: []const u8, stack_pos: usize) bio.ReaderError!Stack {
     var sizes = [_]u32{1} ** max_dimensions;
     var samples_written: u64 = 1;
     for (0..max_dimensions) |dimension| {
-        const size = try positiveU32FromI32(readI32(data[cursor..][0..4]));
+        const stored_size = readI32(data[cursor..][0..4]);
         cursor += 4;
-        sizes[dimension] = if (dimension < dimensions) size else 1;
         if (dimension < dimensions) {
+            const size = try positiveU32FromI32(stored_size);
+            sizes[dimension] = size;
             samples_written = std.math.mul(u64, samples_written, size) catch return error.UnsupportedVariant;
         }
     }
@@ -360,6 +361,35 @@ test "reads newer uncompressed obf stack without chunks" {
     const plane = try readPlane(std.testing.allocator, data.items);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{9}, plane.data);
+}
+
+test "accepts zero unused obf dimension slots" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendFileHeader(&data, file_magic.len + 2 + 4 + 8 + 4);
+    try data.appendSlice(std.testing.allocator, stack_magic);
+    try appendU16(&data, magic_number);
+    try appendI32(&data, 0);
+    try appendI32(&data, 4);
+    for ([_]i32{ 2, 1, 1, 1 }) |size| try appendI32(&data, size);
+    for (4..max_dimensions) |_| try appendI32(&data, 0);
+    for (0..max_dimensions) |_| try appendDouble(&data, 0);
+    for (0..max_dimensions) |_| try appendDouble(&data, 0);
+    try appendI32(&data, 0x01);
+    try appendI32(&data, 0);
+    try appendI32(&data, 0);
+    try appendI32(&data, 0);
+    try appendI32(&data, 0);
+    try appendI64(&data, 0);
+    try appendI64(&data, 2);
+    try appendI64(&data, 0);
+    try data.appendSlice(std.testing.allocator, &.{ 4, 5 });
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 4, 5 }, plane.data);
 }
 
 test "rejects compressed obf stack" {
