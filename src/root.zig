@@ -95,6 +95,7 @@ pub const rcpnl = @import("readers/rcpnl.zig");
 pub const rhk = @import("readers/rhk.zig");
 pub const sbig = @import("readers/sbig.zig");
 pub const scanr = @import("readers/scanr.zig");
+pub const sdt = @import("readers/sdt.zig");
 pub const seiko = @import("readers/seiko.zig");
 pub const seq = @import("readers/seq.zig");
 pub const sif = @import("readers/sif.zig");
@@ -715,6 +716,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "sdt",
+        .name = "Becker & Hickl SPCImage SDT",
+        .extensions = &.{"sdt"},
+        .can_read_pixels = true,
+    },
+    .{
         .id = "seiko",
         .name = "Seiko XQD/XQF",
         .extensions = &.{ "xqd", "xqf" },
@@ -1064,6 +1071,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (rhk.matches(data)) return "rhk";
     if (sbig.matches(data)) return "sbig";
     if (scanr.matches(data)) return "scanr";
+    if (sdt.matches(data)) return "sdt";
     if (smcamera.matches(data)) return "smcamera";
     if (lim.matches(data)) return "lim";
     if (molecularimaging.matches(data)) return "molecularimaging";
@@ -1185,6 +1193,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (rhk.matches(data)) return rhk.readMetadata(data);
     if (sbig.matches(data)) return sbig.readMetadata(data);
     if (scanr.matches(data)) return scanr.readMetadata(data);
+    if (sdt.matches(data)) return sdt.readMetadata(data);
     if (smcamera.matches(data)) return smcamera.readMetadata(data);
     if (lim.matches(data)) return lim.readMetadata(data);
     if (molecularimaging.matches(data)) return molecularimaging.readMetadata(data);
@@ -1354,6 +1363,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return sbig.readPlane(allocator, data);
     }
     if (scanr.matches(data)) return scanr.readPlaneIndex(allocator, data, plane_index);
+    if (sdt.matches(data)) return sdt.readPlaneIndex(allocator, data, plane_index);
     if (smcamera.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return smcamera.readPlane(allocator, data);
@@ -1577,6 +1587,7 @@ test {
     _ = psd;
     _ = pyramidtiff;
     _ = scanr;
+    _ = sdt;
     _ = seq;
     _ = seiko;
     _ = simplepci;

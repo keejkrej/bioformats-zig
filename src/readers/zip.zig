@@ -82,6 +82,7 @@ const quesant = @import("quesant.zig");
 const rhk = @import("rhk.zig");
 const sbig = @import("sbig.zig");
 const scanr = @import("scanr.zig");
+const sdt = @import("sdt.zig");
 const seiko = @import("seiko.zig");
 const seq = @import("seq.zig");
 const sif = @import("sif.zig");
@@ -119,7 +120,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, flowsight, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, prairie, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, flowsight, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, prairie, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, sdt, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -247,6 +248,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .rhk => rhk.readMetadata(entry.data),
         .sbig => sbig.readMetadata(entry.data),
         .scanr => scanr.readMetadata(entry.data),
+        .sdt => sdt.readMetadata(entry.data),
         .seiko => seiko.readMetadata(entry.data),
         .seq => seq.readMetadata(entry.data),
         .sif => sif.readMetadata(entry.data),
@@ -359,6 +361,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .rhk => if (plane_index == 0) rhk.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .sbig => if (plane_index == 0) sbig.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .scanr => scanr.readPlaneIndex(allocator, entry.data, plane_index),
+        .sdt => sdt.readPlaneIndex(allocator, entry.data, plane_index),
         .seiko => if (plane_index == 0) seiko.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .seq => seq.readPlaneIndex(allocator, entry.data, plane_index),
         .sif => sif.readPlaneIndex(allocator, entry.data, plane_index),
@@ -557,6 +560,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (rhk.matches(data)) return .rhk;
     if (sbig.matches(data)) return .sbig;
     if (scanr.matches(data)) return .scanr;
+    if (hasExtension(filename, ".sdt") and sdt.matches(data)) return .sdt;
     if (seiko.matches(data)) return .seiko;
     if (seq.matches(data)) return .seq;
     if (sif.matches(data)) return .sif;

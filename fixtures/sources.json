@@ -111,6 +111,7 @@
     "rcpnl": ["ome_images/DV/"],
     "rhk": ["needs-public-sample"],
     "sbig": ["needs-public-sample"],
+    "sdt": ["ome_images/SDT/"],
     "seiko": ["needs-public-sample"],
     "seq": ["needs-public-sample"],
     "sif": ["needs-public-sample"],
