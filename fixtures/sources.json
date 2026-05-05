@@ -59,6 +59,7 @@
     "cellworx": ["ome_images/CellWorX/"],
     "dng": ["needs-public-sample"],
     "columbus": ["ome_images/PerkinElmer-Columbus/"],
+    "cv7000": ["ome_images/CV7000/", "zenodo/10.5281/zenodo.10683043"],
     "eps": ["generated-fixture"],
     "fake": ["generated-fixture"],
     "fei": ["needs-public-sample"],

@@ -513,6 +513,9 @@ pub const Server = struct {
         if (bio.columbus.isPath(path)) {
             if (bio.columbus.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.cv7000.isPath(path)) {
+            if (bio.cv7000.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.jdce.isPath(path)) {
             if (bio.jdce.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -614,6 +617,9 @@ pub const Server = struct {
         }
         if (bio.columbus.isPath(path)) {
             if (bio.columbus.readMetadataPath(self.allocator, self.io, path)) |_| return "columbus" else |_| {}
+        }
+        if (bio.cv7000.isPath(path)) {
+            if (bio.cv7000.readMetadataPath(self.allocator, self.io, path)) |_| return "cv7000" else |_| {}
         }
         if (bio.jdce.isPath(path)) {
             if (bio.jdce.readMetadataPath(self.allocator, self.io, path)) |_| return "jdce" else |_| {}
@@ -743,6 +749,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "columbus")) {
             return bio.columbus.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "cv7000")) {
+            return bio.cv7000.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "jdce")) {
             return bio.jdce.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -820,6 +829,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "bdpathway") or
             std.mem.eql(u8, format, "cellworx") or
             std.mem.eql(u8, format, "columbus") or
+            std.mem.eql(u8, format, "cv7000") or
             std.mem.eql(u8, format, "jdce") or
             std.mem.eql(u8, format, "metaxpress") or
             std.mem.eql(u8, format, "micromanager") or

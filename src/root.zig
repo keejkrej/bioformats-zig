@@ -20,6 +20,7 @@ pub const canonraw = @import("readers/canonraw.zig");
 pub const cellomics = @import("readers/cellomics.zig");
 pub const cellworx = @import("readers/cellworx.zig");
 pub const columbus = @import("readers/columbus.zig");
+pub const cv7000 = @import("readers/cv7000.zig");
 pub const dcimg = @import("readers/dcimg.zig");
 pub const deltavision = @import("readers/deltavision.zig");
 pub const dicom = @import("readers/dicom.zig");
@@ -421,6 +422,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "columbus",
         .name = "PerkinElmer Columbus TIFF dataset",
         .extensions = &.{ "xml", "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "cv7000",
+        .name = "Yokogawa CV7000 TIFF dataset",
+        .extensions = &.{ "wpi", "mlf", "mrf", "ppf", "tif", "tiff" },
         .can_read_pixels = true,
     },
     .{
@@ -1218,6 +1225,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (cellomics.matches(data)) return "cellomics";
     if (cellworx.matches(data)) return "cellworx";
     if (columbus.matches(data)) return "columbus";
+    if (cv7000.matches(data)) return "cv7000";
     if (dcimg.matches(data)) return "dcimg";
     if (deltavision.matches(data)) return "deltavision";
     if (dicom.matches(data)) return "dicom";
@@ -1352,6 +1360,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (cellomics.matches(data)) return cellomics.readMetadata(data);
     if (cellworx.matches(data)) return cellworx.readMetadata(data);
     if (columbus.matches(data)) return columbus.readMetadata(data);
+    if (cv7000.matches(data)) return cv7000.readMetadata(data);
     if (dcimg.matches(data)) return dcimg.readMetadata(data);
     if (deltavision.matches(data)) return deltavision.readMetadata(data);
     if (dicom.matches(data)) return dicom.readMetadata(data);
@@ -1500,6 +1509,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (cellomics.matches(data)) return cellomics.readPlaneIndex(allocator, data, plane_index);
     if (cellworx.matches(data)) return cellworx.readPlaneIndex(allocator, data, plane_index);
     if (columbus.matches(data)) return columbus.readPlaneIndex(allocator, data, plane_index);
+    if (cv7000.matches(data)) return cv7000.readPlaneIndex(allocator, data, plane_index);
     if (dcimg.matches(data)) return dcimg.readPlaneIndex(allocator, data, plane_index);
     if (deltavision.matches(data)) return deltavision.readPlaneIndex(allocator, data, plane_index);
     if (dicom.matches(data)) return dicom.readPlaneIndex(allocator, data, plane_index);
@@ -1768,6 +1778,7 @@ test {
     _ = cellomics;
     _ = cellworx;
     _ = columbus;
+    _ = cv7000;
     _ = dcimg;
     _ = deltavision;
     _ = dicom;

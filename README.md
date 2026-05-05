@@ -71,7 +71,8 @@ For companion-file formats, path-based requests may use neighboring files. For
 example, Analyze 7.5 `.hdr`/`.img`, Olympus APL `.apl/.tnb/.mtb` plus TIFF
 planes, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`, CellWorx `.htd` plus
 Deltavision `.pnl` planes, Columbus
-`MeasurementIndex.ColumbusIDX.xml` plus TIFF planes, Fuji LAS 3000
+`MeasurementIndex.ColumbusIDX.xml` plus TIFF planes, Yokogawa CV7000
+`.wpi`/`MeasurementData.mlf` datasets plus TIFF planes, Fuji LAS 3000
 `.inf`/`.img`, Inveon `.hdr`/data pairs, MetaXpress `.htd` plus neighboring
 TIFF planes, Flex `.mea/.res` files plus sibling `.flex` TIFF planes,
 Micro-Manager `metadata.txt` plus TIFF planes, PerkinElmer `.htm`
@@ -167,6 +168,7 @@ plane, which can differ from logical OME `sizeC`.
 - Cellomics C01/DIB files with uncompressed little-endian raw planes at the standard offset; compressed `.c01` streams, multi-file plate/channel grouping, MDB metadata, and missing-channel fill behavior are not yet handled.
 - CellWorx `.htd` plate files delegated through matching Deltavision `.pnl` planes and reported as `cellworx`; full HCS multi-series assembly, field mapping beyond the first selected field, log files, and OME plate metadata are not yet surfaced.
 - Columbus `MeasurementIndex.ColumbusIDX.xml` datasets delegated through recursively discovered neighboring TIFF planes and reported as `columbus`; full HCS plate/well/field mapping, missing-plane fill, acquisition metadata, and OME plate metadata are not yet surfaced.
+- Yokogawa CV7000 `.wpi`/`MeasurementData.mlf` datasets delegated through the TIFF plane paths listed in measurement records and reported as `cv7000`; HCS plate/well/field multi-series mapping, duplicate-plane fill behavior, companion `.mrf/.mes/.ppf` metadata, and physical/acquisition metadata are not yet surfaced.
 - Bruker MRI datasets opened from `acqp`, `fid`, `reco`, or `2dseq`, with dimensions and pixel type parsed from `acqp`/`pdata/1/reco` and uncompressed planes read from `pdata/1/2dseq`; multiple reconstructions/acquisitions, FID reconstruction, timestamps, and medical metadata are not yet handled.
 - Hamamatsu DCIMG version 1 files with little-endian mono8/mono16 frames exposed as time planes, including row-order normalization; grouped `.dcimg` Z stacks, version 0 footers, frame footer four-pixel correction, timestamps, and acquisition metadata are not yet handled.
 - Deltavision DV/R3D files with fixed headers and uncompressed 8/16/32-bit integer or 32/64-bit floating-point raw planes, including stored Z/W/T sequence mapping and row-order normalization; extended-header metadata, log files, panel/position series splitting, tiling/stage metadata, and objective/channel metadata are not yet handled.
