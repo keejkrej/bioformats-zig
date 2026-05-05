@@ -417,6 +417,20 @@ function planeToImageData(plane: PlaneResult, contrast: "auto" | "raw"): ImageDa
     return image;
   }
 
+  if (metadata.pixelType === "rgb16" || metadata.pixelType === "rgba16") {
+    const stride = metadata.pixelType === "rgba16" ? 4 : 3;
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const [min, max] = contrast === "auto" ? color16Range(view, metadata.littleEndian, width * height, stride) : [0, 65535];
+    for (let p = 0; p < width * height; p++) {
+      const offset = p * stride * 2;
+      image.data[p * 4] = scale(readUint16(view, offset, metadata.littleEndian), min, max);
+      image.data[p * 4 + 1] = scale(readUint16(view, offset + 2, metadata.littleEndian), min, max);
+      image.data[p * 4 + 2] = scale(readUint16(view, offset + 4, metadata.littleEndian), min, max);
+      image.data[p * 4 + 3] = stride === 4 ? scale(readUint16(view, offset + 6, metadata.littleEndian), 0, 65535) : 255;
+    }
+    return image;
+  }
+
   const values = samples(bytes, metadata, width * height);
   const [min, max] = contrast === "auto" ? range(values) : rawRange(metadata.pixelType);
   for (let i = 0; i < values.length; i++) {
@@ -465,6 +479,25 @@ function samples(bytes: Uint8Array, metadata: Metadata, count: number): Float64A
     }
   }
   return values;
+}
+
+function color16Range(view: DataView, littleEndian: boolean, pixels: number, stride: number): [number, number] {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (let p = 0; p < pixels; p++) {
+    const offset = p * stride * 2;
+    for (let c = 0; c < 3; c++) {
+      const value = readUint16(view, offset + c * 2, littleEndian);
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
+  }
+  if (!Number.isFinite(min) || min === max) return [0, max || 1];
+  return [min, max];
+}
+
+function readUint16(view: DataView, offset: number, littleEndian: boolean): number {
+  return offset + 2 <= view.byteLength ? view.getUint16(offset, littleEndian) : 0;
 }
 
 function bytesPerSample(pixelType: string): number {
