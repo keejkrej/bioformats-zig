@@ -60,6 +60,7 @@ pub const mrw = @import("readers/mrw.zig");
 pub const mrc = @import("readers/mrc.zig");
 pub const ndpi = @import("readers/ndpi.zig");
 pub const nifti = @import("readers/nifti.zig");
+pub const nikon = @import("readers/nikon.zig");
 pub const nikonelements = @import("readers/nikonelements.zig");
 pub const nikontiff = @import("readers/nikontiff.zig");
 pub const nrrd = @import("readers/nrrd.zig");
@@ -666,6 +667,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "nikon",
+        .name = "Nikon NEF TIFF",
+        .extensions = &.{ "nef", "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "nikonelements",
         .name = "Nikon Elements TIFF",
         .extensions = &.{ "tif", "tiff" },
@@ -955,6 +962,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (mrw.matches(data)) return "mrw";
     if (nikonelements.matches(data)) return "nikonelements";
     if (nikontiff.matches(data)) return "nikontiff";
+    if (nikon.matches(data)) return "nikon";
     if (photoshoptiff.matches(data)) return "photoshoptiff";
     if (ionpathmibi.matches(data)) return "ionpathmibi";
     if (pyramidtiff.matches(data)) return "pyramidtiff";
@@ -1062,6 +1070,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (mrw.matches(data)) return mrw.readMetadata(data);
     if (nikonelements.matches(data)) return nikonelements.readMetadata(data);
     if (nikontiff.matches(data)) return nikontiff.readMetadata(data);
+    if (nikon.matches(data)) return nikon.readMetadata(data);
     if (photoshoptiff.matches(data)) return photoshoptiff.readMetadata(data);
     if (ionpathmibi.matches(data)) return ionpathmibi.readMetadata(data);
     if (pyramidtiff.matches(data)) return pyramidtiff.readMetadata(data);
@@ -1235,6 +1244,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (mrw.matches(data)) return mrw.readPlaneIndex(allocator, data, plane_index);
     if (nikonelements.matches(data)) return nikonelements.readPlaneIndex(allocator, data, plane_index);
     if (nikontiff.matches(data)) return nikontiff.readPlaneIndex(allocator, data, plane_index);
+    if (nikon.matches(data)) return nikon.readPlaneIndex(allocator, data, plane_index);
     if (photoshoptiff.matches(data)) return photoshoptiff.readPlaneIndex(allocator, data, plane_index);
     if (ionpathmibi.matches(data)) return ionpathmibi.readPlaneIndex(allocator, data, plane_index);
     if (pyramidtiff.matches(data)) return pyramidtiff.readPlaneIndex(allocator, data, plane_index);
@@ -1289,6 +1299,7 @@ pub fn readPlaneRegionIndex(
     if (ndpi.matches(data)) return ndpi.readRegionIndex(allocator, data, plane_index, region);
     if (nikonelements.matches(data)) return nikonelements.readRegionIndex(allocator, data, plane_index, region);
     if (nikontiff.matches(data)) return nikontiff.readRegionIndex(allocator, data, plane_index, region);
+    if (nikon.matches(data)) return nikon.readRegionIndex(allocator, data, plane_index, region);
     if (photoshoptiff.matches(data)) return photoshoptiff.readRegionIndex(allocator, data, plane_index, region);
     if (ionpathmibi.matches(data)) return ionpathmibi.readRegionIndex(allocator, data, plane_index, region);
     if (pyramidtiff.matches(data)) return pyramidtiff.readRegionIndex(allocator, data, plane_index, region);
@@ -1377,6 +1388,7 @@ test {
     _ = mrw;
     _ = ndpi;
     _ = leicascn;
+    _ = nikon;
     _ = nikonelements;
     _ = nikontiff;
     _ = omexml;
