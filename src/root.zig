@@ -343,6 +343,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "bd",
+        .name = "BD Pathway",
+        .extensions = &.{ "exp", "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "bioradgel",
         .name = "Bio-Rad GEL",
         .extensions = &.{"1sc"},
@@ -589,6 +595,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "ionpathmibitiff",
+        .name = "Ionpath MIBI TIFF",
+        .extensions = &.{ "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "iplab",
         .name = "IPLab",
         .extensions = &.{"ipl"},
@@ -673,7 +685,19 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "metamorphtiff",
+        .name = "Metamorph TIFF",
+        .extensions = &.{ "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "metaxpress",
+        .name = "MetaXpress TIFF",
+        .extensions = &.{ "htd", "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "metaxpresstiff",
         .name = "MetaXpress TIFF",
         .extensions = &.{ "htd", "tif", "tiff" },
         .can_read_pixels = true,
@@ -692,6 +716,12 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "mikroscan",
+        .name = "Mikroscan TIFF",
+        .extensions = &.{ "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "mikroscantiff",
         .name = "Mikroscan TIFF",
         .extensions = &.{ "tif", "tiff" },
         .can_read_pixels = true,
@@ -841,6 +871,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "nikonelementstiff",
+        .name = "Nikon Elements TIFF",
+        .extensions = &.{ "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "nikontiff",
         .name = "Nikon EZ-C1 TIFF",
         .extensions = &.{ "tif", "tiff" },
@@ -931,6 +967,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "simplepcitiff",
+        .name = "SimplePCI TIFF",
+        .extensions = &.{ "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "sis",
         .name = "Olympus SIS TIFF",
         .extensions = &.{ "tif", "tiff" },
@@ -975,6 +1017,12 @@ pub const formats = [_]FormatDescriptor{
     .{
         .id = "tga",
         .name = "TGA color-mapped/grayscale/RGB/RGBA",
+        .extensions = &.{"tga"},
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "targa",
+        .name = "Truevision Targa",
         .extensions = &.{"tga"},
         .can_read_pixels = true,
     },

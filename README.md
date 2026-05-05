@@ -10,6 +10,11 @@ JSON object or batch response array followed by `\n`. Requests must include
 Request lines may be up to 768 MiB, which allows large inline base64 image
 inputs without being constrained by the process' stdin buffer size.
 
+Some `formats` entries are Bio-Formats Java reader-name aliases for canonical
+Zig readers. For example, `targa` is advertised as an alias of `tga`, and
+`metamorphtiff` is advertised as an alias of `metamorph`; probe and metadata
+responses keep returning the canonical Zig format ID.
+
 Valid JSON-RPC notifications, requests without `id`, are accepted and do not
 produce a response. In batch responses, notifications are omitted from the
 response array. Invalid request objects still produce JSON-RPC errors.
@@ -268,6 +273,10 @@ plane, which can differ from logical OME `sizeC`.
 - Zeiss LSM TIFF files identified by the private `TIF_CZ_LSMINFO` tag, decoded through the TIFF pixel path; LSM dimension metadata, channel names/colors, LUTs, timestamps, ROIs, and MDB multi-file grouping are not yet parsed.
 - Zeiss AxioVision TIFF datasets with `_meta.xml` companion detection, delegated through the matching TIFF pixel path; XML tag metadata, multifile plane grouping, ROIs, and acquisition metadata are not yet handled.
 - ZIP archives are delegated to the first stored or deflated local-file AIM, Alicona, Amersham GEL TIFF, Amira/Avizo, APNG, ARF, AVI, BD Pathway TIFF, Becker & Hickl SDT, Bio-Rad GEL, Bio-Rad PIC, Bio-Rad SCN, BMP, Burleigh SPM, Canon DNG TIFF, Canon RAW, Cellomics C01/DIB, DCIMG, Deltavision DV/R3D, DICOM, ECAT7, EPS/PostScript, FEI TIFF, FEI/Philips SEM IMG, FITS, FlowSight CIF, Fluoview TIFF, Gatan DM2, GIF, Hamamatsu Aquacosmos NAF, Hamamatsu HIS, Hamamatsu NDPI TIFF, HRD GDF, I2I, Imacon TIFF, InCell 3000, Image-Pro SEQ, Image-Pro Workspace, Imaris raw, IMOD, Improvision TIFF, INR, Ionpath MIBI TIFF, IPLab, IVision, JEOL MG/IM, Khoros XV, KLB, Kodak BIP, Laboratory Imaging LIM, Leica SCN TIFF, Leica TCS TIFF, LEO TIFF, LI-FLIM, MetaMorph TIFF, MIAS TIFF, MicroCT VFF, Mikroscan TIFF, MINC MRI, Minolta MRW, MNG, Molecular Imaging, MRC, Netpbm, NIfTI, Nikon Elements TIFF, Nikon NEF/TIFF, Nikon TIFF, NRRD, Olympus ScanR TIFF, OME-XML, OME-TIFF, Openlab RAW, Oxford Instruments TOP, PCX, PerkinElmer Nuance IM3, PerkinElmer Operetta TIFF, Photoshop TIFF, PicoQuant BIN, PNG, POV-Ray DF3, Prairie TIFF, PSD, Pyramid TIFF, Quesant AFM, RHK SPM, SBIG, Seiko, SIF, SimplePCI TIFF, SIS TIFF, SlideBook TIFF, SM Camera, SPE, SPIDER, SVS TIFF, Text/CSV, TGA, TopoMetrix, Trestle, UBM, Varian FDF, Vectra/QPTIFF, Veeco AFM NetCDF, Ventana BIF, VG SAM, Volocity Clipping, WA Technology TOP, Zeiss LMS, Zeiss LSM, or baseline TIFF entry; encrypted/data-descriptor ZIP entries, central-directory-only archives, other inner formats, and multi-file dataset grouping inside ZIPs are not yet handled.
+
+Bio-Formats Java reader-name aliases currently advertised by `formats` include
+`bd`, `ionpathmibitiff`, `metamorphtiff`, `metaxpresstiff`,
+`mikroscantiff`, `nikonelementstiff`, `simplepcitiff`, and `targa`.
 
 This is not a complete Bio-Formats replacement yet. The repository now has the
 embedding boundary and reader shape needed to port additional `FormatReader`
