@@ -12,6 +12,7 @@ const bioradgel = @import("bioradgel.zig");
 const bioradscn = @import("bioradscn.zig");
 const bmp = @import("bmp.zig");
 const burleigh = @import("burleigh.zig");
+const canonraw = @import("canonraw.zig");
 const cellomics = @import("cellomics.zig");
 const dcimg = @import("dcimg.zig");
 const deltavision = @import("deltavision.zig");
@@ -107,7 +108,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, leo, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, leo, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -165,6 +166,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .bioradscn => bioradscn.readMetadata(entry.data),
         .bmp => bmp.readMetadata(entry.data),
         .burleigh => burleigh.readMetadata(entry.data),
+        .canonraw => canonraw.readMetadata(entry.data),
         .cellomics => cellomics.readMetadata(entry.data),
         .dcimg => dcimg.readMetadata(entry.data),
         .deltavision => deltavision.readMetadata(entry.data),
@@ -265,6 +267,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .bioradscn => bioradscn.readPlaneIndex(allocator, entry.data, plane_index),
         .bmp => if (plane_index == 0) bmp.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .burleigh => if (plane_index == 0) burleigh.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
+        .canonraw => canonraw.readPlaneIndex(allocator, entry.data, plane_index),
         .cellomics => cellomics.readPlaneIndex(allocator, entry.data, plane_index),
         .dcimg => dcimg.readPlaneIndex(allocator, entry.data, plane_index),
         .deltavision => deltavision.readPlaneIndex(allocator, entry.data, plane_index),
@@ -445,6 +448,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (bioradscn.matches(data)) return .bioradscn;
     if (bmp.matches(data)) return .bmp;
     if (hasExtension(filename, ".img") and burleigh.matches(data)) return .burleigh;
+    if (canonraw.matches(data)) return .canonraw;
     if (hasCellomicsExtension(filename) and cellomics.matches(data)) return .cellomics;
     if (dcimg.matches(data)) return .dcimg;
     if (hasDeltavisionExtension(filename) and deltavision.matches(data)) return .deltavision;
@@ -983,6 +987,28 @@ test "reads stored cellomics zip entry through extension-gated inner reader" {
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 3, 4 }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
+}
+
+test "reads stored canon raw zip metadata through inner reader" {
+    const canon_len = 18_653_760;
+    const canon_data = try std.testing.allocator.alloc(u8, canon_len);
+    defer std.testing.allocator.free(canon_data);
+    @memset(canon_data, 0);
+
+    try std.testing.expectEqual(Entry.Kind.canonraw, detectInner("image.crw", canon_data).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.crw", canon_data);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 4080), metadata.width);
+    try std.testing.expectEqual(@as(u32, 3048), metadata.height);
+    try std.testing.expectEqual(@as(u16, 3), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 3), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.rgb16, metadata.pixel_type);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
 }
 
 test "reads stored avi zip entry through inner reader" {
