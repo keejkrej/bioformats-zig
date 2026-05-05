@@ -130,6 +130,7 @@ function Preferred-NamePattern {
         "hamamatsuvms" { return '\.vms$' }
         "jdce" { return '\.jdce$' }
         "lof" { return '^mono 8bit\.lof$' }
+        "micromanager" { return '^metadata\.txt$' }
         "mrc" { return '\.(mrc|map)$' }
         "nifti" { return '\.nii$' }
         "nrrd" { return '\.(nrrd|nhdr)$' }
@@ -164,7 +165,7 @@ function Find-Candidate {
             }
             continue
         }
-        if ($leaf -notmatch $NamePattern) {
+        if ($leaf -notmatch $NamePattern -and -not ($PreferredPattern -and $leaf -match $PreferredPattern)) {
             continue
         }
         $length = Get-RemoteLength $resolved
@@ -441,6 +442,22 @@ function Download-XlefCompanions {
     Download-RelativeCompanion $xlifBaseUrl $frameName $xlifTargetDir
 }
 
+function Download-MicromanagerCompanions {
+    param(
+        [string]$MetadataSource,
+        [string]$MetadataPath,
+        [string]$TargetDir
+    )
+
+    $content = Get-Content -LiteralPath $MetadataPath -Raw
+    $match = [regex]::Match($content, '"FileName"\s*:\s*"([^"]+\.(?:tif|tiff))"', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) {
+        return
+    }
+    $baseUrl = [Uri]::new([Uri]$MetadataSource, ".").AbsoluteUri
+    Download-RelativeCompanion $baseUrl $match.Groups[1].Value $TargetDir
+}
+
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
 $zenodoRecordId = Resolve-ZenodoRecordId ([string[]]$formatEntry.Value)
 if ($null -eq $sourceUrl -and $null -eq $zenodoRecordId) {
@@ -503,4 +520,7 @@ if ($Format -eq "jdce") {
 }
 if ($Format -eq "xlef") {
     Download-XlefCompanions $candidate.Url $targetPath $targetDir
+}
+if ($Format -eq "micromanager") {
+    Download-MicromanagerCompanions $candidate.Url $targetPath $targetDir
 }

@@ -123,7 +123,7 @@
     "metaxpress": ["ome_images/MetaXpress/"],
     "metaxpresstiff": ["alias-of-metaxpress"],
     "mias": ["needs-public-sample"],
-    "micromanager": ["ome_images/Micro-Manager/"],
+    "micromanager": ["ome_images/Micro-Manager/1.4.16/serge/Pos0/", "ome_images/Micro-Manager/"],
     "microct": ["needs-public-sample"],
     "mikroscan": ["needs-public-sample"],
     "mikroscantiff": ["alias-of-mikroscan"],
