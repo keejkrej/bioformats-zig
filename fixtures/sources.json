@@ -28,6 +28,7 @@
     "ndpi": ["ome_images/Hamamatsu-NDPI/"],
     "nifti": ["ome_images/NIfTI/"],
     "nrrd": ["ome_images/NRRD/"],
+    "obf": ["ome_images/OBF/"],
     "ometiff": ["ome_images/OME-TIFF/"],
     "omexml": ["ome_images/OME-XML/"],
     "operetta": ["ome_images/PerkinElmer-Operetta/"],

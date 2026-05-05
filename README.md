@@ -208,6 +208,7 @@ plane, which can differ from logical OME `sizeC`.
 - Nikon Elements TIFF files identified by Nikon XML private metadata tags, decoded through the TIFF pixel path.
 - Nikon EZ-C1 TIFF files identified by Nikon software tags, decoded through the TIFF pixel path; Nikon microscope metadata parsing for objectives, lasers, filters, wavelengths, and physical sizes is not yet handled.
 - NRRD single-file attached raw 2D/3D raster data with 8/16/32-bit integer and 32/64-bit floating-point samples; `sizes` third axis is exposed as planes.
+- Imspector OBF/MSR files with uncompressed contiguous stacks and scalar integer or floating-point planes; compressed/chunked stacks, footer labels, embedded OME-XML, and multi-series metadata mapping are not yet handled.
 - OME-XML files with inline uncompressed or zlib-compressed base64 `BinData` for integer and floating-point pixel types, plus blank planes when no `BinData` is stored; bzip2/JPEG/JPEG-2000 BinData, multi-image documents, OME-TIFF companion files, and full OME metadata mapping are not yet handled.
 - OME-TIFF files identified by OME-XML in the first IFD image description, decoded through the TIFF pixel path; OME plane-to-IFD mapping, multi-file OME-TIFF datasets, companion-only metadata files, and full OME metadata mapping are not yet handled.
 - PerkinElmer Operetta TIFF files identified by Harmony/Operetta XML private tags, decoded through the TIFF pixel path; Index XML directory grouping, HCS plate/well/field mapping, channel metadata, and acquisition metadata are not yet handled.
