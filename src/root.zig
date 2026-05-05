@@ -104,6 +104,7 @@ pub const nikontiff = @import("readers/nikontiff.zig");
 pub const nrrd = @import("readers/nrrd.zig");
 pub const obf = @import("readers/obf.zig");
 pub const oir = @import("readers/oir.zig");
+pub const olympustile = @import("readers/olympustile.zig");
 pub const omexml = @import("readers/omexml.zig");
 pub const ometiff = @import("readers/ometiff.zig");
 pub const operetta = @import("readers/operetta.zig");
@@ -1065,6 +1066,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = false,
     },
     .{
+        .id = "olympustile",
+        .name = "Olympus OMP2INFO tile dataset",
+        .extensions = &.{"omp2info"},
+        .can_read_pixels = true,
+    },
+    .{
         .id = "omexml",
         .name = "OME-XML inline BinData",
         .extensions = &.{ "ome", "ome.xml" },
@@ -1429,6 +1436,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (nrrd.matches(data)) return "nrrd";
     if (obf.matches(data)) return "obf";
     if (oir.matches(data)) return "oir";
+    if (olympustile.matches(data)) return "olympustile";
     if (omexml.matches(data)) return "omexml";
     if (operetta.matches(data)) return "operetta";
     if (openlab.matches(data)) return "openlab";
@@ -1587,6 +1595,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (nrrd.matches(data)) return nrrd.readMetadata(data);
     if (obf.matches(data)) return obf.readMetadata(data);
     if (oir.matches(data)) return oir.readMetadata(data);
+    if (olympustile.matches(data)) return olympustile.readMetadata(data);
     if (omexml.matches(data)) return omexml.readMetadata(data);
     if (operetta.matches(data)) return operetta.readMetadata(data);
     if (openlab.matches(data)) return openlab.readMetadata(data);
@@ -1781,6 +1790,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (nrrd.matches(data)) return nrrd.readPlaneIndex(allocator, data, plane_index);
     if (obf.matches(data)) return obf.readPlaneIndex(allocator, data, plane_index);
     if (oir.matches(data)) return oir.readPlaneIndex(allocator, data, plane_index);
+    if (olympustile.matches(data)) return olympustile.readPlaneIndex(allocator, data, plane_index);
     if (omexml.matches(data)) return omexml.readPlaneIndex(allocator, data, plane_index);
     if (operetta.matches(data)) return operetta.readPlaneIndex(allocator, data, plane_index);
     if (openlab.matches(data)) return openlab.readPlaneIndex(allocator, data, plane_index);
@@ -2068,6 +2078,7 @@ test {
     _ = nikontiff;
     _ = obf;
     _ = oir;
+    _ = olympustile;
     _ = omexml;
     _ = ometiff;
     _ = operetta;

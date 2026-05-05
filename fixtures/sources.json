@@ -133,6 +133,7 @@
     "nikonelementstiff": ["alias-of-nikonelements"],
     "nikontiff": ["needs-public-sample"],
     "oir": ["ome_images/Olympus-OIR/"],
+    "olympustile": ["needs-public-sample", "bioformats-docs/olympus-omp2info-says-several-datasets"],
     "openlab": ["needs-public-sample"],
     "openlabraw": ["needs-public-sample"],
     "oxfordinstruments": ["needs-public-sample"],
