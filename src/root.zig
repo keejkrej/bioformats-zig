@@ -969,9 +969,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "qt",
-        .name = "QuickTime metadata",
+        .name = "QuickTime raw RGB/ARGB",
         .extensions = &.{ "mov", "qt" },
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "povray",

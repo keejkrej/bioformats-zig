@@ -34,10 +34,49 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    _ = allocator;
-    _ = data;
-    _ = plane_index;
-    return error.UnsupportedVariant;
+    const metadata = try readMetadata(data);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
+
+    var state = ScanState{ .target_index = plane_index };
+    try scanAtoms(data, 0, data.len, 0, &state);
+    if (!std.mem.eql(u8, state.codec[0..], "raw ")) return error.UnsupportedVariant;
+    if (state.bits_per_pixel != 24 and state.bits_per_pixel != 32) return error.UnsupportedVariant;
+
+    const target_size = state.target_size orelse try rawFrameSize(state.width, state.height, state.bits_per_pixel);
+    const target_offset = resolveFrameOffset(state, target_size, plane_index) orelse return error.UnsupportedVariant;
+    if (target_offset + target_size > data.len) return error.TruncatedData;
+    const frame = data[target_offset .. target_offset + target_size];
+
+    const out_len = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
+    const out = try allocator.alloc(u8, std.math.mul(usize, out_len, 3) catch return error.UnsupportedVariant);
+    errdefer allocator.free(out);
+
+    if (state.bits_per_pixel == 32) {
+        const needed = std.math.mul(usize, out_len, 4) catch return error.UnsupportedVariant;
+        if (frame.len < needed) return error.TruncatedData;
+        var pixel: usize = 0;
+        while (pixel < out_len) : (pixel += 1) {
+            const src = pixel * 4 + 1;
+            const dst = pixel * 3;
+            @memcpy(out[dst .. dst + 3], frame[src .. src + 3]);
+        }
+    } else {
+        const row_bytes = std.math.mul(usize, metadata.width, 3) catch return error.UnsupportedVariant;
+        const expected = std.math.mul(usize, row_bytes, metadata.height) catch return error.UnsupportedVariant;
+        if (frame.len == expected) {
+            @memcpy(out, frame[0..expected]);
+        } else {
+            const padded_row = row_bytes + ((4 - (metadata.width % 4)) % 4);
+            const needed = std.math.mul(usize, padded_row, metadata.height) catch return error.UnsupportedVariant;
+            if (frame.len < needed) return error.TruncatedData;
+            var row: usize = 0;
+            while (row < metadata.height) : (row += 1) {
+                @memcpy(out[row * row_bytes ..][0..row_bytes], frame[row * padded_row ..][0..row_bytes]);
+            }
+        }
+    }
+
+    return .{ .metadata = metadata, .data = out };
 }
 
 const ScanState = struct {
@@ -46,6 +85,13 @@ const ScanState = struct {
     bits_per_pixel: u16 = 0,
     frame_count: u32 = 0,
     chunk_count: u32 = 0,
+    codec: [4]u8 = .{ 0, 0, 0, 0 },
+    mdat_start: usize = 0,
+    mdat_end: usize = 0,
+    target_index: ?u32 = null,
+    first_offset: ?usize = null,
+    target_offset: ?usize = null,
+    target_size: ?usize = null,
 };
 
 const Atom = struct {
@@ -93,6 +139,9 @@ fn scanAtoms(data: []const u8, start: usize, end: usize, depth: u8, state: *Scan
             parseStsz(payload, state) catch {};
         } else if (std.mem.eql(u8, atom.kind, "stco")) {
             parseStco(payload, state) catch {};
+        } else if (std.mem.eql(u8, atom.kind, "mdat")) {
+            state.mdat_start = atom.payload_start;
+            state.mdat_end = atom.payload_end;
         }
 
         if (atom.next <= pos) return error.InvalidFormat;
@@ -166,6 +215,7 @@ fn parseStsd(payload: []const u8, state: *ScanState) bio.ReaderError!void {
         if (entry_size < 8 or pos + entry_size > payload.len) return error.TruncatedData;
         const codec = payload[pos + 4 ..][0..4];
         if (i == 0 and !isSupportedCodec(codec)) return error.UnsupportedVariant;
+        if (i == 0) @memcpy(&state.codec, codec);
         if (entry_size >= 86) {
             const width = beU16(payload[pos + 32 ..][0..2]);
             const height = beU16(payload[pos + 34 ..][0..2]);
@@ -179,14 +229,30 @@ fn parseStsd(payload: []const u8, state: *ScanState) bio.ReaderError!void {
 
 fn parseStsz(payload: []const u8, state: *ScanState) !void {
     if (payload.len < 12) return error.TruncatedData;
+    const sample_size = beU32(payload[4..8]);
     const count = beU32(payload[8..12]);
     if (count > 0) state.frame_count = count;
+    if (state.target_index) |target| {
+        if (target >= count) return;
+        state.target_size = if (sample_size != 0) try checkedUsize(sample_size) else size: {
+            const offset = 12 + @as(usize, target) * 4;
+            if (offset + 4 > payload.len) return error.TruncatedData;
+            break :size try checkedUsize(beU32(payload[offset..][0..4]));
+        };
+    }
 }
 
 fn parseStco(payload: []const u8, state: *ScanState) !void {
     if (payload.len < 8) return error.TruncatedData;
     const count = beU32(payload[4..8]);
     if (count > 0) state.chunk_count = count;
+    if (state.target_index) |target| {
+        if (target >= count) return;
+        const offset = 8 + @as(usize, target) * 4;
+        if (offset + 4 > payload.len) return error.TruncatedData;
+        state.target_offset = try checkedUsize(beU32(payload[offset..][0..4]));
+    }
+    if (count > 0 and payload.len >= 12) state.first_offset = try checkedUsize(beU32(payload[8..12]));
 }
 
 fn isSupportedCodec(codec: []const u8) bool {
@@ -200,6 +266,32 @@ fn isSupportedCodec(codec: []const u8) bool {
 fn pixelType(bits: u16, samples: u16) bio.PixelType {
     if (samples > 1) return if (bits > 32) .rgb16 else .rgb8;
     return if ((bits / 8) == 2) .uint16 else .uint8;
+}
+
+fn rawFrameSize(width: u32, height: u32, bits_per_pixel: u16) bio.ReaderError!usize {
+    const bytes_per_pixel: usize = switch (bits_per_pixel) {
+        24 => 3,
+        32 => 4,
+        else => return error.UnsupportedVariant,
+    };
+    const pixels = std.math.mul(usize, width, height) catch return error.UnsupportedVariant;
+    return std.math.mul(usize, pixels, bytes_per_pixel) catch return error.UnsupportedVariant;
+}
+
+fn resolveFrameOffset(state: ScanState, target_size: usize, plane_index: u32) ?usize {
+    if (state.target_offset) |offset| {
+        if (state.first_offset) |first| {
+            if (offset >= first) {
+                const relative = offset - first;
+                const from_mdat = std.math.add(usize, state.mdat_start, relative) catch return null;
+                if (from_mdat < state.mdat_end) return from_mdat;
+            }
+        }
+        if (offset >= state.mdat_start and offset < state.mdat_end) return offset;
+    }
+    if (state.mdat_start == 0) return null;
+    const relative = std.math.mul(usize, target_size, plane_index) catch return null;
+    return std.math.add(usize, state.mdat_start, relative) catch null;
 }
 
 fn fixed16_16(bytes: []const u8) u32 {
@@ -292,24 +384,24 @@ fn appendStsd(allocator: std.mem.Allocator, list: *std.ArrayList(u8), width: u16
     try appendAtom(allocator, list, "stsd", payload.items);
 }
 
-fn appendStsz(allocator: std.mem.Allocator, list: *std.ArrayList(u8), frames: u32) !void {
+fn appendStsz(allocator: std.mem.Allocator, list: *std.ArrayList(u8), frames: u32, frame_size: u32) !void {
     var payload: std.ArrayList(u8) = .empty;
     defer payload.deinit(allocator);
     try appendU32Be(allocator, &payload, 0);
     try appendU32Be(allocator, &payload, 0);
     try appendU32Be(allocator, &payload, frames);
     var i: u32 = 0;
-    while (i < frames) : (i += 1) try appendU32Be(allocator, &payload, 0);
+    while (i < frames) : (i += 1) try appendU32Be(allocator, &payload, frame_size);
     try appendAtom(allocator, list, "stsz", payload.items);
 }
 
-fn appendStco(allocator: std.mem.Allocator, list: *std.ArrayList(u8), frames: u32) !void {
+fn appendStco(allocator: std.mem.Allocator, list: *std.ArrayList(u8), frames: u32, frame_size: u32) !void {
     var payload: std.ArrayList(u8) = .empty;
     defer payload.deinit(allocator);
     try appendU32Be(allocator, &payload, 0);
     try appendU32Be(allocator, &payload, frames);
     var i: u32 = 0;
-    while (i < frames) : (i += 1) try appendU32Be(allocator, &payload, 128 + i);
+    while (i < frames) : (i += 1) try appendU32Be(allocator, &payload, 128 + i * frame_size);
     try appendAtom(allocator, list, "stco", payload.items);
 }
 
@@ -327,8 +419,8 @@ fn minimalMov(allocator: std.mem.Allocator) ![]u8 {
     var stbl: std.ArrayList(u8) = .empty;
     defer stbl.deinit(allocator);
     try appendStsd(allocator, &stbl, 12, 9, 24);
-    try appendStsz(allocator, &stbl, 2);
-    try appendStco(allocator, &stbl, 2);
+    try appendStsz(allocator, &stbl, 2, 12 * 9 * 3);
+    try appendStco(allocator, &stbl, 2, 12 * 9 * 3);
 
     var minf: std.ArrayList(u8) = .empty;
     defer minf.deinit(allocator);
@@ -348,6 +440,14 @@ fn minimalMov(allocator: std.mem.Allocator) ![]u8 {
     try appendContainer(allocator, &moov, "trak", trak.items);
     try appendContainer(allocator, &out, "moov", moov.items);
 
+    var mdat: std.ArrayList(u8) = .empty;
+    defer mdat.deinit(allocator);
+    var i: u16 = 0;
+    while (i < 12 * 9 * 3 * 2) : (i += 1) {
+        try mdat.append(allocator, @intCast(i % 251));
+    }
+    try appendAtom(allocator, &out, "mdat", mdat.items);
+
     return out.toOwnedSlice(allocator);
 }
 
@@ -366,9 +466,13 @@ test "reads quicktime movie metadata" {
     try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
 }
 
-test "quicktime pixel reads are metadata only" {
+test "reads quicktime raw rgb plane" {
     const data = try minimalMov(std.testing.allocator);
     defer std.testing.allocator.free(data);
 
-    try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data, 0));
+    const plane = try readPlaneIndex(std.testing.allocator, data, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("qt", plane.metadata.format);
+    try std.testing.expectEqual(@as(usize, 12 * 9 * 3), plane.data.len);
+    try std.testing.expectEqual(@as(u8, @intCast((12 * 9 * 3) % 251)), plane.data[0]);
 }
