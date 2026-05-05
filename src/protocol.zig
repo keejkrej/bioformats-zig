@@ -513,6 +513,9 @@ pub const Server = struct {
         if (bio.cellvoyager.isPath(path)) {
             if (bio.cellvoyager.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.incell.isPath(path)) {
+            if (bio.incell.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.columbus.isPath(path)) {
             if (bio.columbus.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -626,6 +629,9 @@ pub const Server = struct {
         }
         if (bio.cellvoyager.isPath(path)) {
             if (bio.cellvoyager.readMetadataPath(self.allocator, self.io, path)) |_| return "cellvoyager" else |_| {}
+        }
+        if (bio.incell.isPath(path)) {
+            if (bio.incell.readMetadataPath(self.allocator, self.io, path)) |_| return "incell" else |_| {}
         }
         if (bio.columbus.isPath(path)) {
             if (bio.columbus.readMetadataPath(self.allocator, self.io, path)) |_| return "columbus" else |_| {}
@@ -767,6 +773,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "cellvoyager")) {
             return bio.cellvoyager.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "incell")) {
+            return bio.incell.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "columbus")) {
             return bio.columbus.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -856,6 +865,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "bdpathway") or
             std.mem.eql(u8, format, "cellworx") or
             std.mem.eql(u8, format, "cellvoyager") or
+            std.mem.eql(u8, format, "incell") or
             std.mem.eql(u8, format, "columbus") or
             std.mem.eql(u8, format, "cv7000") or
             std.mem.eql(u8, format, "jdce") or

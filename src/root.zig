@@ -49,6 +49,7 @@ pub const imacon = @import("readers/imacon.zig");
 pub const im3 = @import("readers/im3.zig");
 pub const imagic = @import("readers/imagic.zig");
 pub const ics = @import("readers/ics.zig");
+pub const incell = @import("readers/incell.zig");
 pub const incell3000 = @import("readers/incell3000.zig");
 pub const imaris = @import("readers/imaris.zig");
 pub const imaristiff = @import("readers/imaristiff.zig");
@@ -601,6 +602,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "ics",
         .name = "Image Cytometry Standard",
         .extensions = &.{ "ics", "ids" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "incell",
+        .name = "InCell 1000/2000 TIFF dataset",
+        .extensions = &.{ "xdce", "xml", "tif", "tiff", "xlog" },
         .can_read_pixels = true,
     },
     .{
@@ -1325,6 +1332,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (zeisslms.matches(data)) return "zeisslms";
     if (povray.matches(data)) return "povray";
     if (prairie.matches(data)) return "prairie";
+    if (incell.matches(data)) return "incell";
     if (incell3000.matches(data)) return "incell3000";
     if (imagic.matches(data)) return "imagic";
     if (tga.matches(data)) return "tga";
@@ -1466,6 +1474,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (zeisslms.matches(data)) return zeisslms.readMetadata(data);
     if (povray.matches(data)) return povray.readMetadata(data);
     if (prairie.matches(data)) return prairie.readMetadata(data);
+    if (incell.matches(data)) return incell.readMetadata(data);
     if (incell3000.matches(data)) return incell3000.readMetadata(data);
     if (imagic.matches(data)) return imagic.readMetadata(data);
     if (tga.matches(data)) return tga.readMetadata(data);
@@ -1667,6 +1676,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (zeisslms.matches(data)) return zeisslms.readPlaneIndex(allocator, data, plane_index);
     if (povray.matches(data)) return povray.readPlaneIndex(allocator, data, plane_index);
     if (prairie.matches(data)) return prairie.readPlaneIndex(allocator, data, plane_index);
+    if (incell.matches(data)) return incell.readPlaneIndex(allocator, data, plane_index);
     if (incell3000.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return incell3000.readPlane(allocator, data);
@@ -1850,6 +1860,7 @@ test {
     _ = im3;
     _ = imagic;
     _ = ics;
+    _ = incell;
     _ = incell3000;
     _ = imaris;
     _ = imod;
