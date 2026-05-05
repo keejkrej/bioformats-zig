@@ -162,6 +162,7 @@
     "simplepci": ["needs-public-sample"],
     "simplepcitiff": ["alias-of-simplepci"],
     "sis": ["needs-public-sample"],
+    "slidebook": ["needs-public-sample", "bioformats-docs/slidebook-says-numerous-internal-datasets"],
     "slidebooktiff": ["needs-public-sample"],
     "smcamera": ["needs-public-sample"],
     "spe": ["needs-public-sample"],
