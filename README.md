@@ -77,7 +77,8 @@ TIFF planes, Flex `.mea/.res` files plus sibling `.flex` TIFF planes,
 Micro-Manager `metadata.txt` plus TIFF planes, PerkinElmer `.htm`
 plus TIFF planes, JDCE `.jdce`/CSV datasets plus TIFF planes, Perkin Elmer
 Densitometer `.hdr`/`.img`, Hitachi S-4800 `.txt` plus neighboring TIFF/BMP,
-PCO-RAW `.pcoraw`/`.rec`, TillVision `.pst/.inf`, and Unisoku STM
+PCO-RAW `.pcoraw`/`.rec`, Tecan `.db` plus `Images` TIFF planes,
+TillVision `.pst/.inf`, and Unisoku STM
 `.HDR`/`.DAT` datasets can be opened
 by selecting either file; inline `data` can identify the header but cannot
 provide the paired pixel file.
@@ -267,6 +268,7 @@ plane, which can differ from logical OME `sizeC`.
 - SM Camera fixed-header 8-bit grayscale images.
 - Aperio SVS TIFF files identified by Aperio image descriptions and multiple IFDs, decoded through the TIFF pixel path; SVS label/macro/subresolution series mapping and metadata extraction are not yet handled.
 - Leica TCS TIFF files identified by `CHANNEL` document names or `TCS` software tags, decoded through the TIFF pixel path; companion XML, multi-file grouping, timestamps, physical sizes, exposure times, and Leica XML metadata are not yet handled.
+- Tecan Spark Cyto workspaces opened from `.db` files by locating the associated `Images` directory, or from TIFFs under `Images` when a nearby `.db` is present, and decoded through the TIFF pixel path; SQLite plate/well/channel metadata, time/field mapping, results/overlays, and spreadsheet/export metadata are not yet surfaced.
 - TGA uncompressed and RLE 8/16-bit color-mapped with 15/16/24/32-bit palettes, 8-bit grayscale, 16-bit grayscale/alpha, 15/16/24-bit truecolor, and 16/32-bit truecolor/alpha files, including truecolor/grayscale files with unused color maps.
 - Text/CSV tables with `x` and `y` coordinate columns plus one or more numeric value columns exposed as big-endian 32-bit floating-point channel planes.
 - TillVision raw `.pst/.inf` pairs with dimensions and datatype parsed from `[Info]`, exposed as little-endian scalar planes; embedded OLE `.vws`, acquisition metadata, image names, dates, and exposure timing are not yet surfaced.

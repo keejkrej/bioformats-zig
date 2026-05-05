@@ -145,6 +145,7 @@
     "spe": ["needs-public-sample"],
     "spider": ["needs-public-sample"],
     "tcs": ["needs-public-sample"],
+    "tecan": ["needs-public-sample"],
     "text": ["generated-fixture"],
     "tga": ["generated-fixture"],
     "targa": ["alias-of-tga"],

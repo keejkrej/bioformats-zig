@@ -122,6 +122,7 @@ pub const spe = @import("readers/spe.zig");
 pub const smcamera = @import("readers/smcamera.zig");
 pub const svs = @import("readers/svs.zig");
 pub const tcs = @import("readers/tcs.zig");
+pub const tecan = @import("readers/tecan.zig");
 pub const tga = @import("readers/tga.zig");
 pub const text = @import("readers/text.zig");
 pub const tiff = @import("readers/tiff.zig");
@@ -1059,6 +1060,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "tecan",
+        .name = "Tecan Spark Cyto TIFF dataset",
+        .extensions = &.{ "db", "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "smcamera",
         .name = "SM Camera uint8 image",
         .extensions = &.{},
@@ -1309,6 +1316,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (slidebooktiff.matches(data)) return "slidebooktiff";
     if (svs.matches(data)) return "svs";
     if (tcs.matches(data)) return "tcs";
+    if (tecan.matches(data)) return "tecan";
     if (trestle.matches(data)) return "trestle";
     if (vectra.matches(data)) return "vectra";
     if (veeco.matches(data)) return "veeco";
@@ -1443,6 +1451,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (slidebooktiff.matches(data)) return slidebooktiff.readMetadata(data);
     if (svs.matches(data)) return svs.readMetadata(data);
     if (tcs.matches(data)) return tcs.readMetadata(data);
+    if (tecan.matches(data)) return tecan.readMetadata(data);
     if (trestle.matches(data)) return trestle.readMetadata(data);
     if (vectra.matches(data)) return vectra.readMetadata(data);
     if (veeco.matches(data)) return veeco.readMetadata(data);
@@ -1643,6 +1652,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (slidebooktiff.matches(data)) return slidebooktiff.readPlaneIndex(allocator, data, plane_index);
     if (svs.matches(data)) return svs.readPlaneIndex(allocator, data, plane_index);
     if (tcs.matches(data)) return tcs.readPlaneIndex(allocator, data, plane_index);
+    if (tecan.matches(data)) return tecan.readPlaneIndex(allocator, data, plane_index);
     if (trestle.matches(data)) return trestle.readPlaneIndex(allocator, data, plane_index);
     if (vectra.matches(data)) return vectra.readPlaneIndex(allocator, data, plane_index);
     if (veeco.matches(data)) return veeco.readPlaneIndex(allocator, data, plane_index);
@@ -1827,6 +1837,7 @@ test {
     _ = slidebooktiff;
     _ = svs;
     _ = tcs;
+    _ = tecan;
     _ = tga;
     _ = tillvision;
     _ = tiff;
