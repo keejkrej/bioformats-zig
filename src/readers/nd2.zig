@@ -1,0 +1,170 @@
+const std = @import("std");
+const bio = @import("../root.zig");
+
+const magic1: u32 = 0xdacebe0a;
+const magic2: u32 = 0x6a502020;
+
+const Scan = struct {
+    width: u32 = 0,
+    height: u32 = 0,
+    size_c: u16 = 1,
+    size_z: u16 = 1,
+    size_t: u16 = 1,
+    pixel_type: bio.PixelType = .uint8,
+};
+
+pub fn matches(data: []const u8) bool {
+    _ = readMetadata(data) catch return false;
+    return true;
+}
+
+pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
+    if (data.len < 8) return error.TruncatedData;
+    if (!hasMagic(data)) return error.InvalidFormat;
+    var scan = Scan{};
+    parseAscii(data, &scan);
+    parseUtf16Le(data, &scan);
+    if (scan.width == 0 or scan.height == 0) return error.InvalidFormat;
+    const zc = std.math.mul(u32, scan.size_z, scan.size_c) catch return error.UnsupportedVariant;
+    return .{
+        .format = "nd2",
+        .width = scan.width,
+        .height = scan.height,
+        .size_c = scan.size_c,
+        .samples_per_pixel = 1,
+        .size_z = scan.size_z,
+        .size_t = scan.size_t,
+        .pixel_type = scan.pixel_type,
+        .little_endian = true,
+        .plane_count = std.math.mul(u32, zc, scan.size_t) catch return error.UnsupportedVariant,
+        .dimension_order = "XYZCT",
+    };
+}
+
+pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
+    _ = allocator;
+    _ = data;
+    _ = plane_index;
+    return error.UnsupportedVariant;
+}
+
+fn hasMagic(data: []const u8) bool {
+    const first = std.mem.readInt(u32, data[0..4], .little);
+    const second = std.mem.readInt(u32, data[4..8], .little);
+    return first == magic1 or second == magic2;
+}
+
+fn parseAscii(data: []const u8, scan: *Scan) void {
+    setScanValue(scan, .width, findNumberAfterAny(data, &.{ "uiWidth=\"", "<uiWidth>", "uiWidth=", "Width=", "SizeX=" }));
+    setScanValue(scan, .height, findNumberAfterAny(data, &.{ "uiHeight=\"", "<uiHeight>", "uiHeight=", "Height=", "SizeY=" }));
+    setScanValue(scan, .size_c, findNumberAfterAny(data, &.{ "SizeC=", "uiCompCount=\"", "<uiCompCount>", "ChannelCount=", "Channels=" }));
+    setScanValue(scan, .size_z, findNumberAfterAny(data, &.{ "SizeZ=", "Z Stack Loop", "Z-Stack Loop", "ZCount=", "Slices=" }));
+    setScanValue(scan, .size_t, findNumberAfterAny(data, &.{ "SizeT=", "Time Loop", "TimeLoop", "TCount=", "Frames=" }));
+    if (findNumberAfterAny(data, &.{ "uiBpcInMemory=\"", "<uiBpcInMemory>", "uiBpcSignificant=\"", "<uiBpcSignificant>", "BitsPerPixel=", "bitDepth=" })) |bits| {
+        scan.pixel_type = pixelTypeFromBits(bits) catch scan.pixel_type;
+    }
+}
+
+fn parseUtf16Le(data: []const u8, scan: *Scan) void {
+    const allocator = std.heap.page_allocator;
+    var ascii = allocator.alloc(u8, data.len) catch return;
+    defer allocator.free(ascii);
+    var count: usize = 0;
+    var i: usize = 0;
+    while (i + 1 < data.len) : (i += 2) {
+        if (data[i + 1] == 0 and data[i] >= 0x20 and data[i] < 0x7f) {
+            ascii[count] = data[i];
+            count += 1;
+        } else if (count > 0 and ascii[count - 1] != ' ') {
+            ascii[count] = ' ';
+            count += 1;
+        }
+    }
+    parseAscii(ascii[0..count], scan);
+}
+
+const Field = enum { width, height, size_c, size_z, size_t };
+
+fn setScanValue(scan: *Scan, field: Field, value: ?u32) void {
+    const v = value orelse return;
+    if (v == 0) return;
+    switch (field) {
+        .width => scan.width = @max(scan.width, v),
+        .height => scan.height = @max(scan.height, v),
+        .size_c => scan.size_c = @max(scan.size_c, boundedDimension(v)),
+        .size_z => scan.size_z = @max(scan.size_z, boundedDimension(v)),
+        .size_t => scan.size_t = @max(scan.size_t, boundedDimension(v)),
+    }
+}
+
+fn findNumberAfterAny(data: []const u8, comptime needles: []const []const u8) ?u32 {
+    inline for (needles) |needle| {
+        if (findNumberAfter(data, needle)) |value| return value;
+    }
+    return null;
+}
+
+fn findNumberAfter(data: []const u8, needle: []const u8) ?u32 {
+    const pos = std.mem.indexOf(u8, data, needle) orelse return null;
+    var start = pos + needle.len;
+    while (start < data.len and !std.ascii.isDigit(data[start])) : (start += 1) {}
+    if (start >= data.len) return null;
+    var end = start;
+    while (end < data.len and std.ascii.isDigit(data[end])) : (end += 1) {}
+    return std.fmt.parseUnsigned(u32, data[start..end], 10) catch null;
+}
+
+fn pixelTypeFromBits(bits: u32) bio.ReaderError!bio.PixelType {
+    if (bits <= 8) return .uint8;
+    if (bits <= 16) return .uint16;
+    if (bits <= 32) return .uint32;
+    return error.UnsupportedVariant;
+}
+
+fn boundedDimension(value: u32) u16 {
+    return @intCast(@min(@max(value, 1), std.math.maxInt(u16)));
+}
+
+fn appendUtf16Le(list: *std.ArrayList(u8), text: []const u8) !void {
+    for (text) |byte| {
+        try list.append(std.testing.allocator, byte);
+        try list.append(std.testing.allocator, 0);
+    }
+}
+
+test "reads nd2 metadata from ascii text" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendSlice(std.testing.allocator, &.{ 0x0a, 0xbe, 0xce, 0xda, 0, 0, 0, 0 });
+    try data.appendSlice(std.testing.allocator,
+        \\<uiWidth>11</uiWidth><uiHeight>7</uiHeight><uiBpcInMemory>16</uiBpcInMemory>
+        \\SizeC=2
+        \\SizeZ=3
+        \\SizeT=4
+    );
+
+    try std.testing.expect(matches(data.items));
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("nd2", metadata.format);
+    try std.testing.expectEqual(@as(u32, 11), metadata.width);
+    try std.testing.expectEqual(@as(u32, 7), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 3), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 4), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 24), metadata.plane_count);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+}
+
+test "reads nd2 metadata from utf16 text and rejects pixels" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendSlice(std.testing.allocator, &.{ 0, 0, 0, 0, 0x20, 0x20, 0x50, 0x6a });
+    try appendUtf16Le(&data, "<uiWidth>5</uiWidth><uiHeight>6</uiHeight><uiBpcSignificant>8</uiBpcSignificant>SizeC=3");
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(@as(u32, 5), metadata.width);
+    try std.testing.expectEqual(@as(u32, 6), metadata.height);
+    try std.testing.expectEqual(@as(u16, 3), metadata.size_c);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+    try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data.items, 0));
+}

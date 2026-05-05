@@ -123,6 +123,7 @@
     "naf": ["needs-public-sample"],
     "netpbm": ["generated-fixture"],
     "pgm": ["alias-of-netpbm"],
+    "nd2": ["ome_images/ND2/"],
     "nikon": ["needs-public-sample"],
     "ndpis": ["ome_images/Hamamatsu-NDPI/"],
     "nikonelements": ["needs-public-sample"],
