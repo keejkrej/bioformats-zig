@@ -26,6 +26,7 @@ pub const eps = @import("readers/eps.zig");
 pub const fake = @import("readers/fake.zig");
 pub const fei = @import("readers/fei.zig");
 pub const feitiff = @import("readers/feitiff.zig");
+pub const filepattern = @import("readers/filepattern.zig");
 pub const fits = @import("readers/fits.zig");
 pub const flowsight = @import("readers/flowsight.zig");
 pub const fluoview = @import("readers/fluoview.zig");
@@ -436,6 +437,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "feitiff",
         .name = "FEI TIFF",
         .extensions = &.{ "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "filepattern",
+        .name = "File pattern",
+        .extensions = &.{"pattern"},
         .can_read_pixels = true,
     },
     .{
@@ -1586,6 +1593,7 @@ test {
     _ = ecat7;
     _ = fake;
     _ = feitiff;
+    _ = filepattern;
     _ = flowsight;
     _ = fluoview;
     _ = fuji;

@@ -513,6 +513,9 @@ pub const Server = struct {
         if (bio.bruker.isPath(path)) {
             if (bio.bruker.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.filepattern.isPath(path)) {
+            if (bio.filepattern.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.pcoraw.isPath(path)) {
             if (bio.pcoraw.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -578,6 +581,9 @@ pub const Server = struct {
         }
         if (bio.bruker.isPath(path)) {
             if (bio.bruker.readMetadataPath(self.allocator, self.io, path)) |_| return "bruker" else |_| {}
+        }
+        if (bio.filepattern.isPath(path)) {
+            if (bio.filepattern.readMetadataPath(self.allocator, self.io, path)) |_| return "filepattern" else |_| {}
         }
         if (bio.pcoraw.isPath(path)) {
             if (bio.pcoraw.readMetadataPath(self.allocator, self.io, path)) |_| return "pcoraw" else |_| {}
@@ -668,6 +674,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "bruker")) {
             return bio.bruker.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "filepattern")) {
+            return bio.filepattern.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "imaristiff")) {
             return bio.imaristiff.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -711,6 +720,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "fake") or
             std.mem.eql(u8, format, "visitech") or
             std.mem.eql(u8, format, "bruker") or
+            std.mem.eql(u8, format, "filepattern") or
             std.mem.eql(u8, format, "imaristiff") or
             std.mem.eql(u8, format, "rcpnl") or
             std.mem.eql(u8, format, "inveon") or

@@ -58,6 +58,7 @@
     "fake": ["generated-fixture"],
     "fei": ["needs-public-sample"],
     "feitiff": ["needs-public-sample"],
+    "filepattern": ["generated-fixture"],
     "fits": ["generated-fixture"],
     "flowsight": ["needs-public-sample"],
     "fluoview": ["ome_images/Olympus-FluoView/"],

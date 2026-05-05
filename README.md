@@ -160,6 +160,7 @@ plane, which can differ from logical OME `sizeC`.
 - Bio-Formats simulated `.fake` files with filename-derived dimensions, integer/floating pixel types, dimension order, endianness, scale factor, and deterministic generated planes; `.fake.ini`, RGB/indexed/SPW metadata, labels, annotations, ROIs, and pyramids are not yet handled.
 - FEI/Philips SEM IMG files with interlaced 8-bit grayscale pixels.
 - FEI TIFF files identified by S-FEG, Helios, or Titan private metadata tags, decoded through the TIFF pixel path.
+- File pattern `.pattern` files with a literal relative or absolute target path delegated through the existing reader stack; wildcard/range expansion and multi-file stitching are not yet handled.
 - FITS primary image HDUs with 8-bit unsigned, 16/32-bit signed integer, and 32/64-bit floating-point pixels, with `NAXIS3` exposed as planes.
 - FlowSight CIF files identified by first-IFD metadata XML, with the first image IFD exposed as channel planes for FlowSight bitmask and greyscale compression; additional FlowSight image IFDs, channel metadata, masks as separate series, and acquisition metadata are not yet modeled.
 - Olympus Fluoview/ABD TIFF files identified by Fluoview or Andor comments and private metadata tags, decoded through the TIFF pixel path; montage/field grouping, timestamps, physical sizes, and hardware metadata parsing are not yet handled.
