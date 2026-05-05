@@ -262,7 +262,7 @@ plane, which can differ from logical OME `sizeC`.
 - OME-XML files with inline uncompressed or zlib-compressed base64 `BinData` for integer and floating-point pixel types, plus blank planes when no `BinData` is stored; bzip2/JPEG/JPEG-2000 BinData, multi-image documents, OME-TIFF companion files, and full OME metadata mapping are not yet handled.
 - OME-TIFF files identified by OME-XML in the first IFD image description, decoded through the TIFF pixel path; OME plane-to-IFD mapping, multi-file OME-TIFF datasets, companion-only metadata files, and full OME metadata mapping are not yet handled.
 - PerkinElmer Operetta TIFF files identified by Harmony/Operetta XML private tags, decoded through the TIFF pixel path; Index XML directory grouping, HCS plate/well/field mapping, channel metadata, and acquisition metadata are not yet handled.
-- Openlab LIFF files are detected from the `impr` header and v2/v5 image tags and reported as metadata-only `openlab`; raw, PICT, palette, and LZO-compressed pixel reads are not yet implemented.
+- Openlab LIFF files are detected from the `impr` header and v2/v5 image tags, with v2 uncompressed raw grayscale, uint16, and RGB planes decoded; PICT, palette expansion, bit-packed grayscale, v5 LZO-compressed planes, and richer metadata are not yet implemented.
 - Openlab RAW files with fixed per-image records, 8/16-bit grayscale, and RGB byte planes.
 - Oxford Instruments TOP files identified by fixed headers, with little-endian 16-bit pixels read after the LUT block; descriptive metadata strings, acquisition timestamps, and physical calibration are not yet surfaced.
 - PCX 8-bit grayscale, 256-color palette, and three-plane RGB files with PCX RLE compression, returned as grayscale or RGB.

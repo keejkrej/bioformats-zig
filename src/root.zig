@@ -1131,9 +1131,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "openlab",
-        .name = "Openlab LIFF metadata",
+        .name = "Openlab LIFF raw v2",
         .extensions = &.{"liff"},
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "openlabraw",

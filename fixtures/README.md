@@ -12,6 +12,9 @@ because many microscopy datasets are large or have redistribution limits.
   through Zenodo when files can be public.
 - The checked-out `../bioformats` source tree does not include the actual public
   test image corpus; it only includes source and a small logo PNG.
+- For Openlab LIFF/RAW specifically, Bio-Formats documentation says OME has
+  datasets internally, but the public OME image index has no Openlab directory
+  and the 2026-05-05 Zenodo/web search did not turn up a small public download.
 
 ## Workflow
 

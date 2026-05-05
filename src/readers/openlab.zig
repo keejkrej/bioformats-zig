@@ -26,6 +26,9 @@ const ImageInfo = struct {
     width: u32,
     height: u32,
     volume_type: u16,
+    pixel_offset: usize,
+    pict: bool,
+    compressed: bool,
 };
 
 pub fn matches(data: []const u8) bool {
@@ -43,7 +46,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
         const tag_start = findNextImageTag(data, header.version, pos) orelse break;
         const tag = try readTagHeader(data, header.version, tag_start);
         if (tag.next <= tag_start or tag.next > data.len) return error.InvalidFormat;
-        const info = try parseImage(data, header.version, tag.payload_start);
+        const info = try parseImage(data, header.version, tag);
         if (first == null) first = info;
         image_count += 1;
         pos = tag.next;
@@ -67,10 +70,23 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    _ = allocator;
-    _ = data;
-    _ = plane_index;
-    return error.UnsupportedVariant;
+    const header = try parseHeader(data);
+    const metadata = try readMetadata(data);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
+
+    const image = try findImage(data, header, plane_index);
+    if (header.version != 2 or image.pict or image.compressed) return error.UnsupportedVariant;
+    if (!isSupportedRawVolume(image.volume_type)) return error.UnsupportedVariant;
+
+    const plane_len = try planeByteCount(metadata);
+    if (image.pixel_offset > data.len or data.len - image.pixel_offset < plane_len) return error.TruncatedData;
+    const out = try allocator.alloc(u8, plane_len);
+    errdefer allocator.free(out);
+    @memcpy(out, data[image.pixel_offset..][0..plane_len]);
+    if (image.volume_type == mac_256_greys or image.volume_type == mac_256_colors) {
+        for (out) |*byte| byte.* = ~byte.*;
+    }
+    return .{ .metadata = metadata, .data = out };
 }
 
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
@@ -87,6 +103,8 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
 const Tag = struct {
     payload_start: usize,
     next: usize,
+    subtag: u16,
+    fmt: [4]u8,
 };
 
 fn readTagHeader(data: []const u8, version: u32, pos: usize) bio.ReaderError!Tag {
@@ -94,11 +112,17 @@ fn readTagHeader(data: []const u8, version: u32, pos: usize) bio.ReaderError!Tag
     if (pos + len > data.len) return error.TruncatedData;
     const tag = beU16(data[pos..][0..2]);
     if (tag != image_type_1 and tag != image_type_2) return error.InvalidFormat;
+    const fmt_offset: usize = if (version == 2) 8 else 12;
     const next = if (version == 2)
         try checkedUsize(beU32(data[pos + 4 ..][0..4]))
     else
         try checkedUsize(beU64(data[pos + 4 ..][0..8]));
-    return .{ .payload_start = pos + len, .next = next };
+    return .{
+        .payload_start = pos + len,
+        .next = next,
+        .subtag = beU16(data[pos + 2 ..][0..2]),
+        .fmt = data[pos + fmt_offset ..][0..4].*,
+    };
 }
 
 fn findNextImageTag(data: []const u8, version: u32, start: usize) ?usize {
@@ -113,7 +137,8 @@ fn findNextImageTag(data: []const u8, version: u32, start: usize) ?usize {
     return null;
 }
 
-fn parseImage(data: []const u8, version: u32, payload_start: usize) bio.ReaderError!ImageInfo {
+fn parseImage(data: []const u8, version: u32, tag: Tag) bio.ReaderError!ImageInfo {
+    const payload_start = tag.payload_start;
     const volume_offset = payload_start + 24;
     if (volume_offset + 2 > data.len) return error.TruncatedData;
     const volume_type = beU16(data[volume_offset..][0..2]);
@@ -131,6 +156,9 @@ fn parseImage(data: []const u8, version: u32, payload_start: usize) bio.ReaderEr
             .width = @intCast(right - left),
             .height = @intCast(bottom - top),
             .volume_type = volume_type,
+            .pixel_offset = plane_offset + 10,
+            .pict = std.ascii.eqlIgnoreCase(tag.fmt[0..], "PICT"),
+            .compressed = tag.subtag == 0,
         };
     }
 
@@ -138,7 +166,29 @@ fn parseImage(data: []const u8, version: u32, payload_start: usize) bio.ReaderEr
     const width = beU32(data[plane_offset..][0..4]);
     const height = beU32(data[plane_offset + 4 ..][0..4]);
     if (width == 0 or height == 0) return error.InvalidFormat;
-    return .{ .width = width, .height = height, .volume_type = volume_type };
+    return .{
+        .width = width,
+        .height = height,
+        .volume_type = volume_type,
+        .pixel_offset = plane_offset + 8,
+        .pict = std.ascii.eqlIgnoreCase(tag.fmt[0..], "PICT"),
+        .compressed = tag.subtag == 0,
+    };
+}
+
+fn findImage(data: []const u8, header: Header, plane_index: u32) bio.ReaderError!ImageInfo {
+    var image_count: u32 = 0;
+    var pos = header.first_offset;
+    while (pos + tagHeaderLen(header.version) <= data.len and image_count < header.plane_count) {
+        const tag_start = findNextImageTag(data, header.version, pos) orelse break;
+        const tag = try readTagHeader(data, header.version, tag_start);
+        if (tag.next <= tag_start or tag.next > data.len) return error.InvalidFormat;
+        const info = try parseImage(data, header.version, tag);
+        if (image_count == plane_index) return info;
+        image_count += 1;
+        pos = tag.next;
+    }
+    return error.InvalidPlaneIndex;
 }
 
 fn tagHeaderLen(version: u32) usize {
@@ -159,6 +209,18 @@ fn pixelType(volume_type: u16) bio.PixelType {
         mac_1_bit, mac_4_greys, mac_256_greys, mac_256_colors => .uint8,
         else => .uint8,
     };
+}
+
+fn isSupportedRawVolume(volume_type: u16) bool {
+    return switch (volume_type) {
+        mac_256_greys, mac_16_greys, mac_24_bit_color, deep_grey_9...deep_grey_16 => true,
+        else => false,
+    };
+}
+
+fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
+    const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
+    return std.math.mul(usize, pixels, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
 }
 
 fn beU16(bytes: []const u8) u16 {
@@ -189,31 +251,34 @@ fn writeU32Be(bytes: []u8, offset: usize, value: u32) void {
     std.mem.writeInt(u32, bytes[offset..][0..4], value, .big);
 }
 
-fn makeLiffV2(width: u16, height: u16, volume_type: u16) [20 + 16 + 42 + 256 + 10]u8 {
-    var out = [_]u8{0} ** (20 + 16 + 42 + 256 + 10);
-    @memcpy(out[0..magic.len], &magic);
-    writeU32Be(&out, 8, 2);
-    writeU16Be(&out, 12, 1);
-    writeU32Be(&out, 16, 20);
-    writeU16Be(&out, 20, image_type_1);
-    writeU16Be(&out, 22, 1);
-    writeU32Be(&out, 24, out.len);
-    @memcpy(out[28..32], "RAW ");
+fn makeLiffV2(width: u16, height: u16, volume_type: u16, fmt: *const [4]u8, pixels: []const u8) !std.ArrayList(u8) {
+    var out: std.ArrayList(u8) = .empty;
+    try out.appendNTimes(std.testing.allocator, 0, 20 + 16 + 42 + 256 + 10);
+    @memcpy(out.items[0..magic.len], &magic);
+    writeU32Be(out.items, 8, 2);
+    writeU16Be(out.items, 12, 1);
+    writeU32Be(out.items, 16, 20);
+    writeU16Be(out.items, 20, image_type_1);
+    writeU16Be(out.items, 22, 1);
+    @memcpy(out.items[28..32], fmt);
     const payload = 20 + 16;
-    writeU16Be(&out, payload + 24, volume_type);
-    @memcpy(out[payload + 42 ..][0.."Plane 1".len], "Plane 1");
+    writeU16Be(out.items, payload + 24, volume_type);
+    @memcpy(out.items[payload + 42 ..][0.."Plane 1".len], "Plane 1");
     const plane = payload + 42 + 256;
-    writeU16Be(&out, plane + 2, 0);
-    writeU16Be(&out, plane + 4, 0);
-    writeU16Be(&out, plane + 6, height);
-    writeU16Be(&out, plane + 8, width);
+    writeU16Be(out.items, plane + 2, 0);
+    writeU16Be(out.items, plane + 4, 0);
+    writeU16Be(out.items, plane + 6, height);
+    writeU16Be(out.items, plane + 8, width);
+    try out.appendSlice(std.testing.allocator, pixels);
+    writeU32Be(out.items, 24, @intCast(out.items.len));
     return out;
 }
 
 test "reads openlab liff v2 metadata" {
-    const data = makeLiffV2(7, 5, mac_256_greys);
-    try std.testing.expect(matches(&data));
-    const metadata = try readMetadata(&data);
+    var data = try makeLiffV2(7, 5, mac_256_greys, "RAW ", &.{});
+    defer data.deinit(std.testing.allocator);
+    try std.testing.expect(matches(data.items));
+    const metadata = try readMetadata(data.items);
     try std.testing.expectEqualStrings("openlab", metadata.format);
     try std.testing.expectEqual(@as(u32, 7), metadata.width);
     try std.testing.expectEqual(@as(u32, 5), metadata.height);
@@ -222,8 +287,47 @@ test "reads openlab liff v2 metadata" {
 }
 
 test "reports openlab color images as rgb metadata" {
-    const data = makeLiffV2(3, 2, mac_24_bit_color);
-    const metadata = try readMetadata(&data);
+    var data = try makeLiffV2(3, 2, mac_24_bit_color, "RAW ", &.{});
+    defer data.deinit(std.testing.allocator);
+    const metadata = try readMetadata(data.items);
     try std.testing.expectEqual(@as(u16, 3), metadata.size_c);
     try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+}
+
+test "reads inverted openlab liff v2 grayscale raw plane" {
+    var data = try makeLiffV2(2, 1, mac_256_greys, "RAW ", &.{ 0, 255 });
+    defer data.deinit(std.testing.allocator);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(bio.PixelType.uint8, plane.metadata.pixel_type);
+    try std.testing.expectEqualSlices(u8, &.{ 255, 0 }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
+}
+
+test "reads openlab liff v2 uint16 raw plane" {
+    var data = try makeLiffV2(1, 2, mac_16_greys, "RAW ", &.{ 0x12, 0x34, 0xab, 0xcd });
+    defer data.deinit(std.testing.allocator);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(bio.PixelType.uint16, plane.metadata.pixel_type);
+    try std.testing.expectEqualSlices(u8, &.{ 0x12, 0x34, 0xab, 0xcd }, plane.data);
+}
+
+test "reads openlab liff v2 rgb raw plane" {
+    var data = try makeLiffV2(1, 1, mac_24_bit_color, "RAW ", &.{ 9, 8, 7 });
+    defer data.deinit(std.testing.allocator);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(bio.PixelType.rgb8, plane.metadata.pixel_type);
+    try std.testing.expectEqualSlices(u8, &.{ 9, 8, 7 }, plane.data);
+}
+
+test "rejects openlab liff pict planes for raw read path" {
+    var data = try makeLiffV2(1, 1, mac_256_greys, "PICT", &.{0});
+    defer data.deinit(std.testing.allocator);
+
+    try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data.items, 0));
 }
