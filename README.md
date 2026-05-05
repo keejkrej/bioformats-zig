@@ -214,7 +214,7 @@ plane, which can differ from logical OME `sizeC`.
 - Gatan DM2 files with fixed headers and contiguous big-endian integer pixels; footer tag metadata, physical sizes, and timestamps are not yet handled.
 - Amersham Biosciences GEL TIFF files identified by Molecular Dynamics private tags, decoded through the TIFF pixel path for single-IFD linear files; square-root scaled GEL images and two-IFD merge variants are rejected as unsupported.
 - GIF87a/GIF89a indexed color images exposed as planes, with global or local palettes, image descriptor offsets on the logical canvas, interlaced row reordering, Graphic Control transparency, and LZW image data, returned as RGB/RGBA.
-- Hamamatsu VMS `.vms` datasets with INI metadata and JPEG tile dimensions exposed as metadata-only `hamamatsuvms`; tiled JPEG pixel decoding, macro/map series, physical sizes, and objective metadata are not yet handled.
+- Hamamatsu VMS `.vms` datasets with INI metadata and level-0 JPEG tile stitching for requested regions; macro/map series, physical sizes, objective metadata, optimisation-file restart offsets, and multi-layer focal planes are not yet handled.
 - Hamamatsu HIS single-series files with little-endian 8/16-bit grayscale or RGB planes; packed 12-bit and multi-series HIS files are not yet supported.
 - Hitachi S-4800 `.txt` sidecars with neighboring TIFF/BMP pixel files delegated through the existing image readers; selecting JPEG companions is detected but pixels are unsupported until JPEG pixel decoding is added.
 - NOAA-HRD Gridded Data Format surface wind component tables exposed as two big-endian 64-bit floating-point channel planes.

@@ -4,6 +4,7 @@
   "public_roots": {
     "ome_images": "https://downloads.openmicroscopy.org/images/",
     "bioformats_zenodo_community": "https://zenodo.org/communities/bio-formats",
+    "openslide_testdata": "https://openslide.cs.cmu.edu/download/openslide-testdata/",
     "figshare": "https://figshare.com/"
   },
   "notes": [
@@ -80,7 +81,7 @@
     "fuji": ["needs-public-sample"],
     "gel": ["needs-public-sample"],
     "gif": ["generated-fixture"],
-    "hamamatsuvms": ["ome_images/Hamamatsu-VMS/"],
+    "hamamatsuvms": ["ome_images/Hamamatsu-VMS/openslide/CMU-3/", "ome_images/Hamamatsu-VMS/", "https://openslide.cs.cmu.edu/download/openslide-testdata/Hamamatsu-vms/"],
     "his": ["needs-public-sample"],
     "hitachi": ["needs-public-sample"],
     "hrdgdf": ["needs-public-sample"],

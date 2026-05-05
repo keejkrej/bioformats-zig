@@ -10,6 +10,8 @@ because many microscopy datasets are large or have redistribution limits.
   are hosted at `https://downloads.openmicroscopy.org/images/`.
 - The Bio-Formats contributor guide asks contributors to submit new test data
   through Zenodo when files can be public.
+- OpenSlide publishes whole-slide test data for some Bio-Formats-overlapping
+  formats, including Hamamatsu VMS.
 - The checked-out `../bioformats` source tree does not include the actual public
   test image corpus; it only includes source and a small logo PNG.
 - For Openlab LIFF/RAW specifically, Bio-Formats documentation says OME has

@@ -615,9 +615,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "hamamatsuvms",
-        .name = "Hamamatsu VMS metadata",
+        .name = "Hamamatsu VMS JPEG tiles",
         .extensions = &.{"vms"},
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "his",

@@ -64,12 +64,44 @@ pub fn readPlanePathRegionIndex(
     plane_index: u32,
     region: bio.Region,
 ) !bio.Plane {
-    _ = allocator;
-    _ = io;
-    _ = path;
-    _ = plane_index;
-    _ = region;
-    return error.UnsupportedVariant;
+    if (plane_index != 0) return error.InvalidPlaneIndex;
+    const vms = try readFile(allocator, io, path);
+    defer allocator.free(vms);
+    if (!matches(vms)) return error.InvalidFormat;
+
+    const metadata = try readMetadataPath(allocator, io, path);
+    try region.validate(metadata);
+    const bytes_per_pixel = metadata.bytesPerPixel();
+    const row_bytes = std.math.mul(usize, region.width, bytes_per_pixel) catch return error.UnsupportedVariant;
+    const out_len = std.math.mul(usize, row_bytes, region.height) catch return error.UnsupportedVariant;
+    const out = try allocator.alloc(u8, out_len);
+    errdefer allocator.free(out);
+    @memset(out, 0);
+
+    const parent = try parentPath(allocator, path);
+    defer allocator.free(parent);
+    const first_col = region.x / max_tile_span;
+    const first_row = region.y / max_tile_span;
+    const last_col = (region.x + region.width - 1) / max_tile_span;
+    const last_row = (region.y + region.height - 1) / max_tile_span;
+
+    var row = first_row;
+    while (row <= last_row) : (row += 1) {
+        var col = first_col;
+        while (col <= last_col) : (col += 1) {
+            const tile_name = tileName(vms, col, row) orelse return error.InvalidFormat;
+            const tile_path = try joinPath(allocator, parent, tile_name);
+            defer allocator.free(tile_path);
+            const tile = try readFile(allocator, io, tile_path);
+            defer allocator.free(tile);
+            const tile_plane = try bio.jpeg.readPlaneIndexAs(allocator, tile, 0, "hamamatsuvms");
+            defer allocator.free(tile_plane.data);
+            if (tile_plane.metadata.pixel_type != .rgb8 or tile_plane.metadata.samples_per_pixel != 3) return error.UnsupportedVariant;
+            try copyTileRegion(out, region, tile_plane, col * max_tile_span, row * max_tile_span);
+        }
+    }
+
+    return .{ .metadata = metadata, .data = out };
 }
 
 const JpegDims = struct {
@@ -120,6 +152,42 @@ fn valueForKey(data: []const u8, key: []const u8) ?[]const u8 {
         return std.mem.trim(u8, line[eq + 1 ..], " \t");
     }
     return null;
+}
+
+fn tileName(data: []const u8, col: u32, row: u32) ?[]const u8 {
+    if (col == 0 and row == 0) {
+        if (valueForKey(data, "ImageFile")) |name| return name;
+    }
+    var key_buf: [64]u8 = undefined;
+    const key = std.fmt.bufPrint(&key_buf, "ImageFile({d},{d})", .{ col, row }) catch return null;
+    return valueForKey(data, key);
+}
+
+fn copyTileRegion(out: []u8, region: bio.Region, tile: bio.Plane, tile_x0: u32, tile_y0: u32) !void {
+    const bytes_per_pixel = tile.metadata.bytesPerPixel();
+    const tile_x1 = std.math.add(u32, tile_x0, tile.metadata.width) catch return error.UnsupportedVariant;
+    const tile_y1 = std.math.add(u32, tile_y0, tile.metadata.height) catch return error.UnsupportedVariant;
+    const region_x1 = std.math.add(u32, region.x, region.width) catch return error.InvalidRegion;
+    const region_y1 = std.math.add(u32, region.y, region.height) catch return error.InvalidRegion;
+    const x0 = @max(region.x, tile_x0);
+    const y0 = @max(region.y, tile_y0);
+    const x1 = @min(region_x1, tile_x1);
+    const y1 = @min(region_y1, tile_y1);
+    if (x0 >= x1 or y0 >= y1) return;
+
+    const tile_row_bytes = std.math.mul(usize, tile.metadata.width, bytes_per_pixel) catch return error.UnsupportedVariant;
+    const out_row_bytes = std.math.mul(usize, region.width, bytes_per_pixel) catch return error.UnsupportedVariant;
+    const copy_bytes = std.math.mul(usize, x1 - x0, bytes_per_pixel) catch return error.UnsupportedVariant;
+    var y = y0;
+    while (y < y1) : (y += 1) {
+        const src_row = @as(usize, y - tile_y0);
+        const src_x = @as(usize, x0 - tile_x0) * bytes_per_pixel;
+        const dst_row = @as(usize, y - region.y);
+        const dst_x = @as(usize, x0 - region.x) * bytes_per_pixel;
+        const src_offset = src_row * tile_row_bytes + src_x;
+        const dst_offset = dst_row * out_row_bytes + dst_x;
+        @memcpy(out[dst_offset..][0..copy_bytes], tile.data[src_offset..][0..copy_bytes]);
+    }
 }
 
 fn parseU32(value: []const u8) ?u32 {
@@ -209,6 +277,32 @@ test "reads hamamatsu vms metadata from jpeg tile dimensions" {
     try std.testing.expectEqual(@as(u32, 61442), metadata.height);
     try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
     try std.testing.expectEqual(@as(u16, 3), metadata.samples_per_pixel);
+}
+
+test "reads hamamatsu vms pixels from jpeg tile" {
+    const root = "hamamatsu-vms-pixel-test";
+    const vms_path = "hamamatsu-vms-pixel-test/slide.vms";
+    const tile_path = "hamamatsu-vms-pixel-test/tile.jpg";
+    cleanupFixture(root, vms_path, tile_path);
+    try std.Io.Dir.cwd().createDir(std.testing.io, root, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, root) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = tile_path, .data = &bio.jpeg.baseline_red_jpeg });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, tile_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{
+        .sub_path = vms_path,
+        .data = "[Virtual Microscope Specimen]\nNoLayers=1\nNoJpegRows=1\nNoJpegColumns=1\nImageFile=tile.jpg\n",
+    });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, vms_path) catch {};
+
+    const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, vms_path, 0, .{ .x = 0, .y = 0, .width = 1, .height = 1 });
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("hamamatsuvms", plane.metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), plane.metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), plane.metadata.height);
+    try std.testing.expectEqual(@as(usize, 3), plane.data.len);
+    try std.testing.expect(plane.data[0] > 200);
+    try std.testing.expect(plane.data[1] < 80);
+    try std.testing.expect(plane.data[2] < 80);
 }
 
 fn cleanupFixture(root: []const u8, vms_path: []const u8, tile_path: []const u8) void {

@@ -101,13 +101,24 @@ function Get-RemoteLength {
     return $null
 }
 
+function Preferred-NamePattern {
+    param([string]$Format)
+
+    switch ($Format) {
+        "hamamatsuvms" { return '\.vms$' }
+        default { return $null }
+    }
+}
+
 function Find-Candidate {
     param(
         [string]$Url,
-        [int]$Depth
+        [int]$Depth,
+        [string]$PreferredPattern
     )
 
     $links = Get-DirectoryLinks $Url
+    $fallback = $null
     foreach ($href in $links) {
         $resolved = Resolve-Link $Url $href
         if ($null -eq $resolved) {
@@ -116,7 +127,7 @@ function Find-Candidate {
         $leaf = [Uri]::UnescapeDataString(([Uri]$resolved).Segments[-1])
         if ($leaf -match '/$' -or $resolved.EndsWith('/')) {
             if ($Depth -gt 0) {
-                $nested = Find-Candidate $resolved ($Depth - 1)
+                $nested = Find-Candidate $resolved ($Depth - 1) $PreferredPattern
                 if ($nested) {
                     return $nested
                 }
@@ -130,9 +141,80 @@ function Find-Candidate {
         if ($length -ne $null -and $length -gt $MaxBytes) {
             continue
         }
-        return $resolved
+        if ($PreferredPattern -and $leaf -match $PreferredPattern) {
+            return $resolved
+        }
+        if ($null -eq $fallback) {
+            $fallback = $resolved
+        }
     }
-    return $null
+    return $fallback
+}
+
+function Get-IniValue {
+    param(
+        [string]$Content,
+        [string]$Key
+    )
+
+    $escaped = [regex]::Escape($Key)
+    $match = [regex]::Match($Content, "(?im)^\s*$escaped\s*=\s*(.+?)\s*$")
+    if (-not $match.Success) {
+        return $null
+    }
+    return $match.Groups[1].Value.Trim()
+}
+
+function Download-Companion {
+    param(
+        [string]$BaseUrl,
+        [string]$Name,
+        [string]$TargetDir
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        return $null
+    }
+    $uri = [Uri]::new([Uri]$BaseUrl, $Name)
+    $length = Get-RemoteLength $uri.AbsoluteUri
+    if ($length -ne $null -and $length -gt $MaxBytes) {
+        throw "Companion '$Name' is $length bytes, above MaxBytes $MaxBytes."
+    }
+    $targetPath = Join-Path $TargetDir ([Uri]::UnescapeDataString($uri.Segments[-1]))
+    if (-not (Test-Path -LiteralPath $targetPath)) {
+        Invoke-WebRequest -UseBasicParsing -Uri $uri.AbsoluteUri -OutFile $targetPath
+    }
+    return [PSCustomObject]@{
+        Format = $Format
+        Source = $uri.AbsoluteUri
+        Path = $targetPath
+        Bytes = (Get-Item $targetPath).Length
+    }
+}
+
+function Download-HamamatsuVmsCompanions {
+    param(
+        [string]$VmsSource,
+        [string]$VmsPath,
+        [string]$TargetDir
+    )
+
+    $content = Get-Content -LiteralPath $VmsPath -Raw
+    $rows = [int](Get-IniValue $content "NoJpegRows")
+    $cols = [int](Get-IniValue $content "NoJpegColumns")
+    if ($rows -le 0 -or $cols -le 0) {
+        return
+    }
+    $baseUrl = [Uri]::new([Uri]$VmsSource, ".").AbsoluteUri
+    $names = New-Object System.Collections.Generic.List[string]
+    $names.Add((Get-IniValue $content "ImageFile"))
+    $names.Add((Get-IniValue $content "ImageFile($($cols - 1),$($rows - 1))"))
+    foreach ($name in ($names | Select-Object -Unique)) {
+        $companion = Download-Companion $baseUrl $name $TargetDir
+        if ($companion) {
+            $companion
+        }
+    }
 }
 
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
@@ -144,7 +226,8 @@ if (-not $sourceUrl.EndsWith('/')) {
     $sourceUrl += '/'
 }
 
-$candidate = Find-Candidate $sourceUrl $MaxDepth
+$preferredPattern = Preferred-NamePattern $Format
+$candidate = Find-Candidate $sourceUrl $MaxDepth $preferredPattern
 if ($null -eq $candidate) {
     throw "No downloadable candidate for '$Format' matched pattern '$NamePattern' under $sourceUrl within depth $MaxDepth and size cap $MaxBytes bytes."
 }
@@ -166,4 +249,8 @@ Invoke-WebRequest -UseBasicParsing -Uri $candidate -OutFile $targetPath
     Source = $candidate
     Path = $targetPath
     Bytes = (Get-Item $targetPath).Length
+}
+
+if ($Format -eq "hamamatsuvms") {
+    Download-HamamatsuVmsCompanions $candidate $targetPath $targetDir
 }

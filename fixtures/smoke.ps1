@@ -78,7 +78,10 @@ if (-not (Test-Path -LiteralPath $cachePath)) {
     throw "Fixture cache not found: $cachePath. Use fixtures/fetch.ps1 first."
 }
 
-$files = @(Get-ChildItem -LiteralPath $cachePath -Recurse -File)
+$files = @(Get-ChildItem -LiteralPath $cachePath -Recurse -File | Where-Object {
+    $hasVmsSibling = @(Get-ChildItem -LiteralPath $_.DirectoryName -Filter "*.vms" -File -ErrorAction SilentlyContinue).Count -gt 0
+    -not ($hasVmsSibling -and $_.Extension -match '^\.(jpg|jpeg|opt)$')
+})
 if ($files.Count -eq 0) {
     throw "No cached fixture files found under $cachePath."
 }
