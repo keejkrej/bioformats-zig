@@ -191,7 +191,7 @@ test "reads khoros grayscale plane" {
 
     const metadata = try readMetadata(data.items);
     try std.testing.expectEqual(@as(u32, 2), metadata.width);
-    try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
     try std.testing.expect(metadata.little_endian);
 
     const plane = try readPlane(std.testing.allocator, data.items);
@@ -208,7 +208,7 @@ test "reads second khoros rgb plane" {
     const metadata = try readMetadata(data.items);
     try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
     try std.testing.expectEqual(@as(u16, 3), metadata.samples_per_pixel);
-    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+    try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
 
     const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
     defer std.testing.allocator.free(plane.data);
@@ -220,7 +220,7 @@ test "expands khoros palette image" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
     try appendLutHeader(&data, 2, 1, 3);
-    try data.appendSlice(std.testing.allocator, &.{ 0, 10, 40, 20, 50, 30, 60, 99, 99 });
+    try data.appendSlice(std.testing.allocator, &.{ 0, 10, 40, 0, 20, 50, 0, 30, 60 });
     try data.appendSlice(std.testing.allocator, &.{ 1, 2 });
 
     const plane = try readPlane(std.testing.allocator, data.items);
