@@ -427,12 +427,22 @@ try {
     $parseError = Invoke-FramedRawBody -Process $framedProcess -Body "{" -Label "framed malformed JSON"
     Assert-True ($null -eq $parseError.id -and $parseError.error.code -eq -32700) "Framed malformed JSON did not return Parse error."
 
+    $utf8 = [System.Text.UTF8Encoding]::new($false)
+    $body = ConvertTo-Json -InputObject @{ jsonrpc = "2.0"; id = 7; method = "initialize" } -Compress -Depth 8
+    $bodyBytes = $utf8.GetBytes($body)
+    Write-Utf8Bytes $framedProcess ("Content-Type: application/vscode-jsonrpc; charset=utf-8`r`ncontent-length: $($bodyBytes.Length)`r`n`r`n")
+    $framedProcess.StandardInput.BaseStream.Write($bodyBytes, 0, $bodyBytes.Length)
+    $framedProcess.StandardInput.BaseStream.Flush()
+    $lowerHeaderInitialize = Read-FramedResponse -Process $framedProcess -Label "framed lowercase content-length"
+    Assert-True ($lowerHeaderInitialize.id -eq 7 -and $lowerHeaderInitialize.result.server -eq "bioformats-zig") "Framed lowercase Content-Length request failed."
+
     [PSCustomObject]@{
         Check = "content-length"
         Status = "ok"
         Server = $initialize.result.server
         InlinePixels = $plane.result.data
         ErrorCodes = "$($unknownMethod.error.code)/$($parseError.error.code)"
+        LowercaseHeader = $lowerHeaderInitialize.result.server
     }
 }
 finally {
