@@ -861,9 +861,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "lof",
-        .name = "Leica LOF metadata",
+        .name = "Leica LOF raw memory",
         .extensions = &.{"lof"},
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "metamorph",

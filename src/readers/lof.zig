@@ -13,6 +13,13 @@ const Scan = struct {
     size_z: u16 = 1,
     size_t: u16 = 1,
     pixel_type: bio.PixelType = .uint8,
+    row_stride: u32 = 0,
+};
+
+const Sections = struct {
+    memory_offset: usize,
+    memory_size: usize,
+    xml: []u8,
 };
 
 pub fn matches(data: []const u8) bool {
@@ -52,13 +59,44 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    _ = allocator;
-    _ = data;
-    _ = plane_index;
-    return error.UnsupportedVariant;
+    const metadata = try readMetadata(data);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
+
+    const sections = try readSections(allocator, data);
+    defer allocator.free(sections.xml);
+    if (sections.memory_size == 0) return error.UnsupportedVariant;
+    var scan = Scan{};
+    try parseXml(sections.xml, &scan);
+
+    const plane_len = try planeByteCount(metadata);
+    const row_padding = try rowPaddingBytes(scan, metadata);
+    const source_plane_len = std.math.add(usize, plane_len, std.math.mul(usize, row_padding, metadata.height) catch return error.UnsupportedVariant) catch return error.UnsupportedVariant;
+    const source_offset = std.math.add(usize, sections.memory_offset, std.math.mul(usize, source_plane_len, plane_index) catch return error.UnsupportedVariant) catch return error.UnsupportedVariant;
+    const memory_end = std.math.add(usize, sections.memory_offset, sections.memory_size) catch return error.UnsupportedVariant;
+    if (source_offset > memory_end or memory_end - source_offset < source_plane_len) return error.TruncatedData;
+
+    const out = try allocator.alloc(u8, plane_len);
+    errdefer allocator.free(out);
+    if (row_padding == 0) {
+        @memcpy(out, data[source_offset..][0..plane_len]);
+    } else {
+        const row_len = try rowByteCount(metadata);
+        var row: usize = 0;
+        while (row < metadata.height) : (row += 1) {
+            const src = source_offset + row * (row_len + row_padding);
+            const dst = row * row_len;
+            @memcpy(out[dst..][0..row_len], data[src..][0..row_len]);
+        }
+    }
+    return .{ .metadata = metadata, .data = out };
 }
 
 fn readXmlSection(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError![]u8 {
+    const sections = try readSections(allocator, data);
+    return sections.xml;
+}
+
+fn readSections(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError!Sections {
     var pos: usize = 0;
     try expectU32(data, &pos, lof_magic);
     _ = try readU32(data, &pos);
@@ -74,6 +112,7 @@ fn readXmlSection(allocator: std.mem.Allocator, data: []const u8) bio.ReaderErro
     _ = try readU32(data, &pos);
     try expectByte(data, &pos, memory_magic);
     const memory_size = try readU64(data, &pos);
+    const memory_offset = pos;
     pos = std.math.add(usize, pos, memory_size) catch return error.UnsupportedVariant;
     if (pos > data.len) return error.TruncatedData;
 
@@ -81,7 +120,11 @@ fn readXmlSection(allocator: std.mem.Allocator, data: []const u8) bio.ReaderErro
     _ = try readU32(data, &pos);
     try expectByte(data, &pos, memory_magic);
     const xml_chars = try readU32(data, &pos);
-    return readUtf16Le(allocator, data, &pos, xml_chars);
+    return .{
+        .memory_offset = memory_offset,
+        .memory_size = memory_size,
+        .xml = try readUtf16Le(allocator, data, &pos, xml_chars),
+    };
 }
 
 fn readUtf16Le(allocator: std.mem.Allocator, data: []const u8, pos: *usize, char_count: u32) bio.ReaderError![]u8 {
@@ -161,6 +204,7 @@ fn parseDimension(tag: []const u8, scan: *Scan) bio.ReaderError!void {
             }
         },
         2 => {
+            if (bytes_inc) |bytes| scan.row_stride = @max(scan.row_stride, bytes);
             if (scan.height == 0) {
                 scan.height = elements;
             } else if (scan.size_z == 1) {
@@ -230,6 +274,21 @@ fn boundedDimension(value: u32) u16 {
     return @intCast(@min(@max(value, 1), std.math.maxInt(u16)));
 }
 
+fn rowByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
+    return std.math.mul(usize, metadata.width, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
+}
+
+fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
+    return std.math.mul(usize, try rowByteCount(metadata), metadata.height) catch return error.UnsupportedVariant;
+}
+
+fn rowPaddingBytes(scan: Scan, metadata: bio.Metadata) bio.ReaderError!usize {
+    if (metadata.width % 4 == 0 or scan.row_stride == 0) return 0;
+    const row_len = try rowByteCount(metadata);
+    if (scan.row_stride <= row_len) return 0;
+    return scan.row_stride - row_len;
+}
+
 fn appendU32Le(list: *std.ArrayList(u8), value: u32) !void {
     var bytes: [4]u8 = undefined;
     std.mem.writeInt(u32, &bytes, value, .little);
@@ -255,7 +314,7 @@ fn appendTaggedUtf16(list: *std.ArrayList(u8), text: []const u8) !void {
     try appendUtf16Le(list, text);
 }
 
-fn appendLofHeader(list: *std.ArrayList(u8), xml: []const u8) !void {
+fn appendLofHeader(list: *std.ArrayList(u8), xml: []const u8, memory: []const u8) !void {
     try appendU32Le(list, lof_magic);
     try appendU32Le(list, @intCast(1 + 4 + type_name.len * 2));
     try appendTaggedUtf16(list, type_name);
@@ -264,8 +323,8 @@ fn appendLofHeader(list: *std.ArrayList(u8), xml: []const u8) !void {
     try list.append(std.testing.allocator, memory_magic);
     try appendU32Le(list, 0);
     try list.append(std.testing.allocator, memory_magic);
-    try appendU64Le(list, 3);
-    try list.appendSlice(std.testing.allocator, &.{ 1, 2, 3 });
+    try appendU64Le(list, memory.len);
+    try list.appendSlice(std.testing.allocator, memory);
     try appendU32Le(list, lof_magic);
     try appendU32Le(list, @intCast(1 + 4 + xml.len * 2));
     try appendTaggedUtf16(list, xml);
@@ -284,7 +343,7 @@ test "reads leica lof metadata from xml section" {
         \\</Dimensions>
         \\<Channels><ChannelDescription BytesInc="234"/><ChannelDescription BytesInc="234"/></Channels>
         \\</Image></Data></Element></LMSDataContainer>
-    );
+    , &.{ 0x12, 0x34 });
 
     try std.testing.expect(matches(data.items));
     const metadata = try readMetadata(data.items);
@@ -296,14 +355,52 @@ test "reads leica lof metadata from xml section" {
     try std.testing.expectEqual(@as(u16, 5), metadata.size_t);
     try std.testing.expectEqual(@as(u32, 20), metadata.plane_count);
     try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
-    try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data.items, 0));
+    try std.testing.expectError(error.TruncatedData, readPlaneIndex(std.testing.allocator, data.items, 0));
 }
 
 test "rejects lof file without image xml" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
-    try appendLofHeader(&data, "<LMSDataContainer><Element /></LMSDataContainer>");
+    try appendLofHeader(&data, "<LMSDataContainer><Element /></LMSDataContainer>", &.{});
 
     try std.testing.expect(!matches(data.items));
     try std.testing.expectError(error.InvalidFormat, readMetadata(data.items));
+}
+
+test "reads lof raw uint16 planes from memory block" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendLofHeader(&data,
+        \\<LMSDataContainer><Element><Data><Image>
+        \\<Dimensions>
+        \\<DimensionDescription DimID="1" NumberOfElements="2" BytesInc="2"/>
+        \\<DimensionDescription DimID="2" NumberOfElements="1" BytesInc="4"/>
+        \\<DimensionDescription DimID="3" NumberOfElements="2" BytesInc="4"/>
+        \\</Dimensions>
+        \\</Image></Data></Element></LMSDataContainer>
+    , &.{ 1, 0, 2, 0, 3, 0, 4, 0 });
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("lof", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 3, 0, 4, 0 }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
+}
+
+test "reads lof rows with padding bytes" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendLofHeader(&data,
+        \\<LMSDataContainer><Element><Data><Image>
+        \\<Dimensions>
+        \\<DimensionDescription DimID="1" NumberOfElements="3" BytesInc="1"/>
+        \\<DimensionDescription DimID="2" NumberOfElements="2" BytesInc="5"/>
+        \\</Dimensions>
+        \\</Image></Data></Element></LMSDataContainer>
+    , &.{ 1, 2, 3, 99, 100, 4, 5, 6, 101, 102 });
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(bio.PixelType.uint8, plane.metadata.pixel_type);
+    try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 4, 5, 6 }, plane.data);
 }
