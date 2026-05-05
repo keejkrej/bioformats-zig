@@ -38,6 +38,7 @@ const improvisiontiff = @import("improvisiontiff.zig");
 const inr = @import("inr.zig");
 const ionpathmibi = @import("ionpathmibi.zig");
 const iplab = @import("iplab.zig");
+const ipw = @import("ipw.zig");
 const ivision = @import("ivision.zig");
 const jeol = @import("jeol.zig");
 const khoros = @import("khoros.zig");
@@ -110,7 +111,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, leo, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -194,6 +195,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .inr => inr.readMetadata(entry.data),
         .ionpathmibi => ionpathmibi.readMetadata(entry.data),
         .iplab => iplab.readMetadata(entry.data),
+        .ipw => ipw.readMetadata(entry.data),
         .ivision => ivision.readMetadata(entry.data),
         .jeol => jeol.readMetadata(entry.data),
         .khoros => khoros.readMetadata(entry.data),
@@ -297,6 +299,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .inr => inr.readPlaneIndex(allocator, entry.data, plane_index),
         .ionpathmibi => ionpathmibi.readPlaneIndex(allocator, entry.data, plane_index),
         .iplab => iplab.readPlaneIndex(allocator, entry.data, plane_index),
+        .ipw => ipw.readPlaneIndex(allocator, entry.data, plane_index),
         .ivision => ivision.readPlaneIndex(allocator, entry.data, plane_index),
         .jeol => if (plane_index == 0) jeol.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .khoros => khoros.readPlaneIndex(allocator, entry.data, plane_index),
@@ -480,6 +483,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (inr.matches(data)) return .inr;
     if (ionpathmibi.matches(data)) return .ionpathmibi;
     if (hasExtension(filename, ".ipl") and iplab.matches(data)) return .iplab;
+    if (hasExtension(filename, ".ipw") and ipw.matches(data)) return .ipw;
     if (hasExtension(filename, ".ipm") and ivision.matches(data)) return .ivision;
     if (jeol.matches(data)) return .jeol;
     if (hasExtension(filename, ".xv") and khoros.matches(data)) return .khoros;
@@ -3480,6 +3484,110 @@ test "reads stored iplab zip entry through extension-gated inner reader" {
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 3, 4 }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
+}
+
+test "reads stored image-pro workspace zip entry through extension-gated inner reader" {
+    var ipw_data: std.ArrayList(u8) = .empty;
+    defer ipw_data.deinit(std.testing.allocator);
+    try appendTinyIpw(&ipw_data, 91);
+
+    try std.testing.expectEqual(Entry.Kind.ipw, detectInner("workspace.ipw", ipw_data.items).?);
+    try std.testing.expectEqual(@as(?Entry.Kind, null), detectInner("workspace.bin", ipw_data.items));
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "workspace.ipw", ipw_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{91}, plane.data);
+}
+
+fn appendTinyIpw(list: *std.ArrayList(u8), pixel: u8) !void {
+    var tiff_data: std.ArrayList(u8) = .empty;
+    defer tiff_data.deinit(std.testing.allocator);
+    try tiff_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&tiff_data, 42);
+    try appendU32Le(&tiff_data, 8);
+    try appendU16Le(&tiff_data, 9);
+    try appendTiffEntry(&tiff_data, 256, 4, 1, 1);
+    try appendTiffEntry(&tiff_data, 257, 4, 1, 1);
+    try appendTiffEntry(&tiff_data, 258, 3, 1, 8);
+    try appendTiffEntry(&tiff_data, 259, 3, 1, 1);
+    try appendTiffEntry(&tiff_data, 262, 3, 1, 1);
+    try appendTiffEntry(&tiff_data, 273, 4, 1, 122);
+    try appendTiffEntry(&tiff_data, 277, 3, 1, 1);
+    try appendTiffEntry(&tiff_data, 278, 4, 1, 1);
+    try appendTiffEntry(&tiff_data, 279, 4, 1, 1);
+    try appendU32Le(&tiff_data, 0);
+    try tiff_data.append(std.testing.allocator, pixel);
+    try tiff_data.appendNTimes(std.testing.allocator, 0, 4096 - tiff_data.items.len);
+
+    const cfb_magic = [_]u8{ 0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1 };
+    const free_sector: u32 = 0xffffffff;
+    const end_of_chain: u32 = 0xfffffffe;
+    const fat_sector_marker: u32 = 0xfffffffd;
+    const sector_size = 512;
+    const stream_first_sector: u32 = 2;
+    const stream_sectors = tiff_data.items.len / sector_size;
+
+    try list.appendNTimes(std.testing.allocator, 0, 512);
+    @memcpy(list.items[0..cfb_magic.len], &cfb_magic);
+    writeU16At(list.items, 0x1a, 0x003e);
+    writeU16At(list.items, 0x1c, 0xfffe);
+    writeU16At(list.items, 0x1e, 9);
+    writeU16At(list.items, 0x20, 6);
+    writeU32(list.items, 0x2c, 1);
+    writeU32(list.items, 0x30, 1);
+    writeU32(list.items, 0x38, 4096);
+    writeU32(list.items, 0x3c, end_of_chain);
+    writeU32(list.items, 0x44, end_of_chain);
+    writeU32(list.items, 0x4c, 0);
+    var header_difat: usize = 0x50;
+    while (header_difat < 512) : (header_difat += 4) writeU32(list.items, header_difat, free_sector);
+
+    const fat_start = list.items.len;
+    try list.appendNTimes(std.testing.allocator, 0xff, sector_size);
+    writeU32(list.items[fat_start..][0..sector_size], 0, fat_sector_marker);
+    writeU32(list.items[fat_start..][0..sector_size], 4, end_of_chain);
+    var i: usize = 0;
+    while (i < stream_sectors) : (i += 1) {
+        const value: u32 = if (i + 1 == stream_sectors) end_of_chain else @intCast(stream_first_sector + i + 1);
+        writeU32(list.items[fat_start..][0..sector_size], 4 * (@as(usize, stream_first_sector) + i), value);
+    }
+
+    const dir_start = list.items.len;
+    try list.appendNTimes(std.testing.allocator, 0, sector_size);
+    writeDirName(list.items[dir_start..][0..128], "Root Entry");
+    list.items[dir_start + 66] = 5;
+    writeU32(list.items, dir_start + 116, end_of_chain);
+    writeDirName(list.items[dir_start + 128 ..][0..128], "ImageTIFF");
+    list.items[dir_start + 128 + 66] = 2;
+    writeU32(list.items, dir_start + 128 + 116, stream_first_sector);
+    writeU64At(list.items, dir_start + 128 + 120, tiff_data.items.len);
+
+    try list.appendSlice(std.testing.allocator, tiff_data.items);
+}
+
+fn writeDirName(entry: []u8, name: []const u8) void {
+    for (name, 0..) |byte, i| writeU16At(entry, i * 2, byte);
+    writeU16At(entry, name.len * 2, 0);
+    writeU16At(entry, 64, @intCast((name.len + 1) * 2));
+}
+
+fn writeU16At(data: []u8, offset: usize, value: u16) void {
+    std.mem.writeInt(u16, data[offset..][0..2], value, .little);
+}
+
+fn writeU64At(data: []u8, offset: usize, value: u64) void {
+    std.mem.writeInt(u64, data[offset..][0..8], value, .little);
 }
 
 test "reads stored ivision zip entry through extension-gated inner reader" {

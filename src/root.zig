@@ -38,6 +38,7 @@ pub const improvisiontiff = @import("readers/improvisiontiff.zig");
 pub const inr = @import("readers/inr.zig");
 pub const ionpathmibi = @import("readers/ionpathmibi.zig");
 pub const iplab = @import("readers/iplab.zig");
+pub const ipw = @import("readers/ipw.zig");
 pub const ivision = @import("readers/ivision.zig");
 pub const jeol = @import("readers/jeol.zig");
 pub const khoros = @import("readers/khoros.zig");
@@ -482,6 +483,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "ipw",
+        .name = "Image-Pro Workspace",
+        .extensions = &.{"ipw"},
+        .can_read_pixels = true,
+    },
+    .{
         .id = "ivision",
         .name = "IVision",
         .extensions = &.{"ipm"},
@@ -870,6 +877,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (i2i.matches(data)) return "i2i";
     if (inr.matches(data)) return "inr";
     if (iplab.matches(data)) return "iplab";
+    if (ipw.matches(data)) return "ipw";
     if (ivision.matches(data)) return "ivision";
     if (jeol.matches(data)) return "jeol";
     if (khoros.matches(data)) return "khoros";
@@ -973,6 +981,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (i2i.matches(data)) return i2i.readMetadata(data);
     if (inr.matches(data)) return inr.readMetadata(data);
     if (iplab.matches(data)) return iplab.readMetadata(data);
+    if (ipw.matches(data)) return ipw.readMetadata(data);
     if (ivision.matches(data)) return ivision.readMetadata(data);
     if (jeol.matches(data)) return jeol.readMetadata(data);
     if (khoros.matches(data)) return khoros.readMetadata(data);
@@ -1100,6 +1109,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (i2i.matches(data)) return i2i.readPlaneIndex(allocator, data, plane_index);
     if (inr.matches(data)) return inr.readPlaneIndex(allocator, data, plane_index);
     if (iplab.matches(data)) return iplab.readPlaneIndex(allocator, data, plane_index);
+    if (ipw.matches(data)) return ipw.readPlaneIndex(allocator, data, plane_index);
     if (ivision.matches(data)) return ivision.readPlaneIndex(allocator, data, plane_index);
     if (jeol.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
@@ -1320,6 +1330,7 @@ test {
     _ = improvisiontiff;
     _ = ionpathmibi;
     _ = ivision;
+    _ = ipw;
     _ = leo;
     _ = liflim;
     _ = metamorph;
