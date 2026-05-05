@@ -92,6 +92,7 @@ pub const oxfordinstruments = @import("readers/oxfordinstruments.zig");
 pub const pcx = @import("readers/pcx.zig");
 pub const pcoraw = @import("readers/pcoraw.zig");
 pub const pds = @import("readers/pds.zig");
+pub const perkinelmer = @import("readers/perkinelmer.zig");
 pub const photoshoptiff = @import("readers/photoshoptiff.zig");
 pub const png = @import("readers/png.zig");
 pub const povray = @import("readers/povray.zig");
@@ -950,6 +951,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "perkinelmer",
+        .name = "PerkinElmer TIFF dataset",
+        .extensions = &.{ "ano", "cfg", "csv", "htm", "rec", "tim", "zpo", "tif", "tiff" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "photoshoptiff",
         .name = "Adobe Photoshop TIFF",
         .extensions = &.{ "tif", "tiff" },
@@ -1245,6 +1252,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (nikonelements.matches(data)) return "nikonelements";
     if (nikontiff.matches(data)) return "nikontiff";
     if (nikon.matches(data)) return "nikon";
+    if (perkinelmer.matches(data)) return "perkinelmer";
     if (photoshoptiff.matches(data)) return "photoshoptiff";
     if (ionpathmibi.matches(data)) return "ionpathmibi";
     if (pyramidtiff.matches(data)) return "pyramidtiff";
@@ -1373,6 +1381,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (nikonelements.matches(data)) return nikonelements.readMetadata(data);
     if (nikontiff.matches(data)) return nikontiff.readMetadata(data);
     if (nikon.matches(data)) return nikon.readMetadata(data);
+    if (perkinelmer.matches(data)) return perkinelmer.readMetadata(data);
     if (photoshoptiff.matches(data)) return photoshoptiff.readMetadata(data);
     if (ionpathmibi.matches(data)) return ionpathmibi.readMetadata(data);
     if (pyramidtiff.matches(data)) return pyramidtiff.readMetadata(data);
@@ -1567,6 +1576,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (nikonelements.matches(data)) return nikonelements.readPlaneIndex(allocator, data, plane_index);
     if (nikontiff.matches(data)) return nikontiff.readPlaneIndex(allocator, data, plane_index);
     if (nikon.matches(data)) return nikon.readPlaneIndex(allocator, data, plane_index);
+    if (perkinelmer.matches(data)) return perkinelmer.readPlaneIndex(allocator, data, plane_index);
     if (photoshoptiff.matches(data)) return photoshoptiff.readPlaneIndex(allocator, data, plane_index);
     if (ionpathmibi.matches(data)) return ionpathmibi.readPlaneIndex(allocator, data, plane_index);
     if (pyramidtiff.matches(data)) return pyramidtiff.readPlaneIndex(allocator, data, plane_index);
@@ -1740,6 +1750,7 @@ test {
     _ = operetta;
     _ = oxfordinstruments;
     _ = pds;
+    _ = perkinelmer;
     _ = photoshoptiff;
     _ = png;
     _ = prairie;

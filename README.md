@@ -71,9 +71,9 @@ For companion-file formats, path-based requests may use neighboring files. For
 example, Analyze 7.5 `.hdr`/`.img`, ICS `.ics`/`.ids`, IMAGIC `.hed`/`.img`,
 Fuji LAS 3000 `.inf`/`.img`, Inveon `.hdr`/data pairs, MetaXpress `.htd`
 plus neighboring TIFF planes, Micro-Manager `metadata.txt` plus TIFF planes,
-Perkin Elmer Densitometer `.hdr`/`.img`, Hitachi S-4800 `.txt` plus
-neighboring TIFF/BMP, PCO-RAW `.pcoraw`/`.rec`, and Unisoku STM `.HDR`/`.DAT`
-datasets can be opened
+PerkinElmer `.htm` plus TIFF planes, Perkin Elmer Densitometer `.hdr`/`.img`,
+Hitachi S-4800 `.txt` plus neighboring TIFF/BMP, PCO-RAW `.pcoraw`/`.rec`,
+and Unisoku STM `.HDR`/`.DAT` datasets can be opened
 by selecting either file; inline `data` can identify the header but cannot
 provide the paired pixel file.
 
@@ -233,6 +233,7 @@ plane, which can differ from logical OME `sizeC`.
 - PCX 8-bit grayscale, 256-color palette, and three-plane RGB files with PCX RLE compression, returned as grayscale or RGB.
 - PCO-RAW `.pcoraw` TIFF datasets with optional neighboring `.rec` metadata sidecar, delegated through the TIFF pixel path; `.rec` exposure metadata and >4 GiB offset repair are not yet surfaced.
 - Perkin Elmer Densitometer `.hdr`/`.img` pairs with little-endian 16-bit grayscale planes, fixed-record row padding, and stored-axis reversal; RGB/LUT variants and acquisition metadata are not yet surfaced.
+- PerkinElmer `.htm` datasets delegated through neighboring TIFF planes and reported as `perkinelmer`; numbered raw pixel files, companion `.tim/.csv/.zpo` metadata expansion, timestamps, wavelengths, and physical sizes are not yet surfaced.
 - Photoshop TIFF files identified by image source data private tags, with the merged TIFF image decoded; Photoshop layer extraction is not yet handled.
 - PicoQuant BIN FLIM files with little-endian 32-bit unsigned lifetime bins exposed as time planes.
 - Photoshop PSD files with uncompressed merged 8/16-bit grayscale, 8/16-bit RGB, and 8-bit indexed-color pixels; PackBits-compressed PSD pixels, layer extraction, CMYK/Lab/multichannel modes, and vector data are not yet handled.

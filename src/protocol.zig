@@ -540,6 +540,9 @@ pub const Server = struct {
         if (bio.ndpis.isPath(path)) {
             if (bio.ndpis.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.perkinelmer.isPath(path)) {
+            if (bio.perkinelmer.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         return bio.readMetadata(bytes) catch |err| {
             if (bio.analyze.isPath(path)) {
                 if (bio.analyze.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
@@ -618,6 +621,9 @@ pub const Server = struct {
         if (bio.ndpis.isPath(path)) {
             if (bio.ndpis.readMetadataPath(self.allocator, self.io, path)) |_| return "ndpis" else |_| {}
         }
+        if (bio.perkinelmer.isPath(path)) {
+            if (bio.perkinelmer.readMetadataPath(self.allocator, self.io, path)) |_| return "perkinelmer" else |_| {}
+        }
         return null;
     }
 
@@ -670,6 +676,9 @@ pub const Server = struct {
         }
         if (std.mem.eql(u8, format, "ndpis")) {
             return bio.ndpis.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
+        if (std.mem.eql(u8, format, "perkinelmer")) {
+            return bio.perkinelmer.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
         if (std.mem.eql(u8, format, "pcoraw")) {
             return bio.pcoraw.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
@@ -740,6 +749,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "afi") or
             std.mem.eql(u8, format, "pds") or
             std.mem.eql(u8, format, "ndpis") or
+            std.mem.eql(u8, format, "perkinelmer") or
             std.mem.eql(u8, format, "pcoraw") or
             std.mem.eql(u8, format, "jpk") or
             std.mem.eql(u8, format, "l2d") or
