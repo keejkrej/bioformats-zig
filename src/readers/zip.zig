@@ -37,6 +37,7 @@ const liflim = @import("liflim.zig");
 const lim = @import("lim.zig");
 const mng = @import("mng.zig");
 const microct = @import("microct.zig");
+const mias = @import("mias.zig");
 const molecularimaging = @import("molecularimaging.zig");
 const mrc = @import("mrc.zig");
 const mrw = @import("mrw.zig");
@@ -85,7 +86,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, mias, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -166,6 +167,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .kodak => kodak.readMetadata(entry.data),
         .liflim => liflim.readMetadata(entry.data),
         .lim => lim.readMetadata(entry.data),
+        .mias => mias.readMetadata(entry.data),
         .microct => microct.readMetadata(entry.data),
         .mng => mng.readMetadata(entry.data),
         .molecularimaging => molecularimaging.readMetadata(entry.data),
@@ -244,6 +246,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .kodak => if (plane_index == 0) kodak.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .liflim => liflim.readPlaneIndex(allocator, entry.data, plane_index),
         .lim => if (plane_index == 0) lim.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
+        .mias => mias.readPlaneIndex(allocator, entry.data, plane_index),
         .microct => microct.readPlaneIndex(allocator, entry.data, plane_index),
         .mng => mng.readPlaneIndex(allocator, entry.data, plane_index),
         .molecularimaging => molecularimaging.readPlaneIndex(allocator, entry.data, plane_index),
@@ -292,6 +295,7 @@ fn readInnerRegionIndex(
     region: bio.Region,
 ) bio.ReaderError!bio.Plane {
     if (entry.kind == .ometiff) return ometiff.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .mias) return mias.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .trestle) return trestle.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .vectra) return vectra.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .ventana) return ventana.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -407,6 +411,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (hasExtension(filename, ".spi") and spider.matches(data)) return .spider;
     if (text.matches(data)) return .text;
     if (hasExtension(filename, ".tga") and tga.matches(data)) return .tga;
+    if (mias.matches(data)) return .mias;
     if (trestle.matches(data)) return .trestle;
     if (vectra.matches(data)) return .vectra;
     if (ventana.matches(data)) return .ventana;
@@ -2306,6 +2311,63 @@ test "reads stored lim zip entry through extension-gated inner reader" {
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x12, 0xcd, 0xab }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
+}
+
+test "reads stored mias zip entry before baseline tiff" {
+    var mias_data: std.ArrayList(u8) = .empty;
+    defer mias_data.deinit(std.testing.allocator);
+
+    try mias_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&mias_data, 42);
+    try appendU32Le(&mias_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const software = "SCIL_Image 1.0\x00";
+    const software_offset = ifd_end;
+    const pixel_offset = software_offset + software.len;
+
+    try appendU16Le(&mias_data, entry_count);
+    try appendTiffEntry(&mias_data, 256, 4, 1, 1);
+    try appendTiffEntry(&mias_data, 257, 4, 1, 1);
+    try appendTiffEntry(&mias_data, 258, 3, 1, 8);
+    try appendTiffEntry(&mias_data, 259, 3, 1, 1);
+    try appendTiffEntry(&mias_data, 262, 3, 1, 1);
+    try appendTiffEntry(&mias_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&mias_data, 277, 3, 1, 1);
+    try appendTiffEntry(&mias_data, 278, 4, 1, 1);
+    try appendTiffEntry(&mias_data, 279, 4, 1, 1);
+    try appendTiffEntry(&mias_data, 305, 2, software.len, @intCast(software_offset));
+    try appendU32Le(&mias_data, 0);
+    try mias_data.appendSlice(std.testing.allocator, software);
+    try mias_data.append(std.testing.allocator, 67);
+
+    try std.testing.expectEqual(Entry.Kind.mias, detectInner("image.tif", mias_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.tif", mias_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{67}, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{67}, region_plane.data);
 }
 
 test "reads stored liflim zip entry through extension-gated inner reader" {
