@@ -11,6 +11,7 @@ const bioradgel = @import("bioradgel.zig");
 const bioradscn = @import("bioradscn.zig");
 const bmp = @import("bmp.zig");
 const burleigh = @import("burleigh.zig");
+const cellomics = @import("cellomics.zig");
 const dcimg = @import("dcimg.zig");
 const dicom = @import("dicom.zig");
 const ecat7 = @import("ecat7.zig");
@@ -71,7 +72,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -128,6 +129,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .bioradscn => bioradscn.readMetadata(entry.data),
         .bmp => bmp.readMetadata(entry.data),
         .burleigh => burleigh.readMetadata(entry.data),
+        .cellomics => cellomics.readMetadata(entry.data),
         .dcimg => dcimg.readMetadata(entry.data),
         .dicom => dicom.readMetadata(entry.data),
         .ecat7 => ecat7.readMetadata(entry.data),
@@ -192,6 +194,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .bioradscn => bioradscn.readPlaneIndex(allocator, entry.data, plane_index),
         .bmp => if (plane_index == 0) bmp.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .burleigh => if (plane_index == 0) burleigh.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
+        .cellomics => cellomics.readPlaneIndex(allocator, entry.data, plane_index),
         .dcimg => dcimg.readPlaneIndex(allocator, entry.data, plane_index),
         .dicom => dicom.readPlaneIndex(allocator, entry.data, plane_index),
         .ecat7 => ecat7.readPlaneIndex(allocator, entry.data, plane_index),
@@ -310,6 +313,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (bioradscn.matches(data)) return .bioradscn;
     if (bmp.matches(data)) return .bmp;
     if (hasExtension(filename, ".img") and burleigh.matches(data)) return .burleigh;
+    if (hasCellomicsExtension(filename) and cellomics.matches(data)) return .cellomics;
     if (dcimg.matches(data)) return .dcimg;
     if (dicom.matches(data)) return .dicom;
     if (ecat7.matches(data)) return .ecat7;
@@ -374,6 +378,10 @@ fn hasMrcExtension(filename: []const u8) bool {
         hasExtension(filename, ".ali") or
         hasExtension(filename, ".map") or
         hasExtension(filename, ".rec");
+}
+
+fn hasCellomicsExtension(filename: []const u8) bool {
+    return hasExtension(filename, ".c01") or hasExtension(filename, ".dib");
 }
 
 fn inflateRaw(allocator: std.mem.Allocator, payload: []const u8, uncompressed_size: usize) bio.ReaderError![]u8 {
@@ -768,6 +776,41 @@ test "reads stored burleigh zip entry through extension-gated inner reader" {
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x12, 0xcd, 0xab }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
+}
+
+test "reads stored cellomics zip entry through extension-gated inner reader" {
+    var cellomics_data: std.ArrayList(u8) = .empty;
+    defer cellomics_data.deinit(std.testing.allocator);
+    try cellomics_data.appendNTimes(std.testing.allocator, 0, 52);
+    writeU32(cellomics_data.items, 0, 16);
+    writeU32(cellomics_data.items, 4, 2);
+    writeU32(cellomics_data.items, 8, 1);
+    writeU16(cellomics_data.items, 12, 2);
+    writeU16(cellomics_data.items, 14, 8);
+    writeU32(cellomics_data.items, 16, 0);
+    try cellomics_data.appendSlice(std.testing.allocator, &.{ 1, 2, 3, 4 });
+
+    try std.testing.expectEqual(Entry.Kind.cellomics, detectInner("well.C01", cellomics_data.items).?);
+    try std.testing.expectEqual(Entry.Kind.cellomics, detectInner("well.dib", cellomics_data.items).?);
+    try std.testing.expectEqual(null, detectInner("well.dat", cellomics_data.items));
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "well.c01", cellomics_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_z);
+    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 3, 4 }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
 }
 
 test "reads stored avi zip entry through inner reader" {
