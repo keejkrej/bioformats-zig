@@ -76,6 +76,7 @@ pub const kodak = @import("readers/kodak.zig");
 pub const l2d = @import("readers/l2d.zig");
 pub const leo = @import("readers/leo.zig");
 pub const leicascn = @import("readers/leicascn.zig");
+pub const lif = @import("readers/lif.zig");
 pub const liflim = @import("readers/liflim.zig");
 pub const lim = @import("readers/lim.zig");
 pub const metamorph = @import("readers/metamorph.zig");
@@ -792,6 +793,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "lif",
+        .name = "Leica LIF metadata",
+        .extensions = &.{"lif"},
+        .can_read_pixels = false,
+    },
+    .{
         .id = "liflim",
         .name = "LI-FLIM",
         .extensions = &.{"fli"},
@@ -1459,6 +1466,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (improvisiontiff.matches(data)) return "improvisiontiff";
     if (leo.matches(data)) return "leo";
     if (leicascn.matches(data)) return "leicascn";
+    if (lif.matches(data)) return "lif";
     if (liflim.matches(data)) return "liflim";
     if (metamorph.matches(data)) return "metamorph";
     if (mias.matches(data)) return "mias";
@@ -1614,6 +1622,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (improvisiontiff.matches(data)) return improvisiontiff.readMetadata(data);
     if (leo.matches(data)) return leo.readMetadata(data);
     if (leicascn.matches(data)) return leicascn.readMetadata(data);
+    if (lif.matches(data)) return lif.readMetadata(data);
     if (liflim.matches(data)) return liflim.readMetadata(data);
     if (metamorph.matches(data)) return metamorph.readMetadata(data);
     if (mias.matches(data)) return mias.readMetadata(data);
@@ -1835,6 +1844,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (improvisiontiff.matches(data)) return improvisiontiff.readPlaneIndex(allocator, data, plane_index);
     if (leo.matches(data)) return leo.readPlaneIndex(allocator, data, plane_index);
     if (leicascn.matches(data)) return leicascn.readPlaneIndex(allocator, data, plane_index);
+    if (lif.matches(data)) return lif.readPlaneIndex(allocator, data, plane_index);
     if (liflim.matches(data)) return liflim.readPlaneIndex(allocator, data, plane_index);
     if (metamorph.matches(data)) return metamorph.readPlaneIndex(allocator, data, plane_index);
     if (mias.matches(data)) return mias.readPlaneIndex(allocator, data, plane_index);
@@ -2013,6 +2023,7 @@ test {
     _ = jpeg2000;
     _ = jpx;
     _ = leo;
+    _ = lif;
     _ = liflim;
     _ = metamorph;
     _ = metaxpress;

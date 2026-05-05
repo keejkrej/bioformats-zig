@@ -105,6 +105,7 @@
     "khoros": ["needs-public-sample"],
     "kodak": ["needs-public-sample"],
     "l2d": ["needs-public-sample"],
+    "lif": ["ome_images/Leica-LIF/"],
     "liflim": ["needs-public-sample"],
     "lim": ["needs-public-sample"],
     "metamorph": ["ome_images/Metamorph/"],
