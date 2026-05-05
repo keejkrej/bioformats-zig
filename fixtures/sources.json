@@ -148,6 +148,7 @@
     "text": ["generated-fixture"],
     "tga": ["generated-fixture"],
     "targa": ["alias-of-tga"],
+    "tillvision": ["needs-public-sample"],
     "topometrix": ["needs-public-sample"],
     "ubm": ["needs-public-sample"],
     "unisoku": ["needs-public-sample"],

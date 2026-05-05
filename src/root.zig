@@ -125,6 +125,7 @@ pub const tcs = @import("readers/tcs.zig");
 pub const tga = @import("readers/tga.zig");
 pub const text = @import("readers/text.zig");
 pub const tiff = @import("readers/tiff.zig");
+pub const tillvision = @import("readers/tillvision.zig");
 pub const topometrix = @import("readers/topometrix.zig");
 pub const trestle = @import("readers/trestle.zig");
 pub const ubm = @import("readers/ubm.zig");
@@ -1076,6 +1077,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "tillvision",
+        .name = "TillVision raw PST/INF",
+        .extensions = &.{ "vws", "pst", "inf" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "text",
         .name = "Text table float planes",
         .extensions = &.{ "txt", "csv" },
@@ -1267,6 +1274,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (incell3000.matches(data)) return "incell3000";
     if (imagic.matches(data)) return "imagic";
     if (tga.matches(data)) return "tga";
+    if (tillvision.matches(data)) return "tillvision";
     if (dng.matches(data)) return "dng";
     if (canonraw.matches(data)) return "canonraw";
     if (feitiff.matches(data)) return "feitiff";
@@ -1400,6 +1408,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (incell3000.matches(data)) return incell3000.readMetadata(data);
     if (imagic.matches(data)) return imagic.readMetadata(data);
     if (tga.matches(data)) return tga.readMetadata(data);
+    if (tillvision.matches(data)) return tillvision.readMetadata(data);
     if (dng.matches(data)) return dng.readMetadata(data);
     if (canonraw.matches(data)) return canonraw.readMetadata(data);
     if (feitiff.matches(data)) return feitiff.readMetadata(data);
@@ -1599,6 +1608,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return tga.readPlane(allocator, data);
     }
+    if (tillvision.matches(data)) return tillvision.readPlaneIndex(allocator, data, plane_index);
     if (dng.matches(data)) return dng.readPlaneIndex(allocator, data, plane_index);
     if (canonraw.matches(data)) return canonraw.readPlaneIndex(allocator, data, plane_index);
     if (feitiff.matches(data)) return feitiff.readPlaneIndex(allocator, data, plane_index);
@@ -1818,6 +1828,7 @@ test {
     _ = svs;
     _ = tcs;
     _ = tga;
+    _ = tillvision;
     _ = tiff;
     _ = trestle;
     _ = unisoku;
