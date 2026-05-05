@@ -34,6 +34,7 @@ const netpbm = @import("netpbm.zig");
 const nifti = @import("nifti.zig");
 const nrrd = @import("nrrd.zig");
 const openlabraw = @import("openlabraw.zig");
+const ometiff = @import("ometiff.zig");
 const oxfordinstruments = @import("oxfordinstruments.zig");
 const pcx = @import("pcx.zig");
 const png = @import("png.zig");
@@ -66,7 +67,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, openlabraw, oxfordinstruments, pcx, png, povray, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, imaris, imod, inr, jeol, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -146,6 +147,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .nifti => nifti.readMetadata(entry.data),
         .nrrd => nrrd.readMetadata(entry.data),
         .openlabraw => openlabraw.readMetadata(entry.data),
+        .ometiff => ometiff.readMetadata(entry.data),
         .oxfordinstruments => oxfordinstruments.readMetadata(entry.data),
         .pcx => pcx.readMetadata(entry.data),
         .png => png.readMetadata(entry.data),
@@ -205,6 +207,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .nifti => nifti.readPlaneIndex(allocator, entry.data, plane_index),
         .nrrd => nrrd.readPlaneIndex(allocator, entry.data, plane_index),
         .openlabraw => openlabraw.readPlaneIndex(allocator, entry.data, plane_index),
+        .ometiff => ometiff.readPlaneIndex(allocator, entry.data, plane_index),
         .oxfordinstruments => oxfordinstruments.readPlaneIndex(allocator, entry.data, plane_index),
         .pcx => if (plane_index == 0) pcx.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .png => if (plane_index == 0) png.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
@@ -234,6 +237,7 @@ fn readInnerRegionIndex(
     plane_index: u32,
     region: bio.Region,
 ) bio.ReaderError!bio.Plane {
+    if (entry.kind == .ometiff) return ometiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .tiff) return tiff.readRegionIndex(allocator, entry.data, plane_index, region);
 
     const plane = try readInnerPlaneIndex(allocator, entry, plane_index);
@@ -317,6 +321,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (nifti.matches(data)) return .nifti;
     if (nrrd.matches(data)) return .nrrd;
     if (openlabraw.matches(data)) return .openlabraw;
+    if (ometiff.matches(data)) return .ometiff;
     if (oxfordinstruments.matches(data)) return .oxfordinstruments;
     if (pcx.matches(data)) return .pcx;
     if (png.matches(data)) return .png;
@@ -438,6 +443,13 @@ fn appendU32Le(list: *std.ArrayList(u8), value: u32) !void {
     try list.append(std.testing.allocator, @intCast((value >> 24) & 0xff));
 }
 
+fn appendTiffEntry(list: *std.ArrayList(u8), tag: u16, field_type: u16, count: u32, value: u32) !void {
+    try appendU16Le(list, tag);
+    try appendU16Le(list, field_type);
+    try appendU32Le(list, count);
+    try appendU32Le(list, value);
+}
+
 fn appendU64Le(list: *std.ArrayList(u8), value: u64) !void {
     try list.append(std.testing.allocator, @intCast(value & 0xff));
     try list.append(std.testing.allocator, @intCast((value >> 8) & 0xff));
@@ -447,13 +459,6 @@ fn appendU64Le(list: *std.ArrayList(u8), value: u64) !void {
     try list.append(std.testing.allocator, @intCast((value >> 40) & 0xff));
     try list.append(std.testing.allocator, @intCast((value >> 48) & 0xff));
     try list.append(std.testing.allocator, @intCast((value >> 56) & 0xff));
-}
-
-fn appendTiffEntry(list: *std.ArrayList(u8), tag: u16, field_type: u16, count: u32, value: u32) !void {
-    try appendU16Le(list, tag);
-    try appendU16Le(list, field_type);
-    try appendU32Le(list, count);
-    try appendU32Le(list, value);
 }
 
 fn appendPngChunk(list: *std.ArrayList(u8), kind: []const u8, bytes: []const u8) !void {
@@ -872,6 +877,54 @@ test "reads stored tiff zip entry through inner reader" {
     const plane = try readPlane(std.testing.allocator, data.items);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{77}, plane.data);
+}
+
+test "detects stored ome-tiff zip entry before baseline tiff" {
+    var ome_tiff_data: std.ArrayList(u8) = .empty;
+    defer ome_tiff_data.deinit(std.testing.allocator);
+    try ome_tiff_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&ome_tiff_data, 42);
+    try appendU32Le(&ome_tiff_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const description =
+        \\<OME><Image ID="Image:0"><Pixels DimensionOrder="XYZCT" Type="uint8" SizeX="1" SizeY="1" SizeZ="1" SizeC="1" SizeT="1"/></Image></OME>
+    ++ "\x00";
+    const description_offset = ifd_end;
+    const pixel_offset = description_offset + description.len;
+
+    try appendU16Le(&ome_tiff_data, entry_count);
+    try appendTiffEntry(&ome_tiff_data, 256, 4, 1, 1);
+    try appendTiffEntry(&ome_tiff_data, 257, 4, 1, 1);
+    try appendTiffEntry(&ome_tiff_data, 258, 3, 1, 8);
+    try appendTiffEntry(&ome_tiff_data, 259, 3, 1, 1);
+    try appendTiffEntry(&ome_tiff_data, 262, 3, 1, 1);
+    try appendTiffEntry(&ome_tiff_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&ome_tiff_data, 277, 3, 1, 1);
+    try appendTiffEntry(&ome_tiff_data, 278, 4, 1, 1);
+    try appendTiffEntry(&ome_tiff_data, 279, 4, 1, 1);
+    try appendTiffEntry(&ome_tiff_data, 270, 2, description.len, @intCast(description_offset));
+    try appendU32Le(&ome_tiff_data, 0);
+    try ome_tiff_data.appendSlice(std.testing.allocator, description);
+    try ome_tiff_data.append(std.testing.allocator, 17);
+
+    try std.testing.expectEqual(Entry.Kind.ometiff, detectInner("image.ome.tif", ome_tiff_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.ome.tif", ome_tiff_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqualStrings(description[0 .. description.len - 1], metadata.image_description.?);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{17}, plane.data);
 }
 
 test "reads region from stored tiff zip entry through inner region reader" {
