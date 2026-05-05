@@ -16,6 +16,7 @@
     "bdpathway": ["synthetic-or-vendor-needed"],
     "bdv": ["ome_images/BDV/"],
     "bd": ["alias-of-bdpathway"],
+    "cellh5": ["ome_images/CellH5/samples/reduced/", "bioformats-docs/cellh5-public-sample-images"],
     "cellomics": ["ome_images/Cellomics/"],
     "dcimg": ["ome_images/DCIMG/"],
     "deltavision": ["ome_images/DV/"],
@@ -198,7 +199,6 @@
     "zip": ["generated-fixture"]
   },
   "pending_reader_sources": {
-    "cellh5": ["ome_images/CellH5/samples/reduced/", "bioformats-docs/cellh5-public-sample-images"],
     "tissuefaxs": ["needs-public-sample", "bioformats-docs/tissuegnostics-tfcyto-several-internal-datasets"]
   }
 }

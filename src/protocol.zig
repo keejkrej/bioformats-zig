@@ -510,6 +510,9 @@ pub const Server = struct {
         if (bio.bdv.isPath(path)) {
             if (bio.bdv.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.cellh5.isPath(path)) {
+            if (bio.cellh5.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.cellworx.isPath(path)) {
             if (bio.cellworx.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -656,6 +659,9 @@ pub const Server = struct {
         }
         if (bio.bdv.isPath(path)) {
             if (bio.bdv.readMetadataPath(self.allocator, self.io, path)) |_| return "bdv" else |_| {}
+        }
+        if (bio.cellh5.isPath(path)) {
+            if (bio.cellh5.readMetadataPath(self.allocator, self.io, path)) |_| return "cellh5" else |_| {}
         }
         if (bio.cellworx.isPath(path)) {
             if (bio.cellworx.readMetadataPath(self.allocator, self.io, path)) |_| return "cellworx" else |_| {}
@@ -827,6 +833,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "bdpathway")) {
             return bio.bdpathway.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "cellh5")) {
+            return bio.cellh5.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "cellworx")) {
             return bio.cellworx.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -947,6 +956,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "jpk") or
             std.mem.eql(u8, format, "l2d") or
             std.mem.eql(u8, format, "bdpathway") or
+            std.mem.eql(u8, format, "cellh5") or
             std.mem.eql(u8, format, "cellworx") or
             std.mem.eql(u8, format, "cellsens") or
             std.mem.eql(u8, format, "olympustile") or
@@ -1520,6 +1530,7 @@ test "formats response includes expanded readers" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"bdpathway\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"png\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"burleigh\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"cellh5\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"cellomics\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"dng\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"dicom\"") != null);
@@ -1966,6 +1977,67 @@ test "server probes imaris hdf ims path before imaris variants" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"height\":109") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"sizeC\":2") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"sizeZ\":64") != null);
+}
+
+test "server probes cellh5 ch5 path as metadata-only hdf" {
+    const file_path = "protocol-cellh5-test.ch5";
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    try data.appendSlice(std.testing.allocator, "\x89HDF\r\n\x1a\n");
+    try data.appendSlice(std.testing.allocator, "sample\x00plate\x00experiment\x00position\x00image\x00channel\x00");
+    try data.appendNTimes(std.testing.allocator, 0, 64);
+    try data.appendSlice(std.testing.allocator, &.{
+        1,   0, 2,  0,
+        1,   0, 0,  0,
+        128, 0, 0,  0,
+        0,   0, 0,  0,
+        1,   0, 88, 0,
+        0,   0, 0,  0,
+        1,   5, 1,  0,
+        0,   0, 0,  0,
+    });
+    for ([_]u64{ 2, 206, 1, 1040, 1392 }) |value| {
+        var bytes: [8]u8 = undefined;
+        std.mem.writeInt(u64, &bytes, value, .little);
+        try data.appendSlice(std.testing.allocator, &bytes);
+    }
+    for ([_]u64{ 2, 206, 1, 1040, 1392 }) |value| {
+        var bytes: [8]u8 = undefined;
+        std.mem.writeInt(u64, &bytes, value, .little);
+        try data.appendSlice(std.testing.allocator, &bytes);
+    }
+    try data.appendSlice(std.testing.allocator, &.{
+        3, 0, 8, 0,
+        0, 0, 0, 0,
+        2, 3, 0, 1,
+        0, 0, 0, 0,
+    });
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = file_path, .data = data.items });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, file_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"probe\",\"params\":{\"path\":\"protocol-cellh5-test.ch5\"}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"cellh5\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"metadata\",\"params\":{\"path\":\"protocol-cellh5-test.ch5\"}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"cellh5\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"width\":1392") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"height\":1040") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"sizeC\":2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"sizeT\":206") != null);
 }
 
 test "server probes imaris tiff ims path before raw imaris" {

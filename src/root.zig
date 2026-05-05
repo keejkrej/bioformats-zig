@@ -18,6 +18,7 @@ pub const bmp = @import("readers/bmp.zig");
 pub const bruker = @import("readers/bruker.zig");
 pub const burleigh = @import("readers/burleigh.zig");
 pub const canonraw = @import("readers/canonraw.zig");
+pub const cellh5 = @import("readers/cellh5.zig");
 pub const cellomics = @import("readers/cellomics.zig");
 pub const cellsens = @import("readers/cellsens.zig");
 pub const cellvoyager = @import("readers/cellvoyager.zig");
@@ -448,6 +449,12 @@ pub const formats = [_]FormatDescriptor{
         .name = "Canon RAW fixed-length Bayer",
         .extensions = &.{ "crw", "raw" },
         .can_read_pixels = true,
+    },
+    .{
+        .id = "cellh5",
+        .name = "CellH5 HDF metadata",
+        .extensions = &.{"ch5"},
+        .can_read_pixels = false,
     },
     .{
         .id = "cellomics",
@@ -1446,6 +1453,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (netpbm.matches(data)) return "netpbm";
     if (bmp.matches(data)) return "bmp";
     if (burleigh.matches(data)) return "burleigh";
+    if (cellh5.matches(data)) return "cellh5";
     if (cellomics.matches(data)) return "cellomics";
     if (cellsens.matches(data)) return "cellsens";
     if (cellvoyager.matches(data)) return "cellvoyager";
@@ -1612,6 +1620,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (netpbm.matches(data)) return netpbm.readMetadata(data);
     if (bmp.matches(data)) return bmp.readMetadata(data);
     if (burleigh.matches(data)) return burleigh.readMetadata(data);
+    if (cellh5.matches(data)) return cellh5.readMetadata(data);
     if (cellomics.matches(data)) return cellomics.readMetadata(data);
     if (cellsens.matches(data)) return cellsens.readMetadata(data);
     if (cellvoyager.matches(data)) return cellvoyager.readMetadata(data);
@@ -1792,6 +1801,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return burleigh.readPlane(allocator, data);
     }
+    if (cellh5.matches(data)) return cellh5.readPlaneIndex(allocator, data, plane_index);
     if (cellomics.matches(data)) return cellomics.readPlaneIndex(allocator, data, plane_index);
     if (cellsens.matches(data)) return cellsens.readPlaneIndex(allocator, data, plane_index);
     if (cellvoyager.matches(data)) return cellvoyager.readPlaneIndex(allocator, data, plane_index);
@@ -2093,6 +2103,7 @@ test {
     _ = bioradscn;
     _ = bruker;
     _ = canonraw;
+    _ = cellh5;
     _ = cellomics;
     _ = cellsens;
     _ = cellvoyager;
