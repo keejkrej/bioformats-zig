@@ -7,7 +7,13 @@ const Header = struct {
     depth: u32,
     pixel_type: bio.PixelType,
     little_endian: bool,
+    compression: Compression,
     data_offset: usize,
+};
+
+const Compression = enum {
+    none,
+    hx_zip,
 };
 
 pub fn matches(data: []const u8) bool {
@@ -20,8 +26,13 @@ pub fn matches(data: []const u8) bool {
         .samples_per_pixel = 1,
         .pixel_type = header.pixel_type,
     }) catch return false;
-    const pixels_len = std.math.mul(usize, plane_len, header.depth) catch return false;
-    return data.len >= header.data_offset and data.len - header.data_offset >= pixels_len;
+    return switch (header.compression) {
+        .none => {
+            const pixels_len = std.math.mul(usize, plane_len, header.depth) catch return false;
+            return data.len >= header.data_offset and data.len - header.data_offset >= pixels_len;
+        },
+        .hx_zip => data.len > header.data_offset,
+    };
 }
 
 pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
@@ -45,6 +56,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     const metadata = try readMetadata(data);
     if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
     const plane_len = try planeByteCount(metadata);
+    if (header.compression == .hx_zip) return readHxZipPlane(allocator, data[header.data_offset..], metadata, plane_index, plane_len);
     const offset = header.data_offset + plane_len * @as(usize, plane_index);
     if (data.len < offset or data.len - offset < plane_len) return error.TruncatedData;
     const out = try allocator.alloc(u8, plane_len);
@@ -64,6 +76,7 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     var height: u32 = 0;
     var depth: u32 = 1;
     var pixel_type: ?bio.PixelType = null;
+    var compression: Compression = .none;
     var stream_count: u32 = 0;
 
     while (rows.next()) |row| {
@@ -80,6 +93,7 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
                 .depth = depth,
                 .pixel_type = pixel_type.?,
                 .little_endian = little_endian,
+                .compression = compression,
                 .data_offset = row.next_offset,
             };
         }
@@ -90,11 +104,20 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
             depth = dims.depth;
         } else if (std.mem.startsWith(u8, line, "Lattice")) {
             stream_count += 1;
-            if (std.mem.indexOf(u8, line, "HxZip") != null or std.mem.indexOf(u8, line, "HxByteRLE") != null) return error.UnsupportedVariant;
+            compression = try parseCompression(line);
             pixel_type = try parseStreamType(line);
         }
     }
     return error.InvalidFormat;
+}
+
+fn parseCompression(line: []const u8) bio.ReaderError!Compression {
+    const open = std.mem.indexOfScalar(u8, line, '(') orelse return .none;
+    const close = std.mem.indexOfScalarPos(u8, line, open + 1, ')') orelse return error.InvalidFormat;
+    const text = std.mem.trim(u8, line[open + 1 .. close], " \t");
+    if (std.mem.startsWith(u8, text, "HxZip,")) return .hx_zip;
+    if (std.mem.startsWith(u8, text, "HxByteRLE,")) return error.UnsupportedVariant;
+    return error.UnsupportedVariant;
 }
 
 const Dimensions = struct {
@@ -167,6 +190,25 @@ fn rowIterator(data: []const u8) RowIterator {
     return .{ .data = data };
 }
 
+fn readHxZipPlane(allocator: std.mem.Allocator, src: []const u8, metadata: bio.Metadata, plane_index: u32, plane_len: usize) bio.ReaderError!bio.Plane {
+    const stack_len = std.math.mul(usize, plane_len, metadata.plane_count) catch return error.UnsupportedVariant;
+    const stack = try allocator.alloc(u8, stack_len);
+    defer allocator.free(stack);
+    try decodeZlib(src, stack);
+    const plane_offset = std.math.mul(usize, plane_len, plane_index) catch return error.UnsupportedVariant;
+    const out = try allocator.alloc(u8, plane_len);
+    @memcpy(out, stack[plane_offset..][0..plane_len]);
+    return .{ .metadata = metadata, .data = out };
+}
+
+fn decodeZlib(src: []const u8, dst: []u8) bio.ReaderError!void {
+    var input: std.Io.Reader = .fixed(src);
+    var output: std.Io.Writer = .fixed(dst);
+    var decompress: std.compress.flate.Decompress = .init(&input, .zlib, &.{});
+    const written = decompress.reader.streamRemaining(&output) catch return error.TruncatedData;
+    if (written != dst.len) return error.TruncatedData;
+}
+
 fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
     const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
     return std.math.mul(usize, pixels, metadata.pixel_type.bytesPerSample()) catch return error.UnsupportedVariant;
@@ -219,6 +261,42 @@ test "reads amira big-endian float plane" {
     const plane = try readPlaneIndex(std.testing.allocator, data.items, 0);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 0x3f, 0x80, 0, 0 }, plane.data);
+}
+
+test "reads hxzip-compressed amira stack" {
+    const header =
+        \\# Avizo 3D BINARY 2.0
+        \\define Lattice 2 1 2
+        \\Lattice { byte Data } @1(HxZip,0)
+        \\@1
+        \\
+    ;
+    const compressed = [_]u8{ 0x78, 0x9c, 0x01, 0x04, 0x00, 0xfb, 0xff, 1, 2, 3, 4, 0x00, 0x18, 0x00, 0x0b };
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendSlice(std.testing.allocator, header);
+    try data.appendSlice(std.testing.allocator, &compressed);
+
+    try std.testing.expect(matches(data.items));
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_z);
+    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 3, 4 }, plane.data);
+}
+
+test "rejects hxbyterle-compressed amira stack" {
+    const data =
+        \\# AmiraMesh BINARY 2.1
+        \\define Lattice 1 1 1
+        \\Lattice { byte Data } @1(HxByteRLE,0)
+        \\@1
+    ;
+    try std.testing.expect(!matches(data));
+    try std.testing.expectError(error.UnsupportedVariant, readMetadata(data));
 }
 
 test "rejects amira ascii variant" {

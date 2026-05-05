@@ -348,7 +348,7 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "amira",
-        .name = "AmiraMesh raw binary lattice",
+        .name = "AmiraMesh/Avizo binary lattice",
         .extensions = &.{ "am", "amiramesh", "grey", "hx", "labels" },
         .can_read_pixels = true,
     },
