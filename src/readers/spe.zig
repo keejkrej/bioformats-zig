@@ -5,8 +5,10 @@ const header_len = 4100;
 
 const Offset = struct {
     const width = 42;
+    const noscan = 34;
     const data_type = 108;
     const height = 656;
+    const lnoscan = 664;
     const frames = 1446;
 };
 
@@ -66,8 +68,7 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (data.len < header_len) return error.InvalidFormat;
     const width = try positiveU32(readU16(data[Offset.width..][0..2]));
     const height = try positiveU32(readU16(data[Offset.height..][0..2]));
-    const frames = readU32(data[Offset.frames..][0..4]);
-    if (frames == 0) return error.InvalidFormat;
+    const frames = try frameCount(data, height);
     return .{
         .width = width,
         .height = height,
@@ -87,6 +88,26 @@ fn pixelType(data_type: u16) bio.ReaderError!bio.PixelType {
     };
 }
 
+fn frameCount(data: []const u8, height: u32) bio.ReaderError!u32 {
+    const frames = readI32(data[Offset.frames..][0..4]);
+    if (frames > 0) return @intCast(frames);
+    const stack = stackSize(data, height);
+    if (stack >= 1) return @intCast(stack);
+    return error.InvalidFormat;
+}
+
+fn stackSize(data: []const u8, height: u32) i32 {
+    const stripe: i32 = @intCast(height);
+    const noscan = readU16(data[Offset.noscan..][0..2]);
+    if (stripe == 0 or noscan == 0) return readI32(data[Offset.frames..][0..4]);
+    if (noscan == std.math.maxInt(u16)) {
+        const lnoscan = readI32(data[Offset.lnoscan..][0..4]);
+        if (lnoscan == -1 or lnoscan == 0) return readI32(data[Offset.frames..][0..4]);
+        return @divTrunc(lnoscan, stripe);
+    }
+    return @divTrunc(@as(i32, @intCast(noscan)), stripe);
+}
+
 fn positiveU32(value: u16) bio.ReaderError!u32 {
     if (value == 0) return error.InvalidFormat;
     return value;
@@ -96,8 +117,8 @@ fn readU16(bytes: []const u8) u16 {
     return std.mem.readInt(u16, bytes[0..2], .little);
 }
 
-fn readU32(bytes: []const u8) u32 {
-    return std.mem.readInt(u32, bytes[0..4], .little);
+fn readI32(bytes: []const u8) i32 {
+    return std.mem.readInt(i32, bytes[0..4], .little);
 }
 
 fn writeU16(bytes: []u8, offset: usize, value: u16) void {
@@ -152,6 +173,22 @@ test "reads second spe time frame" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 0, 0, 0, 0x40 }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
+}
+
+test "uses legacy spe stack size when frame count is zero" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendHeader(&data, 1, 1, 0, 3);
+    writeU16(data.items, Offset.noscan, 2);
+    try data.appendSlice(std.testing.allocator, &.{ 0x34, 0x12, 0xcd, 0xab });
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_t);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 0xcd, 0xab }, plane.data);
 }
 
 test "rejects unsupported spe pixel type" {

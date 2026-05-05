@@ -350,7 +350,7 @@ plane, which can differ from logical OME `sizeC`.
 - Slidebook TIFF files identified by SlideBook software and private stage/channel metadata tags, decoded through the TIFF pixel path; multi-file grouping, channel naming, stage positions, and physical size metadata parsing are not yet handled.
 - Becker & Hickl SPC FIFO `.set/.spc` pairs with pixel, line, frame, channel, and lifetime-bin events expanded to little-endian uint16 FLIM planes; setup metadata beyond TAC timing, macro-time semantics, and system-specific line-mode details are not yet surfaced.
 - SPIDER EM images/stacks with 32-bit floating-point planes and little/big endian header detection.
-- Princeton Instruments SPE files with 16/32-bit integer and 32-bit floating-point raw frames exposed as time planes.
+- Princeton Instruments SPE files with 16/32-bit integer and 32-bit floating-point raw frames exposed as time planes, including Bio-Formats' legacy stack-size fallback when the frame-count field is empty.
 - SM Camera fixed-header 8-bit grayscale images.
 - Aperio SVS TIFF files identified by Aperio image descriptions and multiple IFDs, decoded through the TIFF pixel path; SVS label/macro/subresolution series mapping and metadata extraction are not yet handled.
 - Leica TCS TIFF files identified by `CHANNEL` document names or `TCS` software tags, decoded through the TIFF pixel path; companion XML, multi-file grouping, timestamps, physical sizes, exposure times, and Leica XML metadata are not yet handled.
