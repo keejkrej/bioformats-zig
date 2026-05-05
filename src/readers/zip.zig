@@ -31,6 +31,7 @@ const his = @import("his.zig");
 const hrdgdf = @import("hrdgdf.zig");
 const i2i = @import("i2i.zig");
 const imacon = @import("imacon.zig");
+const incell3000 = @import("incell3000.zig");
 const imaris = @import("imaris.zig");
 const imod = @import("imod.zig");
 const improvisiontiff = @import("improvisiontiff.zig");
@@ -108,7 +109,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, leo, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ivision, jeol, khoros, klb, kodak, leo, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, netpbm, nifti, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, pyramidtiff, quesant, rhk, sbig, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -185,6 +186,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .hrdgdf => hrdgdf.readMetadata(entry.data),
         .i2i => i2i.readMetadata(entry.data),
         .imacon => imacon.readMetadata(entry.data),
+        .incell3000 => incell3000.readMetadata(entry.data),
         .imaris => imaris.readMetadata(entry.data),
         .imod => imod.readMetadata(entry.data),
         .improvisiontiff => improvisiontiff.readMetadata(entry.data),
@@ -286,6 +288,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .hrdgdf => hrdgdf.readPlaneIndex(allocator, entry.data, plane_index),
         .i2i => i2i.readPlaneIndex(allocator, entry.data, plane_index),
         .imacon => imacon.readPlaneIndex(allocator, entry.data, plane_index),
+        .incell3000 => if (plane_index == 0) incell3000.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .imaris => imaris.readPlaneIndex(allocator, entry.data, plane_index),
         .imod => imod.readPlaneIndex(allocator, entry.data, plane_index),
         .improvisiontiff => improvisiontiff.readPlaneIndex(allocator, entry.data, plane_index),
@@ -467,6 +470,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (hrdgdf.matches(data)) return .hrdgdf;
     if (hasExtension(filename, ".i2i") and i2i.matches(data)) return .i2i;
     if (imacon.matches(data)) return .imacon;
+    if (hasExtension(filename, ".frm") and incell3000.matches(data)) return .incell3000;
     if (imaris.matches(data)) return .imaris;
     if (imod.matches(data)) return .imod;
     if (improvisiontiff.matches(data)) return .improvisiontiff;
@@ -3312,6 +3316,40 @@ test "reads stored inr zip entry through inner reader" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 0, 3 }, plane.data);
+}
+
+test "reads stored incell 3000 zip entry through extension-gated inner reader" {
+    var incell_data: std.ArrayList(u8) = .empty;
+    defer incell_data.deinit(std.testing.allocator);
+    try appendU16Le(&incell_data, 32);
+    try appendU16Le(&incell_data, 2);
+    try appendU16Le(&incell_data, 48);
+    try incell_data.appendNTimes(std.testing.allocator, 0, 18);
+    try appendU32Le(&incell_data, 2);
+    try incell_data.append(std.testing.allocator, 0);
+    try incell_data.appendNTimes(std.testing.allocator, 0, 3);
+    try appendU16Le(&incell_data, 17);
+    try appendU16Le(&incell_data, 29);
+    try appendU16Le(&incell_data, 31);
+    try appendU16Le(&incell_data, 43);
+
+    try std.testing.expectEqual(Entry.Kind.incell3000, detectInner("image.frm", incell_data.items).?);
+    try std.testing.expectEqual(@as(?Entry.Kind, null), detectInner("image.bin", incell_data.items));
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.frm", incell_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 2), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 17, 0, 29, 0, 31, 0, 43, 0 }, plane.data);
 }
 
 test "reads stored ionpath mibi zip entry before baseline tiff" {
