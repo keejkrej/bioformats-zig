@@ -28,8 +28,43 @@ const DirEntry = struct {
     stream_size: u64,
 };
 
+pub const StreamInfo = struct {
+    name: []u8,
+    size: u64,
+};
+
+pub fn freeStreamList(allocator: std.mem.Allocator, streams: []StreamInfo) void {
+    for (streams) |stream| allocator.free(stream.name);
+    allocator.free(streams);
+}
+
 pub fn matches(data: []const u8) bool {
     return data.len >= magic.len and std.mem.eql(u8, data[0..magic.len], &magic);
+}
+
+pub fn listStreams(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError![]StreamInfo {
+    const header = try parseHeader(data);
+    const fat = try readFat(allocator, data, header);
+    defer allocator.free(fat);
+
+    const dir_stream = try readSectorChain(allocator, data, fat, header.sector_size, header.first_dir_sector, null);
+    defer allocator.free(dir_stream);
+
+    var out: std.ArrayList(StreamInfo) = .empty;
+    errdefer {
+        for (out.items) |stream| allocator.free(stream.name);
+        out.deinit(allocator);
+    }
+
+    var offset: usize = 0;
+    while (offset + 128 <= dir_stream.len) : (offset += 128) {
+        const entry_data = dir_stream[offset..][0..128];
+        const entry = parseDirEntry(entry_data);
+        if (entry.object_type != 2) continue;
+        const name = try entryNameAlloc(allocator, entry_data);
+        try out.append(allocator, .{ .name = name, .size = entry.stream_size });
+    }
+    return out.toOwnedSlice(allocator);
 }
 
 pub fn hasStream(allocator: std.mem.Allocator, data: []const u8, name: []const u8) bool {
@@ -247,6 +282,20 @@ fn entryNameEquals(entry: []const u8, expected: []const u8) bool {
         if (readU16(entry, i * 2) != expected[i]) return false;
     }
     return true;
+}
+
+fn entryNameAlloc(allocator: std.mem.Allocator, entry: []const u8) bio.ReaderError![]u8 {
+    const name_bytes = readU16(entry, 64);
+    if (name_bytes < 2 or (name_bytes % 2) != 0) return error.InvalidFormat;
+    const chars = name_bytes / 2 - 1;
+    const name = try allocator.alloc(u8, chars);
+    errdefer allocator.free(name);
+    var i: usize = 0;
+    while (i < chars) : (i += 1) {
+        const ch = readU16(entry, i * 2);
+        name[i] = if (ch <= std.math.maxInt(u8)) @intCast(ch) else '?';
+    }
+    return name;
 }
 
 fn readU16(data: []const u8, offset: usize) u16 {

@@ -106,6 +106,7 @@ pub const openlab = @import("readers/openlab.zig");
 pub const openlabraw = @import("readers/openlabraw.zig");
 pub const oxfordinstruments = @import("readers/oxfordinstruments.zig");
 pub const pcx = @import("readers/pcx.zig");
+pub const pci = @import("readers/pci.zig");
 pub const pcoraw = @import("readers/pcoraw.zig");
 pub const pds = @import("readers/pds.zig");
 pub const perkinelmer = @import("readers/perkinelmer.zig");
@@ -1071,6 +1072,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "pci",
+        .name = "Compix Simple-PCI",
+        .extensions = &.{"cxd"},
+        .can_read_pixels = true,
+    },
+    .{
         .id = "pcoraw",
         .name = "PCO-RAW",
         .extensions = &.{ "pcoraw", "rec" },
@@ -1391,6 +1398,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (oxfordinstruments.matches(data)) return "oxfordinstruments";
     if (pds.matches(data)) return "pds";
     if (pcx.matches(data)) return "pcx";
+    if (pci.matches(data)) return "pci";
     if (sif.matches(data)) return "sif";
     if (spider.matches(data)) return "spider";
     if (spc.matches(data)) return "spc";
@@ -1543,6 +1551,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (oxfordinstruments.matches(data)) return oxfordinstruments.readMetadata(data);
     if (pds.matches(data)) return pds.readMetadata(data);
     if (pcx.matches(data)) return pcx.readMetadata(data);
+    if (pci.matches(data)) return pci.readMetadata(data);
     if (sif.matches(data)) return sif.readMetadata(data);
     if (spider.matches(data)) return spider.readMetadata(data);
     if (spc.matches(data)) return spc.readMetadata(data);
@@ -1760,6 +1769,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return lim.readPlane(allocator, data);
     }
+    if (pci.matches(data)) return pci.readPlaneIndex(allocator, data, plane_index);
     if (molecularimaging.matches(data)) return molecularimaging.readPlaneIndex(allocator, data, plane_index);
     if (mng.matches(data)) return mng.readPlaneIndex(allocator, data, plane_index);
     if (varianfdf.matches(data)) return varianfdf.readPlaneIndex(allocator, data, plane_index);
@@ -2008,6 +2018,9 @@ test {
     _ = operetta;
     _ = openlab;
     _ = oxfordinstruments;
+    _ = pcx;
+    _ = pci;
+    _ = pcoraw;
     _ = pds;
     _ = perkinelmer;
     _ = pict;

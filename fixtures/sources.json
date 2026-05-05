@@ -132,6 +132,7 @@
     "openlabraw": ["needs-public-sample"],
     "oxfordinstruments": ["needs-public-sample"],
     "pcoraw": ["needs-public-sample"],
+    "pci": ["needs-public-sample"],
     "pcx": ["generated-fixture"],
     "pds": ["needs-public-sample"],
     "perkinelmer": ["needs-public-sample"],

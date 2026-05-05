@@ -255,6 +255,7 @@ plane, which can differ from logical OME `sizeC`.
 - Openlab RAW files with fixed per-image records, 8/16-bit grayscale, and RGB byte planes.
 - Oxford Instruments TOP files identified by fixed headers, with little-endian 16-bit pixels read after the LUT block; descriptive metadata strings, acquisition timestamps, and physical calibration are not yet surfaced.
 - PCX 8-bit grayscale, 256-color palette, and three-plane RGB files with PCX RLE compression, returned as grayscale or RGB.
+- Compix Simple-PCI `.cxd` OLE containers with embedded TIFF image streams delegated through TIFF or simple raw `Data`/`Bitmap` streams decoded from `Image_Width`, `Image_Height`, `Image_Depth`, and `Field Count`; hierarchical duplicate stream names, timestamps, calibration metadata, Z grouping, and tiled TIFF details are not yet handled.
 - Apple PICT files are detected from the classic 512-byte header plus PICT v1/v2 frame rectangle and reported as metadata-only `pict`; opcode rendering, PackBits/JPEG embedded image decoding, palettes, comments, and pixel reads are not yet implemented.
 - PCO-RAW `.pcoraw` TIFF datasets with optional neighboring `.rec` metadata sidecar, delegated through the TIFF pixel path; `.rec` exposure metadata and >4 GiB offset repair are not yet surfaced.
 - Perkin Elmer Densitometer `.hdr`/`.img` pairs with little-endian 16-bit grayscale planes, fixed-record row padding, and stored-axis reversal; RGB/LUT variants and acquisition metadata are not yet surfaced.
