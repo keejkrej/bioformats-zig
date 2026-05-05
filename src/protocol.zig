@@ -501,6 +501,9 @@ pub const Server = struct {
         if (bio.jpk.isPath(path)) {
             if (bio.jpk.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.imaristiff.isPath(path)) {
+            if (bio.imaristiff.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.rcpnl.isPath(path)) {
             if (bio.rcpnl.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -539,6 +542,9 @@ pub const Server = struct {
         }
         if (bio.jpk.isPath(path)) {
             if (bio.jpk.readMetadataPath(self.allocator, self.io, path)) |_| return "jpk" else |_| {}
+        }
+        if (bio.imaristiff.isPath(path)) {
+            if (bio.imaristiff.readMetadataPath(self.allocator, self.io, path)) |_| return "imaristiff" else |_| {}
         }
         if (bio.rcpnl.isPath(path)) {
             if (bio.rcpnl.readMetadataPath(self.allocator, self.io, path)) |_| return "rcpnl" else |_| {}
@@ -593,6 +599,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "jpk")) {
             return bio.jpk.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "imaristiff")) {
+            return bio.imaristiff.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "rcpnl")) {
             return bio.rcpnl.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -626,6 +635,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "pds") or
             std.mem.eql(u8, format, "pcoraw") or
             std.mem.eql(u8, format, "jpk") or
+            std.mem.eql(u8, format, "imaristiff") or
             std.mem.eql(u8, format, "rcpnl") or
             std.mem.eql(u8, format, "inveon") or
             std.mem.eql(u8, format, "fuji") or
@@ -1193,6 +1203,7 @@ test "formats response includes expanded readers" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imagic\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"ics\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imod\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imaristiff\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"improvisiontiff\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"inr\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"inveon\"") != null);
@@ -1488,6 +1499,50 @@ test "server probes and opens jpk path through tiff delegate" {
         &out.writer,
     );
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"jpk\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
+}
+
+test "server probes imaris tiff ims path before raw imaris" {
+    const file_path = "protocol-imaristiff-test.ims";
+    const image = [_]u8{
+        'I', 'I', 42, 0, 8, 0, 0,   0,
+        9,   0,   0,  1, 4, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 1,   1,
+        4,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   2,  1, 3, 0, 1,   0,
+        0,   0,   8,  0, 0, 0, 3,   1,
+        3,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   6,  1, 3, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 17,  1,
+        4,   0,   1,  0, 0, 0, 122, 0,
+        0,   0,   21, 1, 3, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 22,  1,
+        4,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   23, 1, 4, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 0,   0,
+        0,   0,   77,
+    };
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = file_path, .data = &image });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, file_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"probe\",\"params\":{\"path\":\"protocol-imaristiff-test.ims\"}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"imaristiff\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"path\":\"protocol-imaristiff-test.ims\"}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"imaristiff\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
 }
 

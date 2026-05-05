@@ -68,6 +68,7 @@
     "im3": ["needs-public-sample"],
     "imagic": ["needs-public-sample"],
     "imaris": ["ome_images/Imaris-IMS/"],
+    "imaristiff": ["ome_images/Imaris-IMS/"],
     "imod": ["needs-public-sample"],
     "improvisiontiff": ["needs-public-sample"],
     "inr": ["needs-public-sample"],

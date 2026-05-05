@@ -40,6 +40,7 @@ pub const imagic = @import("readers/imagic.zig");
 pub const ics = @import("readers/ics.zig");
 pub const incell3000 = @import("readers/incell3000.zig");
 pub const imaris = @import("readers/imaris.zig");
+pub const imaristiff = @import("readers/imaristiff.zig");
 pub const imod = @import("readers/imod.zig");
 pub const improvisiontiff = @import("readers/improvisiontiff.zig");
 pub const inr = @import("readers/inr.zig");
@@ -510,6 +511,12 @@ pub const formats = [_]FormatDescriptor{
     .{
         .id = "imaris",
         .name = "Bitplane Imaris raw",
+        .extensions = &.{"ims"},
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "imaristiff",
+        .name = "Bitplane Imaris 3 TIFF",
         .extensions = &.{"ims"},
         .can_read_pixels = true,
     },

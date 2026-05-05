@@ -175,6 +175,7 @@ plane, which can differ from logical OME `sizeC`.
 - InCell 3000 `.frm` files with little-endian 16-bit planes expanded from Bio-Formats' packed delta runs; acquisition timestamps and auxiliary metadata are not yet surfaced.
 - Inveon text `.hdr` datasets with companion raw image data, signed integer and 32-bit floating-point pixel types, Z/T planes, explicit data offsets, and path-based JSON-RPC requests that can open either the header or data file; multiple bed-position series, renamed-file discovery, and medical metadata expansion are not yet handled.
 - Bitplane Imaris raw `.ims` files with big-endian fixed headers and uncompressed 8-bit grayscale Z/C planes; metadata, physical sizes, timestamps, detector/channel settings, and newer HDF/Imaris TIFF variants are not yet handled.
+- Bitplane Imaris 3 TIFF `.ims` files delegated through the TIFF pixel path and reported as `imaristiff`; thumbnail/stack IFD reshaping, channel metadata, dates, and wavelengths are not yet modeled.
 - IMOD `.mod` model files identified by `IMODV1.2`, exposing blank RGB planes with parsed model dimensions to match Bio-Formats' disabled point-rendering path; ROI/model object metadata and contour drawing are not yet surfaced.
 - Improvision TIFF files identified by Improvision image descriptions, decoded through the TIFF pixel path; multi-file grouping and Improvision axis metadata interpretation are not yet handled.
 - INR raw fixed-size images with 8/16/32-bit signed or unsigned integer samples; `ZDIM` and `VDIM` are exposed as plane axes.
