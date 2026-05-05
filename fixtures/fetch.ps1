@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|c01|dib|flex|mea|res|dng|lsm|oir|vsi|ets|nd2|czi|lif|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|xml)$',
     [switch]$List
 )
 
@@ -123,6 +123,8 @@ function Preferred-NamePattern {
         "cellomics" { return '\.(c01|dib)$' }
         "ecat7" { return '\.v$' }
         "flex" { return '\.(flex|mea|res)$' }
+        "fluoview" { return '\.(tif|tiff)$' }
+        "fv1000" { return '\.(oif|oib)$' }
         "gatan" { return '\.dm[34]$' }
         "gatandm2" { return '\.dm2$' }
         "hamamatsuvms" { return '\.vms$' }
@@ -167,7 +169,7 @@ function Find-Candidate {
         if ($PreferredPattern -and $leaf -match $PreferredPattern) {
             return $resolved
         }
-        if ($null -eq $fallback) {
+        if ($null -eq $PreferredPattern -and $null -eq $fallback) {
             $fallback = $resolved
         }
     }

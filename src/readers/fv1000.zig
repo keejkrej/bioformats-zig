@@ -1,5 +1,6 @@
 const std = @import("std");
 const bio = @import("../root.zig");
+const cfb = @import("cfb.zig");
 
 const max_companion_bytes = 512 * 1024 * 1024;
 
@@ -22,7 +23,24 @@ const Dataset = struct {
     }
 };
 
+const OibDataset = struct {
+    info: []u8,
+    oif: []u8,
+    planes: std.ArrayList([]u8),
+    size_z: u16 = 1,
+    size_c: u16 = 1,
+    size_t: u16 = 1,
+
+    fn deinit(self: *OibDataset, allocator: std.mem.Allocator) void {
+        allocator.free(self.info);
+        allocator.free(self.oif);
+        for (self.planes.items) |name| allocator.free(name);
+        self.planes.deinit(allocator);
+    }
+};
+
 pub fn matches(data: []const u8) bool {
+    if (cfb.matches(data)) return cfb.hasStream(std.heap.page_allocator, data, "OibInfo.txt");
     return std.mem.indexOf(u8, data, "FileInformation") != null or
         std.mem.indexOf(u8, data, "Acquisition Parameters") != null or
         (std.mem.indexOf(u8, data, "[ProfileSaveInfo]") != null and std.mem.indexOf(u8, data, "IniFileName") != null);
@@ -38,21 +56,28 @@ pub fn isPath(path: []const u8) bool {
 }
 
 pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
+    if (cfb.matches(data)) return readOibMetadata(std.heap.page_allocator, data);
     if (!matches(data)) return error.InvalidFormat;
     return error.UnsupportedVariant;
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    _ = allocator;
-    _ = data;
-    _ = plane_index;
+    if (cfb.matches(data)) {
+        const metadata = try readOibMetadata(allocator, data);
+        return readOibPlaneIndex(allocator, data, plane_index, .{ .x = 0, .y = 0, .width = metadata.width, .height = metadata.height });
+    }
     return error.UnsupportedVariant;
 }
 
 pub fn readMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !bio.Metadata {
+    if (hasExtension(path, "oib")) {
+        const data = try readFile(allocator, io, path);
+        defer allocator.free(data);
+        return readOibMetadata(allocator, data);
+    }
     var dataset = try readDataset(allocator, io, path);
     defer dataset.deinit(allocator);
-    if (dataset.planes.items.len == 0) return error.FileNotFound;
+    if (dataset.planes.items.len == 0) return error.UnsupportedVariant;
 
     const first = try readFile(allocator, io, dataset.planes.items[0]);
     defer allocator.free(first);
@@ -74,6 +99,11 @@ pub fn readPlanePathRegionIndex(
     plane_index: u32,
     region: bio.Region,
 ) !bio.Plane {
+    if (hasExtension(path, "oib")) {
+        const data = try readFile(allocator, io, path);
+        defer allocator.free(data);
+        return readOibPlaneIndex(allocator, data, plane_index, region);
+    }
     var dataset = try readDataset(allocator, io, path);
     defer dataset.deinit(allocator);
     if (plane_index >= dataset.planes.items.len) return error.InvalidPlaneIndex;
@@ -89,6 +119,96 @@ pub fn readPlanePathRegionIndex(
     plane.metadata.plane_count = @intCast(dataset.planes.items.len);
     plane.metadata.dimension_order = "XYCZT";
     return plane;
+}
+
+fn readOibMetadata(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError!bio.Metadata {
+    var dataset = try readOibDataset(allocator, data);
+    defer dataset.deinit(allocator);
+    if (dataset.planes.items.len == 0) return error.UnsupportedVariant;
+
+    const first = try cfb.readStream(allocator, data, dataset.planes.items[0]);
+    defer allocator.free(first);
+    var metadata = try bio.tiff.readMetadata(first);
+    metadata.format = "fv1000";
+    metadata.image_description = null;
+    metadata.size_z = dataset.size_z;
+    metadata.size_c = dataset.size_c;
+    metadata.size_t = dataset.size_t;
+    metadata.plane_count = @intCast(dataset.planes.items.len);
+    metadata.dimension_order = "XYCZT";
+    return metadata;
+}
+
+fn readOibPlaneIndex(
+    allocator: std.mem.Allocator,
+    data: []const u8,
+    plane_index: u32,
+    region: bio.Region,
+) bio.ReaderError!bio.Plane {
+    var dataset = try readOibDataset(allocator, data);
+    defer dataset.deinit(allocator);
+    if (plane_index >= dataset.planes.items.len) return error.InvalidPlaneIndex;
+
+    const image = try cfb.readStream(allocator, data, dataset.planes.items[plane_index]);
+    defer allocator.free(image);
+    var plane = try bio.tiff.readRegionIndex(allocator, image, 0, region);
+    plane.metadata.format = "fv1000";
+    plane.metadata.image_description = null;
+    plane.metadata.size_z = dataset.size_z;
+    plane.metadata.size_c = dataset.size_c;
+    plane.metadata.size_t = dataset.size_t;
+    plane.metadata.plane_count = @intCast(dataset.planes.items.len);
+    plane.metadata.dimension_order = "XYCZT";
+    return plane;
+}
+
+fn readOibDataset(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError!OibDataset {
+    if (!cfb.matches(data)) return error.InvalidFormat;
+    const info_raw = try cfb.readStream(allocator, data, "OibInfo.txt");
+    defer allocator.free(info_raw);
+    var info: ?[]u8 = try decodeTextAlloc(allocator, info_raw);
+    errdefer if (info) |bytes| allocator.free(bytes);
+
+    const main_stream = valueForSectionKey(info.?, "OibSaveInfo", "MainFileName") orelse return error.InvalidFormat;
+    const oif_raw = try cfb.readStream(allocator, data, sanitizeValue(main_stream));
+    defer allocator.free(oif_raw);
+    var oif: ?[]u8 = try decodeTextAlloc(allocator, oif_raw);
+    errdefer if (oif) |bytes| allocator.free(bytes);
+    if (!matches(oif.?)) return error.InvalidFormat;
+
+    var dataset = OibDataset{ .info = info.?, .oif = oif.?, .planes = .empty };
+    info = null;
+    oif = null;
+    errdefer dataset.deinit(allocator);
+
+    var pty_names: std.ArrayList(IndexedName) = .empty;
+    defer freeIndexedNames(allocator, &pty_names);
+    try collectPtyNames(allocator, dataset.oif, &pty_names);
+    if (pty_names.items.len == 0) try collectOibPtyNames(allocator, dataset.info, &pty_names);
+    std.mem.sort(IndexedName, pty_names.items, {}, lessIndexedName);
+    if (pty_names.items.len == 0) return error.UnsupportedVariant;
+
+    for (pty_names.items) |entry| {
+        const pty_stream = streamForVirtualPath(dataset.info, entry.name) orelse continue;
+        const pty_raw = cfb.readStream(allocator, data, pty_stream) catch continue;
+        defer allocator.free(pty_raw);
+        const pty = decodeTextAlloc(allocator, pty_raw) catch continue;
+        defer allocator.free(pty);
+
+        const image_virtual = try oibImageVirtualPath(allocator, entry.name, pty);
+        defer allocator.free(image_virtual);
+        const image_stream = streamForVirtualPath(dataset.info, image_virtual) orelse continue;
+        const image_name = try allocator.dupe(u8, image_stream);
+        errdefer allocator.free(image_name);
+        try dataset.planes.append(allocator, image_name);
+        updateDimensionsFromPtyText(pty, &dataset);
+    }
+
+    if (dataset.planes.items.len == 0) return error.UnsupportedVariant;
+    if (dataset.size_z == 1 and dataset.size_c == 1 and dataset.size_t == 1 and dataset.planes.items.len > 1) {
+        dataset.size_t = @intCast(@min(dataset.planes.items.len, std.math.maxInt(u16)));
+    }
+    return dataset;
 }
 
 fn readDataset(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !Dataset {
@@ -211,6 +331,102 @@ fn updateDimensionsFromPty(allocator: std.mem.Allocator, io: std.Io, pty_path: [
     if (axisNumber(pty, 2)) |count| dataset.size_c = @max(dataset.size_c, count);
     if (axisNumber(pty, 3)) |count| dataset.size_z = @max(dataset.size_z, count);
     if (axisNumber(pty, 4)) |count| dataset.size_t = @max(dataset.size_t, count);
+}
+
+fn updateDimensionsFromPtyText(pty: []const u8, dataset: *OibDataset) void {
+    if (axisNumber(pty, 2)) |count| dataset.size_c = @max(dataset.size_c, count);
+    if (axisNumber(pty, 3)) |count| dataset.size_z = @max(dataset.size_z, count);
+    if (axisNumber(pty, 4)) |count| dataset.size_t = @max(dataset.size_t, count);
+}
+
+fn oibImageVirtualPath(allocator: std.mem.Allocator, pty_virtual_path: []const u8, pty: []const u8) ![]u8 {
+    if (valueForSectionKey(pty, "File Info", "DataName")) |data_name| {
+        const clean = sanitizeValue(data_name);
+        const image_name = try replaceExtension(allocator, clean, "tif");
+        defer allocator.free(image_name);
+        if (parentVirtualPath(pty_virtual_path)) |parent| {
+            return std.fmt.allocPrint(allocator, "{s}/{s}", .{ parent, image_name });
+        }
+        return allocator.dupe(u8, image_name);
+    }
+    return replaceExtension(allocator, pty_virtual_path, "tif");
+}
+
+fn parentVirtualPath(path: []const u8) ?[]const u8 {
+    const slash = std.mem.lastIndexOfScalar(u8, path, '/');
+    const backslash = std.mem.lastIndexOfScalar(u8, path, '\\');
+    const sep = if (slash == null) backslash else if (backslash == null) slash else @max(slash.?, backslash.?);
+    return if (sep) |index| path[0..index] else null;
+}
+
+fn streamForVirtualPath(info: []const u8, virtual_path: []const u8) ?[]const u8 {
+    var section: []const u8 = "";
+    var lines = std.mem.splitAny(u8, info, "\r\n");
+    while (lines.next()) |raw_line| {
+        const line = std.mem.trim(u8, raw_line, " \t\r\n");
+        if (line.len == 0 or line[0] == ';' or line[0] == '#') continue;
+        if (line[0] == '[' and line[line.len - 1] == ']') {
+            section = std.mem.trim(u8, line[1 .. line.len - 1], " \t");
+            continue;
+        }
+        if (!std.ascii.eqlIgnoreCase(section, "OibSaveInfo")) continue;
+        const eq = std.mem.indexOfScalar(u8, line, '=') orelse continue;
+        const key = std.mem.trim(u8, line[0..eq], " \t");
+        if (!std.mem.startsWith(u8, key, "Stream")) continue;
+        const value = sanitizeValue(line[eq + 1 ..]);
+        if (sameVirtualPath(value, virtual_path)) return key;
+    }
+    return null;
+}
+
+fn collectOibPtyNames(allocator: std.mem.Allocator, info: []const u8, out: *std.ArrayList(IndexedName)) !void {
+    var section: []const u8 = "";
+    var lines = std.mem.splitAny(u8, info, "\r\n");
+    while (lines.next()) |raw_line| {
+        const line = std.mem.trim(u8, raw_line, " \t\r\n");
+        if (line.len == 0 or line[0] == ';' or line[0] == '#') continue;
+        if (line[0] == '[' and line[line.len - 1] == ']') {
+            section = std.mem.trim(u8, line[1 .. line.len - 1], " \t");
+            continue;
+        }
+        if (!std.ascii.eqlIgnoreCase(section, "OibSaveInfo")) continue;
+        const eq = std.mem.indexOfScalar(u8, line, '=') orelse continue;
+        const key = std.mem.trim(u8, line[0..eq], " \t");
+        if (!std.mem.startsWith(u8, key, "Stream")) continue;
+        const value = sanitizeValue(line[eq + 1 ..]);
+        if (!hasExtension(value, "pty") or isPreviewName(value)) continue;
+        const index = std.fmt.parseUnsigned(u32, key["Stream".len..], 10) catch @as(u32, @intCast(out.items.len));
+        try out.append(allocator, .{ .index = index, .name = try allocator.dupe(u8, value) });
+    }
+}
+
+fn sameVirtualPath(a: []const u8, b: []const u8) bool {
+    var ai: usize = 0;
+    var bi: usize = 0;
+    while (ai < a.len and bi < b.len) : ({
+        ai += 1;
+        bi += 1;
+    }) {
+        const ac = if (a[ai] == '\\') '/' else a[ai];
+        const bc = if (b[bi] == '\\') '/' else b[bi];
+        if (ac != bc) return false;
+    }
+    return ai == a.len and bi == b.len;
+}
+
+fn decodeTextAlloc(allocator: std.mem.Allocator, data: []const u8) ![]u8 {
+    if (data.len >= 2 and (data[0] == 0xff and data[1] == 0xfe or data[1] == 0)) {
+        var out: std.ArrayList(u8) = .empty;
+        errdefer out.deinit(allocator);
+        var i: usize = 0;
+        while (i + 1 < data.len) : (i += 2) {
+            const code = std.mem.readInt(u16, data[i..][0..2], .little);
+            if (code == 0xfeff or code == 0) continue;
+            try out.append(allocator, if (code <= 0x7f) @intCast(code) else '?');
+        }
+        return out.toOwnedSlice(allocator);
+    }
+    return allocator.dupe(u8, data);
 }
 
 fn axisNumber(data: []const u8, axis: u8) ?u16 {
