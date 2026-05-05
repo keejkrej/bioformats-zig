@@ -50,6 +50,7 @@ const openlabraw = @import("openlabraw.zig");
 const ometiff = @import("ometiff.zig");
 const oxfordinstruments = @import("oxfordinstruments.zig");
 const pcx = @import("pcx.zig");
+const photoshoptiff = @import("photoshoptiff.zig");
 const png = @import("png.zig");
 const povray = @import("povray.zig");
 const pqbin = @import("pqbin.zig");
@@ -87,7 +88,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, metamorph, mias, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, deltavision, dicom, ecat7, eps, fei, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, iplab, ivision, jeol, khoros, klb, kodak, liflim, lim, metamorph, mias, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, photoshoptiff, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -183,6 +184,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .ometiff => ometiff.readMetadata(entry.data),
         .oxfordinstruments => oxfordinstruments.readMetadata(entry.data),
         .pcx => pcx.readMetadata(entry.data),
+        .photoshoptiff => photoshoptiff.readMetadata(entry.data),
         .png => png.readMetadata(entry.data),
         .povray => povray.readMetadata(entry.data),
         .pqbin => pqbin.readMetadata(entry.data),
@@ -263,6 +265,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .ometiff => ometiff.readPlaneIndex(allocator, entry.data, plane_index),
         .oxfordinstruments => oxfordinstruments.readPlaneIndex(allocator, entry.data, plane_index),
         .pcx => if (plane_index == 0) pcx.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
+        .photoshoptiff => photoshoptiff.readPlaneIndex(allocator, entry.data, plane_index),
         .png => if (plane_index == 0) png.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .povray => povray.readPlaneIndex(allocator, entry.data, plane_index),
         .pqbin => pqbin.readPlaneIndex(allocator, entry.data, plane_index),
@@ -301,6 +304,7 @@ fn readInnerRegionIndex(
     if (entry.kind == .metamorph) return metamorph.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .mias) return mias.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .trestle) return trestle.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .photoshoptiff) return photoshoptiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .vectra) return vectra.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .ventana) return ventana.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .zeisslsm) return zeisslsm.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -402,6 +406,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (oxfordinstruments.matches(data)) return .oxfordinstruments;
     if (pcx.matches(data)) return .pcx;
     if (png.matches(data)) return .png;
+    if (photoshoptiff.matches(data)) return .photoshoptiff;
     if (hasExtension(filename, ".df3") and povray.matches(data)) return .povray;
     if (hasExtension(filename, ".bin") and pqbin.matches(data)) return .pqbin;
     if (psd.matches(data)) return .psd;
@@ -1218,6 +1223,63 @@ test "reads stored pcx zip entry through inner reader" {
     const plane = try readPlane(std.testing.allocator, data.items);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 10, 20, 30, 40, 50, 60 }, plane.data);
+}
+
+test "reads stored photoshop tiff zip entry before baseline tiff" {
+    var photoshop_data: std.ArrayList(u8) = .empty;
+    defer photoshop_data.deinit(std.testing.allocator);
+
+    try photoshop_data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&photoshop_data, 42);
+    try appendU32Le(&photoshop_data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const image_source_data = "8BIM\x00";
+    const source_offset = ifd_end;
+    const pixel_offset = source_offset + image_source_data.len;
+
+    try appendU16Le(&photoshop_data, entry_count);
+    try appendTiffEntry(&photoshop_data, 256, 4, 1, 1);
+    try appendTiffEntry(&photoshop_data, 257, 4, 1, 1);
+    try appendTiffEntry(&photoshop_data, 258, 3, 1, 8);
+    try appendTiffEntry(&photoshop_data, 259, 3, 1, 1);
+    try appendTiffEntry(&photoshop_data, 262, 3, 1, 1);
+    try appendTiffEntry(&photoshop_data, 273, 4, 1, @intCast(pixel_offset));
+    try appendTiffEntry(&photoshop_data, 277, 3, 1, 1);
+    try appendTiffEntry(&photoshop_data, 278, 4, 1, 1);
+    try appendTiffEntry(&photoshop_data, 279, 4, 1, 1);
+    try appendTiffEntry(&photoshop_data, 37724, 1, image_source_data.len, @intCast(source_offset));
+    try appendU32Le(&photoshop_data, 0);
+    try photoshop_data.appendSlice(std.testing.allocator, image_source_data);
+    try photoshop_data.append(std.testing.allocator, 128);
+
+    try std.testing.expectEqual(Entry.Kind.photoshoptiff, detectInner("image.tif", photoshop_data.items).?);
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.tif", photoshop_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{128}, plane.data);
+
+    const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1,
+        .height = 1,
+    });
+    defer std.testing.allocator.free(region_plane.data);
+    try std.testing.expectEqualStrings("zip", region_plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{128}, region_plane.data);
 }
 
 test "reads stored povray zip entry through extension-gated inner reader" {
