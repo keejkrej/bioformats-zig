@@ -302,6 +302,7 @@ plane, which can differ from logical OME `sizeC`.
 - Volocity Library Clipping `.acff` files with inline uncompressed 8-bit planes; LZO-compressed clipping payloads are not yet handled.
 - WA Technology TOP `.wat` files with fixed-header little-endian signed 16-bit grayscale planes.
 - Leica XLEF projects that reference XLIF metadata and TIFF frame files, delegated through the first readable TIFF frame; LOF, JPEG, PNG, BMP, multi-image/tile assembly, stage metadata, and Leica-specific metadata translation are not yet handled.
+- Zeiss CZI files are detected from `ZISRAWFILE` segments and subblock directory entries are parsed as metadata-only `zeissczi`; pixel decompression, tiling, pyramids, attachments, XML metadata, scenes, and mosaics are not yet implemented.
 - Zeiss LMS files identified by the LMSFLE marker, with CSM 700 fixed-size little-endian 16-bit Z planes read after the thumbnail and LUT blocks; the thumbnail series, palette LUT, objective magnification, and other instrument metadata are not yet surfaced.
 - Zeiss LSM TIFF files identified by the private `TIF_CZ_LSMINFO` tag, decoded through the TIFF pixel path; LSM dimension metadata, channel names/colors, LUTs, timestamps, ROIs, and MDB multi-file grouping are not yet parsed.
 - Zeiss AxioVision TIFF datasets with `_meta.xml` companion detection, delegated through the matching TIFF pixel path; XML tag metadata, multifile plane grouping, ROIs, and acquisition metadata are not yet handled.

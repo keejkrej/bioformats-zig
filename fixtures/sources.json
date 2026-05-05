@@ -175,6 +175,7 @@
     "volocityclipping": ["needs-public-sample"],
     "watop": ["needs-public-sample"],
     "xlef": ["ome_images/Leica-XLEF/"],
+    "zeissczi": ["ome_images/Zeiss-CZI/"],
     "zeisslms": ["needs-public-sample"],
     "zeisslsm": ["needs-public-sample"],
     "zeisstiff": ["ome_images/Zeiss-AxioVision-TIFF/"],

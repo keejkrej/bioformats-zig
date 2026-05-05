@@ -154,6 +154,7 @@ pub const vgsam = @import("readers/vgsam.zig");
 pub const volocityclipping = @import("readers/volocityclipping.zig");
 pub const watop = @import("readers/watop.zig");
 pub const xlef = @import("readers/xlef.zig");
+pub const zeissczi = @import("readers/zeissczi.zig");
 pub const zeisslms = @import("readers/zeisslms.zig");
 pub const zeisslsm = @import("readers/zeisslsm.zig");
 pub const zeisstiff = @import("readers/zeisstiff.zig");
@@ -1285,6 +1286,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "zeissczi",
+        .name = "Zeiss CZI metadata",
+        .extensions = &.{"czi"},
+        .can_read_pixels = false,
+    },
+    .{
         .id = "zeisslms",
         .name = "Zeiss LMS",
         .extensions = &.{"lms"},
@@ -1395,6 +1402,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (volocityclipping.matches(data)) return "volocityclipping";
     if (watop.matches(data)) return "watop";
     if (xlef.matches(data)) return "xlef";
+    if (zeissczi.matches(data)) return "zeissczi";
     if (zeisslms.matches(data)) return "zeisslms";
     if (povray.matches(data)) return "povray";
     if (prairie.matches(data)) return "prairie";
@@ -1545,6 +1553,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (volocityclipping.matches(data)) return volocityclipping.readMetadata(data);
     if (watop.matches(data)) return watop.readMetadata(data);
     if (xlef.matches(data)) return xlef.readMetadata(data);
+    if (zeissczi.matches(data)) return zeissczi.readMetadata(data);
     if (zeisslms.matches(data)) return zeisslms.readMetadata(data);
     if (povray.matches(data)) return povray.readMetadata(data);
     if (prairie.matches(data)) return prairie.readMetadata(data);
@@ -1755,6 +1764,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return watop.readPlane(allocator, data);
     }
     if (xlef.matches(data)) return xlef.readPlaneIndex(allocator, data, plane_index);
+    if (zeissczi.matches(data)) return zeissczi.readPlaneIndex(allocator, data, plane_index);
     if (zeisslms.matches(data)) return zeisslms.readPlaneIndex(allocator, data, plane_index);
     if (povray.matches(data)) return povray.readPlaneIndex(allocator, data, plane_index);
     if (prairie.matches(data)) return prairie.readPlaneIndex(allocator, data, plane_index);
@@ -2019,6 +2029,7 @@ test {
     _ = visitech;
     _ = volocityclipping;
     _ = xlef;
+    _ = zeissczi;
     _ = zeisslms;
     _ = zeisslsm;
     _ = zeisstiff;
