@@ -192,7 +192,7 @@ plane, which can differ from logical OME `sizeC`.
 - GIF87a/GIF89a indexed color images exposed as planes, with global or local palettes, image descriptor offsets on the logical canvas, interlaced row reordering, Graphic Control transparency, and LZW image data, returned as RGB/RGBA.
 - Hamamatsu VMS `.vms` datasets with INI metadata and JPEG tile dimensions exposed as metadata-only `hamamatsuvms`; tiled JPEG pixel decoding, macro/map series, physical sizes, and objective metadata are not yet handled.
 - Hamamatsu HIS single-series files with little-endian 8/16-bit grayscale or RGB planes; packed 12-bit and multi-series HIS files are not yet supported.
-- Hitachi S-4800 `.txt` sidecars with neighboring TIFF/BMP pixel files delegated through the existing image readers; selecting JPEG companions is detected but pixels are unsupported until a JPEG reader is added.
+- Hitachi S-4800 `.txt` sidecars with neighboring TIFF/BMP pixel files delegated through the existing image readers; selecting JPEG companions is detected but pixels are unsupported until JPEG pixel decoding is added.
 - NOAA-HRD Gridded Data Format surface wind component tables exposed as two big-endian 64-bit floating-point channel planes.
 - I2I int16 and 32-bit floating-point volumes with little/big endian data and optional extra time-like dimension exposed as planes.
 - Imacon `.fff` TIFF files identified by Imacon XML private metadata tags, decoded through the TIFF pixel path.
@@ -214,6 +214,7 @@ plane, which can differ from logical OME `sizeC`.
 - Molecular Devices JDCE `.jdce` datasets delegated through CSV-listed TIFF planes and reported as `jdce`; full HCS plate/well/field metadata, plane timing/positions, wavelengths, and multi-series mapping are not yet surfaced.
 - IVision `.ipm` files with big-endian inline 8/16/32-bit scalar pixels plus padded RGB8 and RGB16 planes; 16-bit color compaction, square-root encoding, XML metadata, LUT extraction, and acquisition metadata are not yet handled.
 - JEOL `MG`/`IM` single-file images with little-endian metadata and 8-bit grayscale pixels; companion `.par` metadata grouping is not yet handled.
+- JPEG files are detected from SOI/SOF markers and reported as metadata-only `jpeg` with grayscale or RGB dimensions; entropy decoding, EXIF orientation/color metadata, CMYK/YCCK handling, and pixel reads are not yet implemented.
 - JPK Instruments `.jpk` TIFF files delegated through the TIFF pixel path and reported as `jpk`; multi-series JPK TIFF splitting and private tag metadata are not yet modeled.
 - Khoros XV raw rasters with 8/16-bit grayscale or RGB samples and 8-bit indexed LUT images expanded to RGB.
 - KLB single-file volumes with uncompressed single-block 8/16/32-bit integer or 32/64-bit floating-point scalar pixels, exposing Z slices as planes; block tiling, bzip2/zlib compression, grouped time/channel folders, projections, and physical-size metadata are not yet handled.

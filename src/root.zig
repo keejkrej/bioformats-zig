@@ -65,6 +65,7 @@ pub const ipw = @import("readers/ipw.zig");
 pub const ivision = @import("readers/ivision.zig");
 pub const jdce = @import("readers/jdce.zig");
 pub const jeol = @import("readers/jeol.zig");
+pub const jpeg = @import("readers/jpeg.zig");
 pub const jpk = @import("readers/jpk.zig");
 pub const khoros = @import("readers/khoros.zig");
 pub const klb = @import("readers/klb.zig");
@@ -708,6 +709,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "jpeg",
+        .name = "JPEG metadata",
+        .extensions = &.{ "jpg", "jpeg", "jpe" },
+        .can_read_pixels = false,
+    },
+    .{
         .id = "jpk",
         .name = "JPK Instruments TIFF",
         .extensions = &.{"jpk"},
@@ -1298,6 +1305,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (ivision.matches(data)) return "ivision";
     if (jdce.matches(data)) return "jdce";
     if (jeol.matches(data)) return "jeol";
+    if (jpeg.matches(data)) return "jpeg";
     if (khoros.matches(data)) return "khoros";
     if (klb.matches(data)) return "klb";
     if (kodak.matches(data)) return "kodak";
@@ -1441,6 +1449,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (ivision.matches(data)) return ivision.readMetadata(data);
     if (jdce.matches(data)) return jdce.readMetadata(data);
     if (jeol.matches(data)) return jeol.readMetadata(data);
+    if (jpeg.matches(data)) return jpeg.readMetadata(data);
     if (khoros.matches(data)) return khoros.readMetadata(data);
     if (klb.matches(data)) return klb.readMetadata(data);
     if (kodak.matches(data)) return kodak.readMetadata(data);
@@ -1611,6 +1620,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return jeol.readPlane(allocator, data);
     }
+    if (jpeg.matches(data)) return jpeg.readPlaneIndex(allocator, data, plane_index);
     if (khoros.matches(data)) return khoros.readPlaneIndex(allocator, data, plane_index);
     if (klb.matches(data)) return klb.readPlaneIndex(allocator, data, plane_index);
     if (kodak.matches(data)) {
@@ -1882,6 +1892,7 @@ test {
     _ = ivision;
     _ = ipw;
     _ = jdce;
+    _ = jpeg;
     _ = leo;
     _ = liflim;
     _ = metamorph;
