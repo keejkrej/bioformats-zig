@@ -687,9 +687,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "imarishdf",
-        .name = "Bitplane Imaris HDF metadata",
+        .name = "Bitplane Imaris HDF contiguous planes",
         .extensions = &.{"ims"},
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "imaristiff",
