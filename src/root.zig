@@ -1221,9 +1221,9 @@ pub const formats = [_]FormatDescriptor{
     },
     .{
         .id = "slidebook",
-        .name = "Olympus Slidebook metadata",
+        .name = "Olympus Slidebook raw planes",
         .extensions = &.{ "sld", "spl" },
-        .can_read_pixels = false,
+        .can_read_pixels = true,
     },
     .{
         .id = "slidebook7",

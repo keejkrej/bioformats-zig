@@ -37,10 +37,16 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    _ = allocator;
-    _ = data;
-    _ = plane_index;
-    return error.UnsupportedVariant;
+    const little = try parseHeader(data);
+    const metadata = try readMetadata(data);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
+    const plane_len = try planeByteCount(metadata);
+    const total_len = std.math.mul(usize, plane_len, metadata.plane_count) catch return error.UnsupportedVariant;
+    const raw_offset = try findRawPixelBlock(data, if (little) .little else .big, total_len);
+    const offset = std.math.add(usize, raw_offset, std.math.mul(usize, plane_len, plane_index) catch return error.UnsupportedVariant) catch return error.UnsupportedVariant;
+    if (offset + plane_len > data.len) return error.TruncatedData;
+    const out = try allocator.dupe(u8, data[offset..][0..plane_len]);
+    return .{ .metadata = metadata, .data = out };
 }
 
 fn parseHeader(data: []const u8) bio.ReaderError!bool {
@@ -119,6 +125,33 @@ fn boundedDimension(value: u32) u16 {
     return @intCast(@min(@max(value, 1), std.math.maxInt(u16)));
 }
 
+fn findRawPixelBlock(data: []const u8, endian: std.builtin.Endian, total_len: usize) bio.ReaderError!usize {
+    if (total_len == 0 or data.len < 10 + metadata_block_size) return error.UnsupportedVariant;
+    var previous_end: usize = 10;
+    var pos: usize = 0;
+    while (pos + metadata_block_size <= data.len) : (pos += 1) {
+        if (!isFixedMetadataBlock(data[pos..][0..metadata_block_size], endian)) continue;
+        if (pos >= previous_end and pos - previous_end >= total_len) {
+            return pos - total_len;
+        }
+        previous_end = pos + metadata_block_size;
+        pos += metadata_block_size - 1;
+    }
+    return error.UnsupportedVariant;
+}
+
+fn isFixedMetadataBlock(block: []const u8, endian: std.builtin.Endian) bool {
+    if (!isEndianMarker(block[4..6])) return false;
+    var n = std.mem.readInt(u16, block[0..2], endian);
+    if (n == 0) n = std.mem.readInt(u16, block[2..4], endian);
+    return n == 'h' or n == 'i' or n == 'j' or n == 'k' or n == 'm' or n == 'n' or n == 'u';
+}
+
+fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
+    const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
+    return std.math.mul(usize, pixels, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
+}
+
 fn appendU16(out: *std.ArrayList(u8), value: u16, endian: std.builtin.Endian) !void {
     var bytes: [2]u8 = undefined;
     std.mem.writeInt(u16, &bytes, value, endian);
@@ -169,6 +202,27 @@ test "reads legacy slidebook metadata blocks" {
     try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
     try std.testing.expect(metadata.little_endian);
     try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data.items, 0));
+}
+
+test "reads legacy slidebook contiguous raw uint16 planes" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendSyntheticHeader(&data, .little);
+    try data.appendSlice(std.testing.allocator, &.{
+        1,  0, 2,  0, 3,  0, 4,  0,
+        11, 0, 12, 0, 13, 0, 14, 0,
+    });
+    try appendIBlock(&data, .little, 2, 2);
+    try appendIBlock(&data, .little, 2, 2);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("slidebook", plane.metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), plane.metadata.width);
+    try std.testing.expectEqual(@as(u32, 2), plane.metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), plane.metadata.size_c);
+    try std.testing.expectEqual(@as(usize, 8), plane.data.len);
+    try std.testing.expectEqualSlices(u8, &.{ 11, 0, 12, 0, 13, 0, 14, 0 }, plane.data);
 }
 
 test "reads big endian legacy slidebook metadata blocks" {
