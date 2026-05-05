@@ -108,6 +108,7 @@
     "lif": ["ome_images/Leica-LIF/"],
     "liflim": ["needs-public-sample"],
     "lim": ["needs-public-sample"],
+    "lof": ["ome_images/Leica-XLEF/format test/format test LOF/"],
     "metamorph": ["ome_images/Metamorph/"],
     "metamorphtiff": ["alias-of-metamorph"],
     "metaxpress": ["ome_images/MetaXpress/"],

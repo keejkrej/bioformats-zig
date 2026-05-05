@@ -79,6 +79,7 @@ pub const leicascn = @import("readers/leicascn.zig");
 pub const lif = @import("readers/lif.zig");
 pub const liflim = @import("readers/liflim.zig");
 pub const lim = @import("readers/lim.zig");
+pub const lof = @import("readers/lof.zig");
 pub const metamorph = @import("readers/metamorph.zig");
 pub const metaxpress = @import("readers/metaxpress.zig");
 pub const mias = @import("readers/mias.zig");
@@ -811,6 +812,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "lof",
+        .name = "Leica LOF metadata",
+        .extensions = &.{"lof"},
+        .can_read_pixels = false,
+    },
+    .{
         .id = "metamorph",
         .name = "Metamorph STK/TIFF",
         .extensions = &.{ "stk", "tif", "tiff" },
@@ -1468,6 +1475,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (leicascn.matches(data)) return "leicascn";
     if (lif.matches(data)) return "lif";
     if (liflim.matches(data)) return "liflim";
+    if (lof.matches(data)) return "lof";
     if (metamorph.matches(data)) return "metamorph";
     if (mias.matches(data)) return "mias";
     if (micromanager.matches(data)) return "micromanager";
@@ -1624,6 +1632,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (leicascn.matches(data)) return leicascn.readMetadata(data);
     if (lif.matches(data)) return lif.readMetadata(data);
     if (liflim.matches(data)) return liflim.readMetadata(data);
+    if (lof.matches(data)) return lof.readMetadata(data);
     if (metamorph.matches(data)) return metamorph.readMetadata(data);
     if (mias.matches(data)) return mias.readMetadata(data);
     if (micromanager.matches(data)) return micromanager.readMetadata(data);
@@ -1846,6 +1855,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (leicascn.matches(data)) return leicascn.readPlaneIndex(allocator, data, plane_index);
     if (lif.matches(data)) return lif.readPlaneIndex(allocator, data, plane_index);
     if (liflim.matches(data)) return liflim.readPlaneIndex(allocator, data, plane_index);
+    if (lof.matches(data)) return lof.readPlaneIndex(allocator, data, plane_index);
     if (metamorph.matches(data)) return metamorph.readPlaneIndex(allocator, data, plane_index);
     if (mias.matches(data)) return mias.readPlaneIndex(allocator, data, plane_index);
     if (micromanager.matches(data)) return micromanager.readPlaneIndex(allocator, data, plane_index);
@@ -2025,6 +2035,7 @@ test {
     _ = leo;
     _ = lif;
     _ = liflim;
+    _ = lof;
     _ = metamorph;
     _ = metaxpress;
     _ = mias;
