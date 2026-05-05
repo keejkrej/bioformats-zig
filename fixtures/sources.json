@@ -178,6 +178,7 @@
     "text": ["generated-fixture"],
     "tga": ["generated-fixture"],
     "targa": ["alias-of-tga"],
+    "tissuefaxs": ["needs-public-sample", "bioformats-docs/tissuegnostics-tfcyto-several-internal-datasets"],
     "tillvision": ["needs-public-sample"],
     "topometrix": ["needs-public-sample"],
     "ubm": ["needs-public-sample"],
@@ -198,7 +199,5 @@
     "zeisszvi": ["needs-public-sample", "bioformats-docs/zeiss-zvi-says-many-datasets"],
     "zip": ["generated-fixture"]
   },
-  "pending_reader_sources": {
-    "tissuefaxs": ["needs-public-sample", "bioformats-docs/tissuegnostics-tfcyto-several-internal-datasets"]
-  }
+  "pending_reader_sources": {}
 }

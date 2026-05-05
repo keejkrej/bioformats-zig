@@ -154,6 +154,7 @@ pub const tga = @import("readers/tga.zig");
 pub const text = @import("readers/text.zig");
 pub const tiff = @import("readers/tiff.zig");
 pub const tilejpeg = @import("readers/tilejpeg.zig");
+pub const tissuefaxs = @import("readers/tissuefaxs.zig");
 pub const tillvision = @import("readers/tillvision.zig");
 pub const topometrix = @import("readers/topometrix.zig");
 pub const trestle = @import("readers/trestle.zig");
@@ -1309,6 +1310,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "tissuefaxs",
+        .name = "TissueFAXS SQLite metadata",
+        .extensions = &.{ "aqproj", "tfcyto" },
+        .can_read_pixels = false,
+    },
+    .{
         .id = "topometrix",
         .name = "TopoMetrix",
         .extensions = &.{ "tfr", "ffr", "zfr", "zfp", "2fl" },
@@ -1588,6 +1595,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (tcs.matches(data)) return "tcs";
     if (tecan.matches(data)) return "tecan";
     if (trestle.matches(data)) return "trestle";
+    if (tissuefaxs.matches(data)) return "tissuefaxs";
     if (vectra.matches(data)) return "vectra";
     if (veeco.matches(data)) return "veeco";
     if (ventana.matches(data)) return "ventana";
@@ -1756,6 +1764,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (tcs.matches(data)) return tcs.readMetadata(data);
     if (tecan.matches(data)) return tecan.readMetadata(data);
     if (trestle.matches(data)) return trestle.readMetadata(data);
+    if (tissuefaxs.matches(data)) return tissuefaxs.readMetadata(data);
     if (vectra.matches(data)) return vectra.readMetadata(data);
     if (veeco.matches(data)) return veeco.readMetadata(data);
     if (ventana.matches(data)) return ventana.readMetadata(data);
@@ -1990,6 +1999,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (tcs.matches(data)) return tcs.readPlaneIndex(allocator, data, plane_index);
     if (tecan.matches(data)) return tecan.readPlaneIndex(allocator, data, plane_index);
     if (trestle.matches(data)) return trestle.readPlaneIndex(allocator, data, plane_index);
+    if (tissuefaxs.matches(data)) return tissuefaxs.readPlaneIndex(allocator, data, plane_index);
     if (vectra.matches(data)) return vectra.readPlaneIndex(allocator, data, plane_index);
     if (veeco.matches(data)) return veeco.readPlaneIndex(allocator, data, plane_index);
     if (ventana.matches(data)) return ventana.readPlaneIndex(allocator, data, plane_index);
@@ -2208,6 +2218,7 @@ test {
     _ = tilejpeg;
     _ = tillvision;
     _ = tiff;
+    _ = tissuefaxs;
     _ = trestle;
     _ = unisoku;
     _ = vectra;

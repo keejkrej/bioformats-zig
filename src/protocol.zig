@@ -561,6 +561,9 @@ pub const Server = struct {
         if (bio.tecan.isPath(path)) {
             if (bio.tecan.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.tissuefaxs.isPath(path)) {
+            if (bio.tissuefaxs.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.tillvision.isPath(path)) {
             if (bio.tillvision.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -710,6 +713,9 @@ pub const Server = struct {
         }
         if (bio.tecan.isPath(path)) {
             if (bio.tecan.readMetadataPath(self.allocator, self.io, path)) |_| return "tecan" else |_| {}
+        }
+        if (bio.tissuefaxs.isPath(path)) {
+            if (bio.tissuefaxs.readMetadataPath(self.allocator, self.io, path)) |_| return "tissuefaxs" else |_| {}
         }
         if (bio.tillvision.isPath(path)) {
             if (bio.tillvision.readMetadataPath(self.allocator, self.io, path)) |_| return "tillvision" else |_| {}
@@ -881,6 +887,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "tecan")) {
             return bio.tecan.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "tissuefaxs")) {
+            return bio.tissuefaxs.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "tillvision")) {
             return bio.tillvision.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -972,6 +981,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "bruker") or
             std.mem.eql(u8, format, "filepattern") or
             std.mem.eql(u8, format, "tecan") or
+            std.mem.eql(u8, format, "tissuefaxs") or
             std.mem.eql(u8, format, "tillvision") or
             std.mem.eql(u8, format, "flex") or
             std.mem.eql(u8, format, "fv1000") or
@@ -1603,6 +1613,7 @@ test "formats response includes expanded readers" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"svs\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"tga\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"text\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"tissuefaxs\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"topometrix\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"trestle\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"ubm\"") != null);
