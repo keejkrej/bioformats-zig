@@ -501,6 +501,9 @@ pub const Server = struct {
         if (bio.l2d.isPath(path)) {
             if (bio.l2d.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
+        if (bio.bdpathway.isPath(path)) {
+            if (bio.bdpathway.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
+        }
         if (bio.pcoraw.isPath(path)) {
             if (bio.pcoraw.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -554,6 +557,9 @@ pub const Server = struct {
         }
         if (bio.l2d.isPath(path)) {
             if (bio.l2d.readMetadataPath(self.allocator, self.io, path)) |_| return "l2d" else |_| {}
+        }
+        if (bio.bdpathway.isPath(path)) {
+            if (bio.bdpathway.readMetadataPath(self.allocator, self.io, path)) |_| return "bdpathway" else |_| {}
         }
         if (bio.pcoraw.isPath(path)) {
             if (bio.pcoraw.readMetadataPath(self.allocator, self.io, path)) |_| return "pcoraw" else |_| {}
@@ -632,6 +638,9 @@ pub const Server = struct {
         if (std.mem.eql(u8, format, "l2d")) {
             return bio.l2d.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
+        if (std.mem.eql(u8, format, "bdpathway")) {
+            return bio.bdpathway.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
+        }
         if (std.mem.eql(u8, format, "imaristiff")) {
             return bio.imaristiff.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region);
         }
@@ -671,6 +680,7 @@ pub const Server = struct {
             std.mem.eql(u8, format, "pcoraw") or
             std.mem.eql(u8, format, "jpk") or
             std.mem.eql(u8, format, "l2d") or
+            std.mem.eql(u8, format, "bdpathway") or
             std.mem.eql(u8, format, "imaristiff") or
             std.mem.eql(u8, format, "rcpnl") or
             std.mem.eql(u8, format, "inveon") or
