@@ -35,6 +35,7 @@ pub const i2i = @import("readers/i2i.zig");
 pub const imacon = @import("readers/imacon.zig");
 pub const im3 = @import("readers/im3.zig");
 pub const imagic = @import("readers/imagic.zig");
+pub const ics = @import("readers/ics.zig");
 pub const incell3000 = @import("readers/incell3000.zig");
 pub const imaris = @import("readers/imaris.zig");
 pub const imod = @import("readers/imod.zig");
@@ -473,6 +474,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "imagic",
         .name = "IMAGIC",
         .extensions = &.{ "hed", "img" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "ics",
+        .name = "Image Cytometry Standard",
+        .extensions = &.{ "ics", "ids" },
         .can_read_pixels = true,
     },
     .{
@@ -953,6 +960,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (gif.matches(data)) return "gif";
     if (his.matches(data)) return "his";
     if (i2i.matches(data)) return "i2i";
+    if (ics.matches(data)) return "ics";
     if (inr.matches(data)) return "inr";
     if (iplab.matches(data)) return "iplab";
     if (ipw.matches(data)) return "ipw";
@@ -1068,6 +1076,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (gif.matches(data)) return gif.readMetadata(data);
     if (his.matches(data)) return his.readMetadata(data);
     if (i2i.matches(data)) return i2i.readMetadata(data);
+    if (ics.matches(data)) return ics.readMetadata(data);
     if (inr.matches(data)) return inr.readMetadata(data);
     if (iplab.matches(data)) return iplab.readMetadata(data);
     if (ipw.matches(data)) return ipw.readMetadata(data);
@@ -1207,6 +1216,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return his.readPlane(allocator, data);
     }
     if (i2i.matches(data)) return i2i.readPlaneIndex(allocator, data, plane_index);
+    if (ics.matches(data)) return ics.readPlaneIndex(allocator, data, plane_index);
     if (inr.matches(data)) return inr.readPlaneIndex(allocator, data, plane_index);
     if (iplab.matches(data)) return iplab.readPlaneIndex(allocator, data, plane_index);
     if (ipw.matches(data)) return ipw.readPlaneIndex(allocator, data, plane_index);
@@ -1445,6 +1455,7 @@ test {
     _ = imacon;
     _ = im3;
     _ = imagic;
+    _ = ics;
     _ = incell3000;
     _ = imaris;
     _ = imod;
