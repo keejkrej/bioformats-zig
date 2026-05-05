@@ -29,6 +29,7 @@ const jeol = @import("jeol.zig");
 const khoros = @import("khoros.zig");
 const klb = @import("klb.zig");
 const kodak = @import("kodak.zig");
+const lim = @import("lim.zig");
 const mng = @import("mng.zig");
 const microct = @import("microct.zig");
 const molecularimaging = @import("molecularimaging.zig");
@@ -74,7 +75,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, jeol, khoros, klb, kodak, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, biorad, bioradgel, bioradscn, bmp, burleigh, cellomics, dcimg, dicom, ecat7, eps, fits, gatandm2, gif, his, hrdgdf, i2i, imaris, imod, inr, jeol, khoros, klb, kodak, lim, microct, mng, molecularimaging, mrc, mrw, netpbm, nifti, nrrd, omexml, openlabraw, ometiff, oxfordinstruments, pcx, png, povray, pqbin, psd, quesant, rhk, sbig, seiko, sif, smcamera, spe, spider, text, tga, tiff, topometrix, varianfdf, vgsam, watop, zeisslms };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -149,6 +150,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .khoros => khoros.readMetadata(entry.data),
         .klb => klb.readMetadata(entry.data),
         .kodak => kodak.readMetadata(entry.data),
+        .lim => lim.readMetadata(entry.data),
         .microct => microct.readMetadata(entry.data),
         .mng => mng.readMetadata(entry.data),
         .molecularimaging => molecularimaging.readMetadata(entry.data),
@@ -216,6 +218,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .khoros => khoros.readPlaneIndex(allocator, entry.data, plane_index),
         .klb => klb.readPlaneIndex(allocator, entry.data, plane_index),
         .kodak => if (plane_index == 0) kodak.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
+        .lim => if (plane_index == 0) lim.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .microct => microct.readPlaneIndex(allocator, entry.data, plane_index),
         .mng => mng.readPlaneIndex(allocator, entry.data, plane_index),
         .molecularimaging => molecularimaging.readPlaneIndex(allocator, entry.data, plane_index),
@@ -337,6 +340,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (hasExtension(filename, ".xv") and khoros.matches(data)) return .khoros;
     if (klb.matches(data)) return .klb;
     if (kodak.matches(data)) return .kodak;
+    if (hasExtension(filename, ".lim") and lim.matches(data)) return .lim;
     if (microct.matches(data)) return .microct;
     if (mng.matches(data)) return .mng;
     if (molecularimaging.matches(data)) return .molecularimaging;
@@ -2073,6 +2077,38 @@ test "reads stored khoros zip entry through extension-gated inner reader" {
     try std.testing.expectEqualStrings("zip", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{ 4, 5, 6 }, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
+}
+
+test "reads stored lim zip entry through extension-gated inner reader" {
+    var lim_data: std.ArrayList(u8) = .empty;
+    defer lim_data.deinit(std.testing.allocator);
+    try lim_data.appendNTimes(std.testing.allocator, 0, 0x94b);
+    writeU16(lim_data.items, 0, 2);
+    writeU16(lim_data.items, 2, 1);
+    writeU16(lim_data.items, 4, 16);
+    writeU16(lim_data.items, 6, 0);
+    try lim_data.appendSlice(std.testing.allocator, &.{ 0x34, 0x12, 0xcd, 0xab });
+
+    try std.testing.expectEqual(Entry.Kind.lim, detectInner("image.LIM", lim_data.items).?);
+    try std.testing.expectEqual(null, detectInner("image.dat", lim_data.items));
+
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendStoredEntry(&data, "image.lim", lim_data.items);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("zip", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualStrings("zip", plane.metadata.format);
+    try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x12, 0xcd, 0xab }, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
 }
 
 test "reads stored aim zip entry through inner reader" {
