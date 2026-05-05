@@ -123,6 +123,7 @@ pub const sis = @import("readers/sis.zig");
 pub const slidebooktiff = @import("readers/slidebooktiff.zig");
 pub const spider = @import("readers/spider.zig");
 pub const spe = @import("readers/spe.zig");
+pub const spc = @import("readers/spc.zig");
 pub const smcamera = @import("readers/smcamera.zig");
 pub const svs = @import("readers/svs.zig");
 pub const tcs = @import("readers/tcs.zig");
@@ -1070,6 +1071,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "spc",
+        .name = "Becker & Hickl SPC FIFO",
+        .extensions = &.{ "spc", "set" },
+        .can_read_pixels = true,
+    },
+    .{
         .id = "spe",
         .name = "Princeton Instruments SPE",
         .extensions = &.{"spe"},
@@ -1292,6 +1299,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (pcx.matches(data)) return "pcx";
     if (sif.matches(data)) return "sif";
     if (spider.matches(data)) return "spider";
+    if (spc.matches(data)) return "spc";
     if (spe.matches(data)) return "spe";
     if (quesant.matches(data)) return "quesant";
     if (rhk.matches(data)) return "rhk";
@@ -1431,6 +1439,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (pcx.matches(data)) return pcx.readMetadata(data);
     if (sif.matches(data)) return sif.readMetadata(data);
     if (spider.matches(data)) return spider.readMetadata(data);
+    if (spc.matches(data)) return spc.readMetadata(data);
     if (spe.matches(data)) return spe.readMetadata(data);
     if (quesant.matches(data)) return quesant.readMetadata(data);
     if (rhk.matches(data)) return rhk.readMetadata(data);
@@ -1609,6 +1618,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     }
     if (sif.matches(data)) return sif.readPlaneIndex(allocator, data, plane_index);
     if (spider.matches(data)) return spider.readPlaneIndex(allocator, data, plane_index);
+    if (spc.matches(data)) return spc.readPlaneIndex(allocator, data, plane_index);
     if (spe.matches(data)) return spe.readPlaneIndex(allocator, data, plane_index);
     if (quesant.matches(data)) {
         if (plane_index != 0) return error.InvalidPlaneIndex;
@@ -1879,6 +1889,7 @@ test {
     _ = simplepci;
     _ = sis;
     _ = slidebooktiff;
+    _ = spc;
     _ = svs;
     _ = tcs;
     _ = tecan;
