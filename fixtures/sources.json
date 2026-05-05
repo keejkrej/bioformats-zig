@@ -75,7 +75,7 @@
     "feitiff": ["needs-public-sample"],
     "filepattern": ["generated-fixture"],
     "fits": ["generated-fixture"],
-    "flex": ["ome_images/Flex/"],
+    "flex": ["ome_images/Flex/idr0007/Plate1/", "ome_images/Flex/"],
     "flowsight": ["needs-public-sample"],
     "fluoview": ["ome_images/Olympus-FluoView/"],
     "fv1000": ["ome_images/Olympus-FluoView/"],
