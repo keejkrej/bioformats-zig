@@ -58,7 +58,8 @@ fn imagePath(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
     if (isTiffName(path)) {
         const sibling_xml = try appendSuffix(allocator, path, xml_suffix);
         defer allocator.free(sibling_xml);
-        if (!exists(io, sibling_xml) and !exists(io, path)) return error.FileNotFound;
+        if (!exists(io, path)) return error.FileNotFound;
+        if (!exists(io, sibling_xml)) return error.InvalidFormat;
         return allocator.dupe(u8, path);
     }
 
@@ -179,4 +180,14 @@ test "reads zeiss tiff with sibling xml" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("zeisstiff", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{88}, plane.data);
+}
+
+test "rejects standalone tiff without zeiss companion xml" {
+    const image_path = "zeisstiff-standalone-test.tif";
+    var image: std.ArrayList(u8) = .empty;
+    defer image.deinit(std.testing.allocator);
+    try appendTinyTiff(&image, 88);
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = image.items });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+    try std.testing.expectError(error.InvalidFormat, readMetadataPath(std.testing.allocator, std.testing.io, image_path));
 }
