@@ -23,6 +23,7 @@ pub const eps = @import("readers/eps.zig");
 pub const fei = @import("readers/fei.zig");
 pub const feitiff = @import("readers/feitiff.zig");
 pub const fits = @import("readers/fits.zig");
+pub const flowsight = @import("readers/flowsight.zig");
 pub const fluoview = @import("readers/fluoview.zig");
 pub const gatandm2 = @import("readers/gatandm2.zig");
 pub const gel = @import("readers/gel.zig");
@@ -397,6 +398,12 @@ pub const formats = [_]FormatDescriptor{
         .id = "fits",
         .name = "FITS primary image",
         .extensions = &.{ "fits", "fts" },
+        .can_read_pixels = true,
+    },
+    .{
+        .id = "flowsight",
+        .name = "FlowSight CIF",
+        .extensions = &.{"cif"},
         .can_read_pixels = true,
     },
     .{
@@ -1032,6 +1039,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (eps.matches(data)) return eps.readMetadata(data);
     if (fei.matches(data)) return fei.readMetadata(data);
     if (fits.matches(data)) return fits.readMetadata(data);
+    if (flowsight.matches(data)) return flowsight.readMetadata(data);
     if (gif.matches(data)) return gif.readMetadata(data);
     if (his.matches(data)) return his.readMetadata(data);
     if (i2i.matches(data)) return i2i.readMetadata(data);
@@ -1162,6 +1170,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return fei.readPlane(allocator, data);
     }
     if (fits.matches(data)) return fits.readPlaneIndex(allocator, data, plane_index);
+    if (flowsight.matches(data)) return flowsight.readPlaneIndex(allocator, data, plane_index);
     if (gif.matches(data)) {
         return gif.readPlaneIndex(allocator, data, plane_index);
     }
@@ -1324,6 +1333,7 @@ pub fn readPlaneRegionIndex(
     if (leo.matches(data)) return leo.readRegionIndex(allocator, data, plane_index, region);
     if (leicascn.matches(data)) return leicascn.readRegionIndex(allocator, data, plane_index, region);
     if (prairie.matches(data)) return prairie.readRegionIndex(allocator, data, plane_index, region);
+    if (flowsight.matches(data)) return flowsight.readRegionIndex(allocator, data, plane_index, region);
     if (metamorph.matches(data)) return metamorph.readRegionIndex(allocator, data, plane_index, region);
     if (mias.matches(data)) return mias.readRegionIndex(allocator, data, plane_index, region);
     if (mikroscan.matches(data)) return mikroscan.readRegionIndex(allocator, data, plane_index, region);
@@ -1396,6 +1406,7 @@ test {
     _ = dng;
     _ = ecat7;
     _ = feitiff;
+    _ = flowsight;
     _ = fluoview;
     _ = gatandm2;
     _ = gel;

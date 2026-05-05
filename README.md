@@ -22,6 +22,25 @@ zig build
 
 The executable is written to `zig-out/bin/bioformats-zig`.
 
+## Web Viewer
+
+A small local testing UI lives in `webapp/`. It uses React/Vite in the browser,
+a Node WebSocket bridge, and the `zig-out/bin/bioformats-zig` JSON-RPC binary as
+the image reader process.
+
+```sh
+zig build
+cd webapp
+npm install
+npm run dev
+```
+
+Open the Vite URL printed by the command. The viewer includes a browser-rendered
+file dialog backed by the Node bridge, with folder entry, file selection, Up, and
+Home controls. React communicates with Node over WebSocket, then Node forwards
+image operations to the Zig JSON-RPC binary. The UI can inspect metadata, choose
+a plane, and draw the returned base64 pixels on a canvas.
+
 ## Protocol
 
 Supported methods:
@@ -122,6 +141,7 @@ plane, which can differ from logical OME `sizeC`.
 - FEI/Philips SEM IMG files with interlaced 8-bit grayscale pixels.
 - FEI TIFF files identified by S-FEG, Helios, or Titan private metadata tags, decoded through the TIFF pixel path.
 - FITS primary image HDUs with 8-bit unsigned, 16/32-bit signed integer, and 32/64-bit floating-point pixels, with `NAXIS3` exposed as planes.
+- FlowSight CIF files identified by first-IFD metadata XML, with the first image IFD exposed as channel planes for FlowSight bitmask and greyscale compression; additional FlowSight image IFDs, channel metadata, masks as separate series, and acquisition metadata are not yet modeled.
 - Olympus Fluoview/ABD TIFF files identified by Fluoview or Andor comments and private metadata tags, decoded through the TIFF pixel path; montage/field grouping, timestamps, physical sizes, and hardware metadata parsing are not yet handled.
 - Gatan DM2 files with fixed headers and contiguous big-endian integer pixels; footer tag metadata, physical sizes, timestamps, and newer DM3/DM4 tag-tree formats are not yet handled.
 - Amersham Biosciences GEL TIFF files identified by Molecular Dynamics private tags, decoded through the TIFF pixel path for single-IFD linear files; square-root scaled GEL images and two-IFD merge variants are rejected as unsupported.
@@ -204,7 +224,7 @@ plane, which can differ from logical OME `sizeC`.
 - WA Technology TOP `.wat` files with fixed-header little-endian signed 16-bit grayscale planes.
 - Zeiss LMS files identified by the LMSFLE marker, with CSM 700 fixed-size little-endian 16-bit Z planes read after the thumbnail and LUT blocks; the thumbnail series, palette LUT, objective magnification, and other instrument metadata are not yet surfaced.
 - Zeiss LSM TIFF files identified by the private `TIF_CZ_LSMINFO` tag, decoded through the TIFF pixel path; LSM dimension metadata, channel names/colors, LUTs, timestamps, ROIs, and MDB multi-file grouping are not yet parsed.
-- ZIP archives are delegated to the first stored or deflated local-file AIM, Alicona, Amersham GEL TIFF, Amira/Avizo, APNG, ARF, AVI, BD Pathway TIFF, Bio-Rad GEL, Bio-Rad PIC, Bio-Rad SCN, BMP, Burleigh SPM, Canon DNG TIFF, Canon RAW, Cellomics C01/DIB, DCIMG, Deltavision DV/R3D, DICOM, ECAT7, EPS/PostScript, FEI TIFF, FEI/Philips SEM IMG, FITS, Fluoview TIFF, Gatan DM2, GIF, Hamamatsu HIS, Hamamatsu NDPI TIFF, HRD GDF, I2I, Imacon TIFF, InCell 3000, Image-Pro SEQ, Image-Pro Workspace, Imaris raw, IMOD, Improvision TIFF, INR, Ionpath MIBI TIFF, IPLab, IVision, JEOL MG/IM, Khoros XV, KLB, Kodak BIP, Laboratory Imaging LIM, Leica SCN TIFF, Leica TCS TIFF, LEO TIFF, LI-FLIM, MetaMorph TIFF, MIAS TIFF, MicroCT VFF, Mikroscan TIFF, Minolta MRW, MNG, Molecular Imaging, MRC, Netpbm, NIfTI, Nikon Elements TIFF, Nikon NEF/TIFF, Nikon TIFF, NRRD, Olympus ScanR TIFF, OME-XML, OME-TIFF, Openlab RAW, Oxford Instruments TOP, PCX, PerkinElmer Nuance IM3, PerkinElmer Operetta TIFF, Photoshop TIFF, PicoQuant BIN, PNG, POV-Ray DF3, Prairie TIFF, PSD, Pyramid TIFF, Quesant AFM, RHK SPM, SBIG, Seiko, SIF, SimplePCI TIFF, SIS TIFF, SlideBook TIFF, SM Camera, SPE, SPIDER, SVS TIFF, Text/CSV, TGA, TopoMetrix, Trestle, UBM, Varian FDF, Vectra/QPTIFF, Ventana BIF, VG SAM, Volocity Clipping, WA Technology TOP, Zeiss LMS, Zeiss LSM, or baseline TIFF entry; encrypted/data-descriptor ZIP entries, central-directory-only archives, other inner formats, and multi-file dataset grouping inside ZIPs are not yet handled.
+- ZIP archives are delegated to the first stored or deflated local-file AIM, Alicona, Amersham GEL TIFF, Amira/Avizo, APNG, ARF, AVI, BD Pathway TIFF, Bio-Rad GEL, Bio-Rad PIC, Bio-Rad SCN, BMP, Burleigh SPM, Canon DNG TIFF, Canon RAW, Cellomics C01/DIB, DCIMG, Deltavision DV/R3D, DICOM, ECAT7, EPS/PostScript, FEI TIFF, FEI/Philips SEM IMG, FITS, FlowSight CIF, Fluoview TIFF, Gatan DM2, GIF, Hamamatsu HIS, Hamamatsu NDPI TIFF, HRD GDF, I2I, Imacon TIFF, InCell 3000, Image-Pro SEQ, Image-Pro Workspace, Imaris raw, IMOD, Improvision TIFF, INR, Ionpath MIBI TIFF, IPLab, IVision, JEOL MG/IM, Khoros XV, KLB, Kodak BIP, Laboratory Imaging LIM, Leica SCN TIFF, Leica TCS TIFF, LEO TIFF, LI-FLIM, MetaMorph TIFF, MIAS TIFF, MicroCT VFF, Mikroscan TIFF, Minolta MRW, MNG, Molecular Imaging, MRC, Netpbm, NIfTI, Nikon Elements TIFF, Nikon NEF/TIFF, Nikon TIFF, NRRD, Olympus ScanR TIFF, OME-XML, OME-TIFF, Openlab RAW, Oxford Instruments TOP, PCX, PerkinElmer Nuance IM3, PerkinElmer Operetta TIFF, Photoshop TIFF, PicoQuant BIN, PNG, POV-Ray DF3, Prairie TIFF, PSD, Pyramid TIFF, Quesant AFM, RHK SPM, SBIG, Seiko, SIF, SimplePCI TIFF, SIS TIFF, SlideBook TIFF, SM Camera, SPE, SPIDER, SVS TIFF, Text/CSV, TGA, TopoMetrix, Trestle, UBM, Varian FDF, Vectra/QPTIFF, Ventana BIF, VG SAM, Volocity Clipping, WA Technology TOP, Zeiss LMS, Zeiss LSM, or baseline TIFF entry; encrypted/data-descriptor ZIP entries, central-directory-only archives, other inner formats, and multi-file dataset grouping inside ZIPs are not yet handled.
 
 This is not a complete Bio-Formats replacement yet. The repository now has the
 embedding boundary and reader shape needed to port additional `FormatReader`

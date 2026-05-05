@@ -1,0 +1,32 @@
+{
+  "name": "bioformats-zig-webapp",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"tsx server/index.ts\"",
+    "dev:client": "vite --host 127.0.0.1",
+    "dev:server": "tsx server/index.ts",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b --pretty false"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.5",
+    "@tanstack/react-query": "^5.75.7",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "^4.1.5",
+    "ws": "^8.20.0",
+    "zustand": "^5.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^4.4.1",
+    "concurrently": "^9.1.2",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.4"
+  }
+}

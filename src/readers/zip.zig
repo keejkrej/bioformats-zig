@@ -23,6 +23,7 @@ const eps = @import("eps.zig");
 const fei = @import("fei.zig");
 const feitiff = @import("feitiff.zig");
 const fits = @import("fits.zig");
+const flowsight = @import("flowsight.zig");
 const fluoview = @import("fluoview.zig");
 const gatandm2 = @import("gatandm2.zig");
 const gel = @import("gel.zig");
@@ -118,7 +119,7 @@ const Entry = struct {
     kind: Kind,
     owned: bool = false,
 
-    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, prairie, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
+    const Kind = enum { aim, alicona, amira, apng, arf, avi, bdpathway, biorad, bioradgel, bioradscn, bmp, burleigh, canonraw, cellomics, dcimg, deltavision, dicom, dng, ecat7, eps, fei, feitiff, fits, flowsight, fluoview, gatandm2, gel, gif, his, hrdgdf, i2i, imacon, im3, incell3000, imaris, imod, improvisiontiff, inr, ionpathmibi, iplab, ipw, ivision, jeol, khoros, klb, kodak, leo, leicascn, liflim, lim, metamorph, mias, microct, mikroscan, mng, molecularimaging, mrc, mrw, ndpi, netpbm, nifti, nikon, nikonelements, nikontiff, nrrd, omexml, openlabraw, ometiff, operetta, oxfordinstruments, pcx, photoshoptiff, png, povray, prairie, pqbin, psd, pyramidtiff, quesant, rhk, sbig, scanr, seiko, seq, sif, simplepci, sis, slidebooktiff, smcamera, spe, spider, svs, tcs, text, tga, tiff, topometrix, trestle, ubm, varianfdf, vectra, ventana, vgsam, volocityclipping, watop, zeisslms, zeisslsm };
 
     fn deinit(self: Entry, allocator: std.mem.Allocator) void {
         if (self.owned) allocator.free(self.data);
@@ -187,6 +188,7 @@ fn readInnerMetadata(entry: Entry) bio.ReaderError!bio.Metadata {
         .fei => fei.readMetadata(entry.data),
         .feitiff => feitiff.readMetadata(entry.data),
         .fits => fits.readMetadata(entry.data),
+        .flowsight => flowsight.readMetadata(entry.data),
         .fluoview => fluoview.readMetadata(entry.data),
         .gatandm2 => gatandm2.readMetadata(entry.data),
         .gel => gel.readMetadata(entry.data),
@@ -298,6 +300,7 @@ fn readInnerPlaneIndex(allocator: std.mem.Allocator, entry: Entry, plane_index: 
         .fei => if (plane_index == 0) fei.readPlane(allocator, entry.data) else error.InvalidPlaneIndex,
         .feitiff => feitiff.readPlaneIndex(allocator, entry.data, plane_index),
         .fits => fits.readPlaneIndex(allocator, entry.data, plane_index),
+        .flowsight => flowsight.readPlaneIndex(allocator, entry.data, plane_index),
         .fluoview => fluoview.readPlaneIndex(allocator, entry.data, plane_index),
         .gatandm2 => gatandm2.readPlaneIndex(allocator, entry.data, plane_index),
         .gel => gel.readPlaneIndex(allocator, entry.data, plane_index),
@@ -395,6 +398,7 @@ fn readInnerRegionIndex(
     if (entry.kind == .bdpathway) return bdpathway.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .dng) return dng.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .feitiff) return feitiff.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .flowsight) return flowsight.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .fluoview) return fluoview.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .gel) return gel.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .imacon) return imacon.readRegionIndex(allocator, entry.data, plane_index, region);
@@ -496,6 +500,7 @@ fn detectInner(filename: []const u8, data: []const u8) ?Entry.Kind {
     if (hasExtension(filename, ".img") and fei.matches(data)) return .fei;
     if (feitiff.matches(data)) return .feitiff;
     if (fits.matches(data)) return .fits;
+    if (flowsight.matches(data)) return .flowsight;
     if (fluoview.matches(data)) return .fluoview;
     if (gatandm2.matches(data)) return .gatandm2;
     if (gel.matches(data)) return .gel;
