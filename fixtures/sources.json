@@ -140,6 +140,7 @@
     "prairie": ["needs-public-sample"],
     "psd": ["generated-fixture"],
     "pyramidtiff": ["needs-public-sample"],
+    "qt": ["generated-fixture"],
     "quesant": ["needs-public-sample"],
     "rcpnl": ["ome_images/DV/"],
     "rhk": ["needs-public-sample"],

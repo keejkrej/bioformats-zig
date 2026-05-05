@@ -263,6 +263,7 @@ plane, which can differ from logical OME `sizeC`.
 - POV-Ray DF3 volumes with 8/16/32-bit big-endian unsigned samples; Z slices are exposed as planes.
 - Prairie TIFF files identified by Prairie software and private TIFF tags, decoded through the TIFF pixel path; companion `.xml/.cfg/.env` grouping, channel/sequence metadata, time points, and physical calibration are not yet handled.
 - Pyramid TIFF files identified by Faas software tags, decoded through the TIFF pixel path; pyramid resolution metadata is not yet modeled as series.
+- QuickTime `.mov`/`.qt` files are detected from MOV atoms and reported as metadata-only `qt` using `tkhd`/`stsd`/`stsz`/`stco`; raw, RLE, RPZA, MJPB, and JPEG codec pixel decoding is not yet implemented.
 - Quesant AFM files with square little-endian 16-bit grayscale planes.
 - RCPNL `.rcpnl` DeltaVision variant files decoded through the DeltaVision pixel path and reported as `rcpnl`; position/timepoint metadata and Nikon objective mappings are not yet surfaced.
 - RHK Technologies SPM files with 8-bit unsigned, 16/32-bit signed integer, and 32-bit floating-point scalar planes, including text-header axis flips.

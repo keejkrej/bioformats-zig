@@ -115,6 +115,7 @@ pub const prairie = @import("readers/prairie.zig");
 pub const pqbin = @import("readers/pqbin.zig");
 pub const psd = @import("readers/psd.zig");
 pub const pyramidtiff = @import("readers/pyramidtiff.zig");
+pub const qt = @import("readers/qt.zig");
 pub const quesant = @import("readers/quesant.zig");
 pub const rcpnl = @import("readers/rcpnl.zig");
 pub const rhk = @import("readers/rhk.zig");
@@ -892,6 +893,12 @@ pub const formats = [_]FormatDescriptor{
         .can_read_pixels = true,
     },
     .{
+        .id = "qt",
+        .name = "QuickTime metadata",
+        .extensions = &.{ "mov", "qt" },
+        .can_read_pixels = false,
+    },
+    .{
         .id = "povray",
         .name = "POV-Ray DF3 volume",
         .extensions = &.{"df3"},
@@ -1412,6 +1419,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (photoshoptiff.matches(data)) return "photoshoptiff";
     if (ionpathmibi.matches(data)) return "ionpathmibi";
     if (pyramidtiff.matches(data)) return "pyramidtiff";
+    if (qt.matches(data)) return "qt";
     if (seq.matches(data)) return "seq";
     if (simplepci.matches(data)) return "simplepci";
     if (sis.matches(data)) return "sis";
@@ -1559,6 +1567,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (photoshoptiff.matches(data)) return photoshoptiff.readMetadata(data);
     if (ionpathmibi.matches(data)) return ionpathmibi.readMetadata(data);
     if (pyramidtiff.matches(data)) return pyramidtiff.readMetadata(data);
+    if (qt.matches(data)) return qt.readMetadata(data);
     if (seq.matches(data)) return seq.readMetadata(data);
     if (simplepci.matches(data)) return simplepci.readMetadata(data);
     if (sis.matches(data)) return sis.readMetadata(data);
@@ -1772,6 +1781,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (photoshoptiff.matches(data)) return photoshoptiff.readPlaneIndex(allocator, data, plane_index);
     if (ionpathmibi.matches(data)) return ionpathmibi.readPlaneIndex(allocator, data, plane_index);
     if (pyramidtiff.matches(data)) return pyramidtiff.readPlaneIndex(allocator, data, plane_index);
+    if (qt.matches(data)) return qt.readPlaneIndex(allocator, data, plane_index);
     if (seq.matches(data)) return seq.readPlaneIndex(allocator, data, plane_index);
     if (simplepci.matches(data)) return simplepci.readPlaneIndex(allocator, data, plane_index);
     if (sis.matches(data)) return sis.readPlaneIndex(allocator, data, plane_index);
@@ -1964,6 +1974,7 @@ test {
     _ = prairie;
     _ = psd;
     _ = pyramidtiff;
+    _ = qt;
     _ = scanr;
     _ = sdt;
     _ = seq;
