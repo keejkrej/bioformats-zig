@@ -1,6 +1,8 @@
 const std = @import("std");
 const build_options = @import("build_options");
 
+pub const has_openjpeg = build_options.has_openjpeg;
+
 pub const afi = @import("readers/afi.zig");
 pub const aim = @import("readers/aim.zig");
 pub const alicona = @import("readers/alicona.zig");

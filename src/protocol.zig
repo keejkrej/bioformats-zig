@@ -1922,6 +1922,44 @@ test "server probes and opens jpk path through tiff delegate" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
 }
 
+test "server reads jpeg2000 and jpx paths through json rpc" {
+    if (!bio.has_openjpeg) return error.SkipZigTest;
+    const j2k_path = "protocol-jpeg2000-test.j2k";
+    const jpx_path = "protocol-jpx-test.jpx";
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = j2k_path, .data = &bio.jpeg2000.tiny_j2k_codestream });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, j2k_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = jpx_path, .data = &bio.jpeg2000.tiny_j2k_codestream });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, jpx_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"readPlane\",\"params\":{\"path\":\"protocol-jpeg2000-test.j2k\",\"planeIndex\":0,\"x\":0,\"y\":0,\"width\":3,\"height\":5}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"jpeg2000\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"N2KfMllfLW0uoFEynW99\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"probe\",\"params\":{\"path\":\"protocol-jpx-test.jpx\"}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"jpx\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"readPlane\",\"params\":{\"path\":\"protocol-jpx-test.jpx\",\"planeIndex\":0,\"x\":0,\"y\":0,\"width\":3,\"height\":5}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"jpx\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"N2KfMllfLW0uoFEynW99\"") != null);
+}
+
 test "server probes jpeg path as tilejpeg path reader" {
     const file_path = "protocol-tilejpeg-test.jpg";
     const image = [_]u8{
