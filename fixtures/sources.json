@@ -42,7 +42,7 @@
     "omexml": ["ome_images/OME-XML/"],
     "operetta": ["ome_images/PerkinElmer-Operetta/"],
     "png": ["ome_images/PNG/"],
-    "scanr": ["ome_images/ScanR/"],
+    "scanr": ["ome_images/ScanR/idr0009/0307-10--2007-05-30/data/", "ome_images/ScanR/"],
     "svs": ["ome_images/SVS/"],
     "tiff": ["ome_images/TIFF/"],
     "trestle": ["ome_images/Trestle/"],

@@ -136,6 +136,7 @@ function Preferred-NamePattern {
         "nifti" { return '\.nii$' }
         "nrrd" { return '\.(nrrd|nhdr)$' }
         "obf" { return 'uncompressed\.obf$' }
+        "scanr" { return '^--W00002--P00001--Z00000--T00000--nucleus-dapi\.tif$' }
         "spc" { return '\.set$' }
         "xlef" { return '\.xlef$' }
         default { return $null }
