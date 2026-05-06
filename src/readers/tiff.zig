@@ -3,7 +3,7 @@ const bio = @import("../root.zig");
 const jpeg = @import("jpeg.zig");
 
 const max_strips = 1024;
-const max_tiles = 4096;
+const max_tiles = 16384;
 const max_color_map_values = 768;
 
 const ByteOrder = enum {
@@ -51,6 +51,7 @@ const Header = struct {
     tile_offsets: [max_tiles]u64,
     tile_byte_counts: [max_tiles]u64,
     tile_count: usize,
+    jpeg_tables: ?[]const u8,
     image_description: ?[]const u8,
 };
 
@@ -174,7 +175,18 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     const header = try parseHeaderAtIndex(data, info, plane_index);
     try validateReadable(header);
     const metadata = try readMetadata(data);
-    if (header.compression == 7) return readJpegCompressedPlane(allocator, data, header, metadata);
+    if (header.compression == 7) {
+        if (header.tile_count != 0) {
+            const bytes_per_pixel = metadata.bytesPerPixel();
+            const row_bytes = std.math.mul(usize, metadata.width, bytes_per_pixel) catch return error.UnsupportedVariant;
+            const out_len = std.math.mul(usize, row_bytes, metadata.height) catch return error.UnsupportedVariant;
+            const out = try allocator.alloc(u8, out_len);
+            errdefer allocator.free(out);
+            try readJpegTiledRegion(allocator, data, header, metadata, bio.Region.full(metadata), row_bytes, out);
+            return .{ .metadata = metadata, .data = out };
+        }
+        return readJpegCompressedPlane(allocator, data, header, metadata);
+    }
     const row_bytes = std.math.mul(usize, header.width, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
     const out_len = std.math.mul(usize, row_bytes, header.height) catch return error.UnsupportedVariant;
     const out = try allocator.alloc(u8, out_len);
@@ -245,8 +257,17 @@ pub fn readRegionIndex(
     try validateReadable(header);
     const metadata = try readMetadata(data);
     try region.validate(metadata);
-    if (region.isFull(metadata)) return readPlaneIndex(allocator, data, plane_index);
+    if (region.isFull(metadata) and !(header.compression == 7 and header.tile_count != 0)) return readPlaneIndex(allocator, data, plane_index);
     if (header.compression == 7) {
+        if (header.tile_count != 0) {
+            const bytes_per_pixel = metadata.bytesPerPixel();
+            const row_bytes = std.math.mul(usize, region.width, bytes_per_pixel) catch return error.UnsupportedVariant;
+            const out_len = std.math.mul(usize, row_bytes, region.height) catch return error.UnsupportedVariant;
+            const out = try allocator.alloc(u8, out_len);
+            errdefer allocator.free(out);
+            try readJpegTiledRegion(allocator, data, header, metadata, region, row_bytes, out);
+            return .{ .metadata = metadata, .data = out };
+        }
         const plane = try readPlaneIndex(allocator, data, plane_index);
         defer allocator.free(plane.data);
         return .{ .metadata = metadata, .data = try bio.cropPlane(allocator, plane, region) };
@@ -501,6 +522,7 @@ fn parseHeaderAtOffset(data: []const u8, info: TiffInfo, ifd_offset_u64: u64) bi
         .tile_offsets = [_]u64{0} ** max_tiles,
         .tile_byte_counts = [_]u64{0} ** max_tiles,
         .tile_count = 0,
+        .jpeg_tables = null,
         .image_description = null,
     };
 
@@ -562,6 +584,7 @@ fn parseHeaderAtOffset(data: []const u8, info: TiffInfo, ifd_offset_u64: u64) bi
                 const count = try copyEntryValues(info.order, data, entry, &header.tile_byte_counts);
                 if (header.tile_count == 0) header.tile_count = count;
             },
+            347 => header.jpeg_tables = try entryBytes(data, entry),
             else => {},
         }
     }
@@ -588,7 +611,7 @@ fn validateReadable(header: Header) bio.ReaderError!void {
         if (header.photometric != 6 and header.photometric != 2) return error.UnsupportedVariant;
         if (header.samples_per_pixel != 3 or first_bits != 8 or first_sample_format != 1) return error.UnsupportedVariant;
         if (header.predictor != 1 or header.fill_order != 1 or header.planar_configuration != 1) return error.UnsupportedVariant;
-        if (header.strip_count != 1 or header.tile_count != 0) return error.UnsupportedVariant;
+        if (!((header.strip_count == 1 and header.tile_count == 0) or (header.strip_count == 0 and header.tile_count != 0))) return error.UnsupportedVariant;
     }
     if (first_sample_format != 1 and first_sample_format != 2 and first_sample_format != 3) return error.UnsupportedVariant;
     var i: usize = 0;
@@ -648,11 +671,106 @@ fn readJpegCompressedPlane(
     const src_offset = try checkedUsize(header.strip_offsets[0]);
     const compressed_bytes = try checkedUsize(header.strip_byte_counts[0]);
     if (src_offset > data.len or data.len - src_offset < compressed_bytes) return error.TruncatedData;
-    const decoded = try jpeg.readPlaneIndexAs(allocator, data[src_offset..][0..compressed_bytes], 0, metadata.format);
+    const jpeg_src = try jpegWithTables(allocator, data[src_offset..][0..compressed_bytes], header.jpeg_tables);
+    defer if (jpeg_src.owned) allocator.free(jpeg_src.bytes);
+    const decoded = try jpeg.readPlaneIndexAs(allocator, jpeg_src.bytes, 0, metadata.format);
     errdefer allocator.free(decoded.data);
     if (decoded.metadata.width != metadata.width or decoded.metadata.height != metadata.height) return error.UnsupportedVariant;
     if (decoded.metadata.pixel_type != metadata.pixel_type) return error.UnsupportedVariant;
     return .{ .metadata = metadata, .data = decoded.data };
+}
+
+fn readJpegTiledRegion(
+    allocator: std.mem.Allocator,
+    data: []const u8,
+    header: Header,
+    metadata: bio.Metadata,
+    region: bio.Region,
+    region_row_bytes: usize,
+    out: []u8,
+) bio.ReaderError!void {
+    const bytes_per_pixel = metadata.bytesPerPixel();
+    const tile_width: usize = header.tile_width;
+    const tile_length: usize = header.tile_length;
+    const tiles_across = ceilDiv(header.width, header.tile_width);
+    const tiles_down = ceilDiv(header.height, header.tile_length);
+    const expected_tiles = std.math.mul(usize, tiles_across, tiles_down) catch return error.UnsupportedVariant;
+    if (header.tile_count < expected_tiles) return error.TruncatedData;
+
+    const region_x0: usize = region.x;
+    const region_y0: usize = region.y;
+    const region_x1: usize = @as(usize, region.x) + region.width;
+    const region_y1: usize = @as(usize, region.y) + region.height;
+    const start_tile_x = region_x0 / tile_width;
+    const end_tile_x = (region_x1 - 1) / tile_width;
+    const start_tile_y = region_y0 / tile_length;
+    const end_tile_y = (region_y1 - 1) / tile_length;
+
+    var tile_y = start_tile_y;
+    while (tile_y <= end_tile_y) : (tile_y += 1) {
+        var tile_x = start_tile_x;
+        while (tile_x <= end_tile_x) : (tile_x += 1) {
+            const tile_index = tile_y * tiles_across + tile_x;
+            const src_offset = try checkedUsize(header.tile_offsets[tile_index]);
+            const compressed_bytes = try checkedUsize(header.tile_byte_counts[tile_index]);
+            if (src_offset > data.len or data.len - src_offset < compressed_bytes) return error.TruncatedData;
+
+            const tile_x0 = tile_x * tile_width;
+            const tile_y0 = tile_y * tile_length;
+            const copy_x0 = @max(region_x0, tile_x0);
+            const copy_y0 = @max(region_y0, tile_y0);
+            const copy_x1 = @min(region_x1, tile_x0 + tile_width);
+            const copy_y1 = @min(region_y1, tile_y0 + tile_length);
+            const local_region: bio.Region = .{
+                .x = @intCast(copy_x0 - tile_x0),
+                .y = @intCast(copy_y0 - tile_y0),
+                .width = @intCast(copy_x1 - copy_x0),
+                .height = @intCast(copy_y1 - copy_y0),
+            };
+
+            const jpeg_src = try jpegWithTables(allocator, data[src_offset..][0..compressed_bytes], header.jpeg_tables);
+            defer if (jpeg_src.owned) allocator.free(jpeg_src.bytes);
+            const decoded = try jpeg.readRegionIndexAs(allocator, jpeg_src.bytes, 0, metadata.format, local_region);
+            defer allocator.free(decoded.data);
+            if (decoded.metadata.pixel_type != metadata.pixel_type) return error.UnsupportedVariant;
+
+            const dst_x = copy_x0 - region_x0;
+            const dst_y = copy_y0 - region_y0;
+            const copy_width = copy_x1 - copy_x0;
+            const copy_bytes = std.math.mul(usize, copy_width, bytes_per_pixel) catch return error.UnsupportedVariant;
+
+            var row: usize = 0;
+            while (row < local_region.height) : (row += 1) {
+                const dst_row = (dst_y + row) * region_row_bytes + dst_x * bytes_per_pixel;
+                const src_row = row * copy_bytes;
+                @memcpy(out[dst_row..][0..copy_bytes], decoded.data[src_row..][0..copy_bytes]);
+            }
+        }
+    }
+}
+
+const JpegSource = struct {
+    bytes: []const u8,
+    owned: bool,
+};
+
+fn jpegWithTables(allocator: std.mem.Allocator, src: []const u8, maybe_tables: ?[]const u8) bio.ReaderError!JpegSource {
+    const tables = maybe_tables orelse return .{ .bytes = src, .owned = false };
+    if (src.len < 2 or src[0] != 0xff or src[1] != 0xd8) return error.InvalidFormat;
+    var table_start: usize = 0;
+    var table_end: usize = tables.len;
+    if (table_end >= 2 and tables[0] == 0xff and tables[1] == 0xd8) table_start = 2;
+    if (table_end >= table_start + 2 and tables[table_end - 2] == 0xff and tables[table_end - 1] == 0xd9) table_end -= 2;
+    if (table_end <= table_start) return .{ .bytes = src, .owned = false };
+
+    const table_len = table_end - table_start;
+    const out_len = std.math.add(usize, 2 + table_len, src.len - 2) catch return error.UnsupportedVariant;
+    const out = try allocator.alloc(u8, out_len);
+    errdefer allocator.free(out);
+    @memcpy(out[0..2], src[0..2]);
+    @memcpy(out[2..][0..table_len], tables[table_start..table_end]);
+    @memcpy(out[2 + table_len ..], src[2..]);
+    return .{ .bytes = out, .owned = true };
 }
 
 fn readSeparatedStripPlane(
@@ -2119,6 +2237,56 @@ test "reads jpeg compressed rgb tiff strip" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqual(@as(usize, 3), plane.data.len);
     try std.testing.expect(plane.data[0] > 200);
+}
+
+test "reads jpeg compressed rgb tiff tiles region" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    try data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&data, 42);
+    try appendU32Le(&data, 8);
+
+    const entry_count = 11;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const bits_offset = ifd_end;
+    const tile_offsets_array = bits_offset + 6;
+    const tile_counts_array = tile_offsets_array + 2 * 4;
+    const first_tile_offset = tile_counts_array + 2 * 4;
+    const second_tile_offset = first_tile_offset + jpeg.baseline_red_jpeg.len;
+
+    try appendU16Le(&data, entry_count);
+    try appendEntry(&data, 256, 4, 1, 2);
+    try appendEntry(&data, 257, 4, 1, 1);
+    try appendEntry(&data, 258, 3, 3, bits_offset);
+    try appendEntry(&data, 259, 3, 1, 7);
+    try appendEntry(&data, 262, 3, 1, 2);
+    try appendEntry(&data, 277, 3, 1, 3);
+    try appendEntry(&data, 284, 3, 1, 1);
+    try appendEntry(&data, 322, 4, 1, 1);
+    try appendEntry(&data, 323, 4, 1, 1);
+    try appendEntry(&data, 324, 4, 2, tile_offsets_array);
+    try appendEntry(&data, 325, 4, 2, tile_counts_array);
+    try appendU32Le(&data, 0);
+    try appendU16Le(&data, 8);
+    try appendU16Le(&data, 8);
+    try appendU16Le(&data, 8);
+    try appendU32Le(&data, first_tile_offset);
+    try appendU32Le(&data, second_tile_offset);
+    try appendU32Le(&data, jpeg.baseline_red_jpeg.len);
+    try appendU32Le(&data, jpeg.baseline_red_jpeg.len);
+    try data.appendSlice(std.testing.allocator, &jpeg.baseline_red_jpeg);
+    try data.appendSlice(std.testing.allocator, &jpeg.baseline_red_jpeg);
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1), metadata.height);
+
+    const region = try readRegionIndex(std.testing.allocator, data.items, 0, .{ .x = 1, .y = 0, .width = 1, .height = 1 });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 3), region.data.len);
+    try std.testing.expect(region.data[0] > 200);
 }
 
 test "reads packbits compressed grayscale tiff tiles" {

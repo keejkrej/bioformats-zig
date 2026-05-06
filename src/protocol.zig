@@ -161,6 +161,12 @@ pub const Server = struct {
                     return .{ .wrote_response = true };
                 },
             };
+            if (bio.nd2.isPath(path)) {
+                if (bio.nd2.readMetadataPath(self.allocator, self.io, path)) |_| {
+                    try writeProbeFormat(writer, id, path, "nd2");
+                    return .{ .wrote_response = true };
+                } else |_| {}
+            }
             const bytes = readFile(self.allocator, self.io, path) catch |err| {
                 try writeReaderError(writer, id, err);
                 return .{ .wrote_response = true };
@@ -238,6 +244,14 @@ pub const Server = struct {
                             return .{ .wrote_response = true };
                         },
                     };
+                    if (bio.nd2.isPath(path)) {
+                        if (bio.nd2.readMetadataPath(self.allocator, self.io, path)) |metadata| {
+                            try beginResult(writer, id);
+                            try writeMetadataObject(writer, metadata);
+                            try endMessage(writer);
+                            return .{ .wrote_response = true };
+                        } else |_| {}
+                    }
                     const bytes = readFile(self.allocator, self.io, path) catch |err| {
                         try writeReaderError(writer, id, err);
                         return .{ .wrote_response = true };
@@ -329,6 +343,25 @@ pub const Server = struct {
                             return .{ .wrote_response = true };
                         },
                     };
+                    if (bio.nd2.isPath(path)) {
+                        if (bio.nd2.readMetadataPath(self.allocator, self.io, path)) |metadata| {
+                            const plane_index = getPlaneIndex(params, metadata) catch {
+                                try writeError(writer, id, -32602, "Invalid plane index");
+                                return .{ .wrote_response = true };
+                            };
+                            const region = getRegion(params, metadata) catch {
+                                try writeError(writer, id, -32602, "Invalid plane region");
+                                return .{ .wrote_response = true };
+                            };
+                            const plane = bio.nd2.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region) catch |err| {
+                                try writeReaderError(writer, id, err);
+                                return .{ .wrote_response = true };
+                            };
+                            defer self.allocator.free(plane.data);
+                            try writePlane(writer, self.allocator, id, plane, region);
+                            return .{ .wrote_response = true };
+                        } else |_| {}
+                    }
                     const bytes = readFile(self.allocator, self.io, path) catch |err| {
                         try writeReaderError(writer, id, err);
                         return .{ .wrote_response = true };

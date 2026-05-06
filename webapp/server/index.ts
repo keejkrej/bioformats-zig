@@ -117,7 +117,35 @@ class ZigRpc {
 const rpc = new ZigRpc(binaryPath);
 
 async function listDirectory(params?: Record<string, JsonValue>) {
-  const requested = typeof params?.path === "string" && params.path.length > 0 ? params.path : homedir();
+  if (typeof params?.path !== "string" || params.path.length === 0) {
+    return process.platform === "win32" ? listWindowsDrives() : listDirectoryPath(parse(process.cwd()).root);
+  }
+
+  return listDirectoryPath(params.path);
+}
+
+async function listWindowsDrives() {
+  const entries: DirectoryEntry[] = [];
+  for (let code = "A".charCodeAt(0); code <= "Z".charCodeAt(0); code++) {
+    const name = `${String.fromCharCode(code)}:\\`;
+    try {
+      const driveStat = await stat(name);
+      if (!driveStat.isDirectory()) continue;
+      entries.push({ name, path: name, kind: "directory" });
+    } catch {
+      // Ignore drive letters that are not mounted or are not readable.
+    }
+  }
+
+  return {
+    path: "This PC",
+    parentPath: null,
+    homePath: homedir(),
+    entries
+  };
+}
+
+async function listDirectoryPath(requested: string) {
   const directory = resolve(requested);
   const directoryStat = await stat(directory);
   if (!directoryStat.isDirectory()) throw new Error(`${directory} is not a directory`);

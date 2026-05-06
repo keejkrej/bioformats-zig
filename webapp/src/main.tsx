@@ -19,7 +19,7 @@ type Metadata = {
   imageDescription?: string;
 };
 
-type OpenResult = { handle: number; path: string; metadata: Metadata };
+type ImageSource = { path: string; metadata: Metadata };
 type PlaneResult = {
   metadata: Metadata;
   encoding: "base64";
@@ -46,9 +46,14 @@ type InitResult = {
 };
 
 type ViewerState = {
-  planeIndex: number;
+  z: number;
+  c: number;
+  t: number;
   contrast: "auto" | "raw";
-  setPlaneIndex: (planeIndex: number) => void;
+  setZ: (z: number) => void;
+  setC: (c: number) => void;
+  setT: (t: number) => void;
+  resetCoordinates: () => void;
   setContrast: (contrast: "auto" | "raw") => void;
 };
 
@@ -64,9 +69,14 @@ type SocketResponse<T> = {
 };
 
 const useViewerState = create<ViewerState>((set) => ({
-  planeIndex: 0,
+  z: 0,
+  c: 0,
+  t: 0,
   contrast: "auto",
-  setPlaneIndex: (planeIndex) => set({ planeIndex }),
+  setZ: (z) => set({ z }),
+  setC: (c) => set({ c }),
+  setT: (t) => set({ t }),
+  resetCoordinates: () => set({ z: 0, c: 0, t: 0 }),
   setContrast: (contrast) => set({ contrast })
 }));
 
@@ -145,8 +155,8 @@ function App() {
 function Viewer() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sourceLabel, setSourceLabel] = useState("");
-  const [opened, setOpened] = useState<OpenResult | null>(null);
-  const { planeIndex, setPlaneIndex, contrast, setContrast } = useViewerState();
+  const [source, setSource] = useState<ImageSource | null>(null);
+  const { z, c, t, setZ, setC, setT, resetCoordinates, contrast, setContrast } = useViewerState();
 
   const bridgeStatus = useQuery({
     queryKey: ["initialize"],
@@ -155,29 +165,24 @@ function Viewer() {
 
   const openMutation = useMutation({
     mutationFn: async (path: string) => {
-      if (opened) await wsRequest("close", { handle: opened.handle }).catch(() => {});
-      return wsRequest<OpenResult>("open", { path });
+      const metadata = await wsRequest<Metadata>("metadata", { path });
+      return { path, metadata };
     },
     onSuccess: (result) => {
-      setOpened(result);
+      setSource(result);
       setSourceLabel(result.path);
-      setPlaneIndex(0);
+      resetCoordinates();
     }
   });
 
   const planeQuery = useQuery({
-    queryKey: ["plane", opened?.handle, planeIndex],
-    enabled: opened !== null,
-    queryFn: () => wsRequest<PlaneResult>("readPlane", { handle: opened!.handle, planeIndex })
+    queryKey: ["plane", source?.path, z, c, t],
+    enabled: source !== null,
+    queryFn: () => wsRequest<PlaneResult>("readPlane", { path: source!.path, z, c, t })
   });
 
-  useEffect(() => {
-    return () => {
-      if (opened) void wsRequest("close", { handle: opened.handle }).catch(() => {});
-    };
-  }, [opened]);
-
-  const metadata = opened?.metadata;
+  const metadata = source?.metadata;
+  const logicalSizeC = metadata ? selectableSizeC(metadata) : 1;
   const isReady = bridgeStatus.isSuccess && !bridgeStatus.isError;
 
   return (
@@ -211,20 +216,9 @@ function Viewer() {
           </div>
 
           <div className="panel">
-            <div className="flex items-center justify-between gap-2">
-              <label className="label" htmlFor="plane">Plane</label>
-              <span className="text-xs text-zinc-400">{metadata ? `${planeIndex + 1} / ${metadata.planeCount}` : "none"}</span>
-            </div>
-            <input
-              id="plane"
-              className="w-full"
-              type="range"
-              min={0}
-              max={Math.max(0, (metadata?.planeCount ?? 1) - 1)}
-              value={planeIndex}
-              disabled={!metadata}
-              onChange={(event) => setPlaneIndex(Number(event.target.value))}
-            />
+            <AxisSlider label="Z" value={z} size={metadata?.sizeZ ?? 1} disabled={!metadata} onChange={setZ} />
+            <AxisSlider label="C" value={c} size={logicalSizeC} disabled={!metadata} onChange={setC} />
+            <AxisSlider label="T" value={t} size={metadata?.sizeT ?? 1} disabled={!metadata} onChange={setT} />
             <div className="mt-3 grid grid-cols-2 gap-2">
               <button className={contrast === "auto" ? "button button-active" : "button"} onClick={() => setContrast("auto")}>
                 Auto
@@ -260,6 +254,45 @@ function Viewer() {
   );
 }
 
+function selectableSizeC(metadata: Metadata): number {
+  if ((metadata.samplesPerPixel ?? 0) > 1 && metadata.planeCount <= metadata.sizeZ * metadata.sizeT) return 1;
+  return Math.max(1, metadata.sizeC);
+}
+
+function AxisSlider({
+  label,
+  value,
+  size,
+  disabled,
+  onChange
+}: {
+  label: string;
+  value: number;
+  size: number;
+  disabled: boolean;
+  onChange: (value: number) => void;
+}) {
+  const max = Math.max(0, size - 1);
+  return (
+    <div className="mb-3 last:mb-0">
+      <div className="flex items-center justify-between gap-2">
+        <label className="label mb-0" htmlFor={`axis-${label}`}>{label}</label>
+        <span className="text-xs text-zinc-400">{disabled ? "none" : `${Math.min(value, max) + 1} / ${Math.max(1, size)}`}</span>
+      </div>
+      <input
+        id={`axis-${label}`}
+        className="w-full"
+        type="range"
+        min={0}
+        max={max}
+        value={Math.min(value, max)}
+        disabled={disabled || max === 0}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </div>
+  );
+}
+
 function FileDialog({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: (entry: DirectoryEntry) => void }) {
   const [path, setPath] = useState<string | undefined>();
   const [selected, setSelected] = useState<DirectoryEntry | null>(null);
@@ -269,6 +302,10 @@ function FileDialog({ open, onClose, onPick }: { open: boolean; onClose: () => v
     enabled: open,
     queryFn: () => wsRequest<DirectoryListing>("listDirectory", path ? { path } : undefined)
   });
+
+  useEffect(() => {
+    if (open) setPath(undefined);
+  }, [open]);
 
   useEffect(() => {
     setSelected(null);
@@ -294,12 +331,15 @@ function FileDialog({ open, onClose, onPick }: { open: boolean; onClose: () => v
         <div className="dialog-header">
           <div className="min-w-0">
             <h2 id="file-dialog-title" className="text-sm font-semibold">Open image</h2>
-            <p className="truncate text-xs text-zinc-400">{current?.path ?? "Loading home folder"}</p>
+            <p className="truncate text-xs text-zinc-400">{current?.path ?? "Loading root"}</p>
           </div>
           <button className="button" onClick={onClose}>Close</button>
         </div>
 
         <div className="dialog-toolbar">
+          <button className="button" onClick={() => setPath(undefined)} disabled={listing.isLoading}>
+            Root
+          </button>
           <button
             className="button"
             onClick={() => current?.parentPath && setPath(current.parentPath)}

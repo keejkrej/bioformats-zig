@@ -32,7 +32,7 @@
     "OME KLB public samples were checked on 2026-05-06; the small img.klb and idr0044 sample use compression 1 (BZIP2), while the current KLB pixel reader supports uncompressed and ZLIB single-block payloads.",
     "OME BDV public XML descriptors were checked on 2026-05-06; their HDF5 pixel companions are above the default public fixture cap, with the smallest checked companion 356633292 bytes.",
     "OME SVS public samples were checked on 2026-05-06; the available 77917.svs and 77928.svs files are above the default public fixture cap.",
-    "OME Trestle public CMU-1.tif was checked on 2026-05-06; it probes as trestle but exposes an unsupported TIFF variant in the current Zig implementation.",
+    "OME Trestle public CMU-1.tif was pixel-smoke verified on 2026-05-06 after adding regional tiled JPEG decoding; the file is 163649046 bytes, above the default public fixture cap.",
     "OME Ventana public BIF files were checked on 2026-05-06; the smallest checked BIF is 227377284 bytes, above the default public fixture cap.",
     "OME Leica-SCN public files were checked on 2026-05-06; the smallest checked SCN is 291812870 bytes, above the default public fixture cap.",
     "OME Imspector public test.msr was checked on 2026-05-06; it is 275404088 bytes, above the default public fixture cap.",
