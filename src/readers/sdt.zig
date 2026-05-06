@@ -25,6 +25,11 @@ const Block = struct {
     length: usize,
 };
 
+const ZipEntry = struct {
+    method: u16,
+    payload: []const u8,
+};
+
 const Parsed = struct {
     width: u32,
     height: u32,
@@ -32,6 +37,8 @@ const Parsed = struct {
     channels: u16,
     timepoints: u16,
     increment: u16,
+    data_block_offset: usize,
+    separate_channel_blocks: bool,
     block: Block,
 };
 
@@ -70,9 +77,12 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     const slab = plane_index / times;
     const time_bin = plane_index % times;
     if (slab >= @as(u32, parsed.channels) * @as(u32, parsed.timepoints)) return error.InvalidPlaneIndex;
-    if (parsed.block.data_offset > data.len or data.len - parsed.block.data_offset < parsed.block.length) return error.TruncatedData;
-    const block_data = data[parsed.block.data_offset..][0..parsed.block.length];
-    if (block_data.len >= 2 and block_data[0] == 'P' and block_data[1] == 'K') return error.UnsupportedVariant;
+    const block = if (parsed.separate_channel_blocks)
+        try parseBlockAt(data, parsed.data_block_offset, slab)
+    else
+        parsed.block;
+    if (block.data_offset > data.len or data.len - block.data_offset < block.length) return error.TruncatedData;
+    const block_data = data[block.data_offset..][0..block.length];
 
     const bytes_per_sample = 2;
     var padded_width = paddedWidth(parsed.width);
@@ -90,12 +100,17 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
             plane_stride = unpadded_plane_stride;
         }
     }
-    const channel_offset = std.math.mul(usize, slab, plane_stride) catch return error.UnsupportedVariant;
+    const channel_offset = if (parsed.separate_channel_blocks) 0 else std.math.mul(usize, slab, plane_stride) catch return error.UnsupportedVariant;
     if (channel_offset > block_data.len or block_data.len - channel_offset < plane_stride) return error.TruncatedData;
 
     const out_len = try planeByteCount(metadata);
     const out = try allocator.alloc(u8, out_len);
     errdefer allocator.free(out);
+    if (parseZipEntry(block_data)) |zip| {
+        try copyZippedPlane(allocator, zip, parsed, channel_offset, time_bin, out);
+        return .{ .metadata = metadata, .data = out };
+    } else |_| {}
+
     var row: usize = 0;
     while (row < parsed.height) : (row += 1) {
         var col: usize = 0;
@@ -127,6 +142,12 @@ fn parse(data: []const u8) bio.ReaderError!Parsed {
     if (dims.width == 0 or dims.height == 0 or dims.time_bins == 0) return error.InvalidFormat;
     if (dims.channels == 0) dims.channels = 1;
     const block = try parseFirstBlock(data, header.data_block_offset);
+    const bytes_per_sample = 2;
+    const pixels = std.math.mul(usize, dims.width, dims.height) catch return error.UnsupportedVariant;
+    const bin_bytes = std.math.mul(usize, pixels, bytes_per_sample) catch return error.UnsupportedVariant;
+    if (bin_bytes == 0) return error.InvalidFormat;
+    const bins_in_first_block = block.length / bin_bytes;
+    if (bins_in_first_block > 0 and bins_in_first_block < dims.time_bins) dims.time_bins = @intCast(bins_in_first_block);
     return .{
         .width = dims.width,
         .height = dims.height,
@@ -134,8 +155,82 @@ fn parse(data: []const u8) bio.ReaderError!Parsed {
         .channels = try u16FromU32(dims.channels),
         .timepoints = try u16FromU32(timepoints),
         .increment = try u16FromU32(increment),
+        .data_block_offset = header.data_block_offset,
+        .separate_channel_blocks = measure.separate_channel_blocks,
         .block = block,
     };
+}
+
+fn copyZippedPlane(
+    allocator: std.mem.Allocator,
+    zip: ZipEntry,
+    parsed: Parsed,
+    channel_offset: usize,
+    time_bin: u32,
+    out: []u8,
+) bio.ReaderError!void {
+    const bytes_per_sample = 2;
+    const padded_width = paddedWidth(parsed.width);
+    const row_bytes = std.math.mul(usize, padded_width, parsed.time_bins) catch return error.UnsupportedVariant;
+    const zipped_row_bytes = std.math.mul(usize, row_bytes, bytes_per_sample) catch return error.UnsupportedVariant;
+    const row_buf = try allocator.alloc(u8, zipped_row_bytes);
+    defer allocator.free(row_buf);
+
+    if (zip.method == 0) {
+        if (channel_offset > zip.payload.len) return error.TruncatedData;
+        var offset = channel_offset;
+        var row: usize = 0;
+        while (row < parsed.height) : (row += 1) {
+            if (offset > zip.payload.len or zip.payload.len - offset < zipped_row_bytes) return error.TruncatedData;
+            copySdtRow(zip.payload[offset..][0..zipped_row_bytes], parsed, time_bin, out, row);
+            offset += zipped_row_bytes;
+        }
+        return;
+    }
+
+    if (zip.method != 8) return error.UnsupportedVariant;
+    var input = std.Io.Reader.fixed(zip.payload);
+    var buffer: [std.compress.flate.max_window_len]u8 = undefined;
+    var decompressor = std.compress.flate.Decompress.init(&input, .raw, &buffer);
+    try discardReader(&decompressor.reader, channel_offset);
+    var row: usize = 0;
+    while (row < parsed.height) : (row += 1) {
+        decompressor.reader.readSliceAll(row_buf) catch return error.TruncatedData;
+        copySdtRow(row_buf, parsed, time_bin, out, row);
+    }
+}
+
+fn copySdtRow(row_buf: []const u8, parsed: Parsed, time_bin: u32, out: []u8, row: usize) void {
+    const bytes_per_sample = 2;
+    var col: usize = 0;
+    while (col < parsed.width) : (col += 1) {
+        const src_sample = ((col * parsed.time_bins + time_bin) * bytes_per_sample);
+        const dst_sample = (row * parsed.width + col) * bytes_per_sample;
+        @memcpy(out[dst_sample..][0..bytes_per_sample], row_buf[src_sample..][0..bytes_per_sample]);
+    }
+}
+
+fn discardReader(reader: *std.Io.Reader, amount: usize) bio.ReaderError!void {
+    var scratch: [4096]u8 = undefined;
+    var remaining = amount;
+    while (remaining != 0) {
+        const chunk = @min(remaining, scratch.len);
+        reader.readSliceAll(scratch[0..chunk]) catch return error.TruncatedData;
+        remaining -= chunk;
+    }
+}
+
+fn parseZipEntry(data: []const u8) bio.ReaderError!ZipEntry {
+    if (data.len < 30 or !std.mem.eql(u8, data[0..4], "PK\x03\x04")) return error.InvalidFormat;
+    const method = readU16(data[8..10]);
+    const compressed_size = try usizeFromU32(readU32(data[18..22]));
+    const name_len: usize = readU16(data[26..28]);
+    const extra_len: usize = readU16(data[28..30]);
+    const payload_offset = std.math.add(usize, 30, std.math.add(usize, name_len, extra_len) catch return error.UnsupportedVariant) catch return error.UnsupportedVariant;
+    if (payload_offset > data.len) return error.TruncatedData;
+    const available = data.len - payload_offset;
+    const payload_len = if (compressed_size != 0 and compressed_size <= available) compressed_size else available;
+    return .{ .method = method, .payload = data[payload_offset..][0..payload_len] };
 }
 
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
@@ -209,6 +304,7 @@ const Measure = struct {
     channels: u32 = 0,
     timepoints: u32 = 0,
     increment: u32 = 1,
+    separate_channel_blocks: bool = false,
 };
 
 fn parseMeasure(data: []const u8, header: Header) Measure {
@@ -234,15 +330,33 @@ fn parseMeasure(data: []const u8, header: Header) Measure {
         parsed.height = 1;
     } else if (meas_mode == 13) {
         parsed.channels = header.measure_count;
+        parsed.separate_channel_blocks = true;
     }
     return parsed;
 }
 
 fn parseFirstBlock(data: []const u8, offset: usize) bio.ReaderError!Block {
+    return parseBlockAt(data, offset, 0);
+}
+
+fn parseBlockAt(data: []const u8, offset: usize, index: u32) bio.ReaderError!Block {
+    var block_offset = offset;
+    var i: u32 = 0;
+    while (i < index) : (i += 1) {
+        if (block_offset > data.len or data.len - block_offset < block_header_len) return error.TruncatedData;
+        block_offset = try usizeFromI32(readI32(data[block_offset + 6 .. block_offset + 10]));
+    }
+    return parseBlockAtOffset(data, block_offset);
+}
+
+fn parseBlockAtOffset(data: []const u8, offset: usize) bio.ReaderError!Block {
     if (offset > data.len or data.len - offset < block_header_len) return error.TruncatedData;
     const data_offset = offset + block_header_len;
     const next_offset = try usizeFromI32(readI32(data[offset + 6 .. offset + 10]));
-    const length = try usizeFromU32(readU32(data[offset + 18 .. offset + 22]));
+    var length = try usizeFromU32(readU32(data[offset + 18 .. offset + 22]));
+    if (data_offset <= next_offset and next_offset <= data.len and length > next_offset - data_offset) {
+        length = next_offset - data_offset;
+    }
     if (data_offset > data.len or data.len - data_offset < length) return error.TruncatedData;
     return .{ .data_offset = data_offset, .next_offset = next_offset, .length = length };
 }
@@ -422,9 +536,31 @@ test "reads sdt dimensions from measure block" {
     try std.testing.expectEqualSlices(u8, &.{ 4, 0 }, plane.data);
 }
 
-test "rejects zipped sdt block" {
+fn appendStoredZip(list: *std.ArrayList(u8), name: []const u8, payload: []const u8) !void {
+    try list.appendSlice(std.testing.allocator, "PK\x03\x04");
+    try appendU16(list, 20);
+    try appendU16(list, 0);
+    try appendU16(list, 0);
+    try appendU16(list, 0);
+    try appendU16(list, 0);
+    try appendU32(list, 0);
+    try appendU32(list, @intCast(payload.len));
+    try appendU32(list, @intCast(payload.len));
+    try appendU16(list, @intCast(name.len));
+    try appendU16(list, 0);
+    try list.appendSlice(std.testing.allocator, name);
+    try list.appendSlice(std.testing.allocator, payload);
+}
+
+test "reads stored zipped sdt block" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
-    try appendSdt(&data, 1, 1, 1, 1, "PK");
-    try std.testing.expectError(error.UnsupportedVariant, readPlane(std.testing.allocator, data.items));
+    var zip: std.ArrayList(u8) = .empty;
+    defer zip.deinit(std.testing.allocator);
+    try appendStoredZip(&zip, "data_block", &.{ 8, 0, 0, 0, 0, 0, 0, 0 });
+    try appendSdt(&data, 1, 1, 1, 1, zip.items);
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 8, 0 }, plane.data);
 }
