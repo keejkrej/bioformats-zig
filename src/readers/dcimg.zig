@@ -71,6 +71,37 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     return .{ .metadata = metadata, .data = out };
 }
 
+pub fn readRegionIndex(
+    allocator: std.mem.Allocator,
+    data: []const u8,
+    plane_index: u32,
+    region: bio.Region,
+) bio.ReaderError!bio.Plane {
+    const header = try parseHeader(data);
+    const metadata = try readMetadata(data);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
+    try region.validate(metadata);
+    if (region.isFull(metadata)) return readPlaneIndex(allocator, data, plane_index);
+
+    const bytes_per_pixel = metadata.bytesPerPixel();
+    const full_row_bytes = std.math.mul(usize, metadata.width, bytes_per_pixel) catch return error.UnsupportedVariant;
+    const region_row_bytes = std.math.mul(usize, region.width, bytes_per_pixel) catch return error.UnsupportedVariant;
+    const out_len = std.math.mul(usize, region_row_bytes, region.height) catch return error.UnsupportedVariant;
+
+    const base = std.math.add(usize, header.header_size, header.data_offset) catch return error.UnsupportedVariant;
+    const stride = std.math.add(usize, header.bytes_per_image, header.frame_footer_size) catch return error.UnsupportedVariant;
+    const plane_offset = std.math.mul(usize, stride, plane_index) catch return error.UnsupportedVariant;
+    const start_row = std.math.mul(usize, region.y, full_row_bytes) catch return error.UnsupportedVariant;
+    const offset = std.math.add(usize, std.math.add(usize, base, plane_offset) catch return error.UnsupportedVariant, start_row) catch return error.UnsupportedVariant;
+    const source_rows_len = std.math.mul(usize, region.height, full_row_bytes) catch return error.UnsupportedVariant;
+    if (offset > data.len or data.len - offset < source_rows_len) return error.TruncatedData;
+
+    const out = try allocator.alloc(u8, out_len);
+    errdefer allocator.free(out);
+    copyFlippedRegionRows(data[offset..][0..source_rows_len], full_row_bytes, region.x * bytes_per_pixel, region_row_bytes, region.height, out);
+    return .{ .metadata = metadata, .data = out };
+}
+
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (data.len < 160 or !std.mem.eql(u8, data[0..signature.len], signature)) return error.InvalidFormat;
     const version = readU32(data[8..12]);
@@ -130,6 +161,15 @@ fn copyFlippedRows(src: []const u8, row_bytes: usize, height: u32, out: []u8) vo
         const src_row = (@as(usize, height) - 1 - y) * row_bytes;
         const dst_row = y * row_bytes;
         @memcpy(out[dst_row..][0..row_bytes], src[src_row..][0..row_bytes]);
+    }
+}
+
+fn copyFlippedRegionRows(src: []const u8, src_row_bytes: usize, src_x: usize, dst_row_bytes: usize, height: u32, out: []u8) void {
+    var y: usize = 0;
+    while (y < height) : (y += 1) {
+        const src_row = (@as(usize, height) - 1 - y) * src_row_bytes + src_x;
+        const dst_row = y * dst_row_bytes;
+        @memcpy(out[dst_row..][0..dst_row_bytes], src[src_row..][0..dst_row_bytes]);
     }
 }
 
@@ -215,4 +255,60 @@ test "reads dcimg with frame footers" {
     const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{7}, plane.data);
+}
+
+test "reads dcimg region with Bio-Formats row-window flip" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendHeader(&data, 3, 3, 1, pixel_mono8, 0);
+    try data.appendSlice(std.testing.allocator, &.{ 1, 2, 3, 4, 5, 6, 7, 8, 9 });
+
+    const region = try readRegionIndex(std.testing.allocator, data.items, 0, .{ .x = 1, .y = 0, .width = 2, .height = 2 });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqualSlices(u8, &.{ 5, 6, 2, 3 }, region.data);
+}
+
+test "matches Bio-Formats default metadata for cached DCIMG fixture" {
+    const file_path = "fixtures/cache/dcimg/bead_bot4__560_00000_00000.dcimg";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(2 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("dcimg", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2048), metadata.width);
+    try std.testing.expectEqual(@as(u32, 200), metadata.height);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYZCT", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats default plane and region hashes for cached DCIMG fixture" {
+    const file_path = "fixtures/cache/dcimg/bead_bot4__560_00000_00000.dcimg";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(2 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(@as(usize, 819200), plane.data.len);
+    const expected_plane: [32]u8 = .{ 0x74, 0x7c, 0xef, 0x1b, 0xe1, 0x8a, 0xec, 0xb9, 0xd2, 0x1e, 0x74, 0xe1, 0x6a, 0x17, 0x7c, 0x09, 0x88, 0xce, 0x4f, 0xfe, 0x5d, 0xf3, 0x55, 0x7e, 0x7d, 0x52, 0x98, 0x2a, 0x82, 0xe0, 0x0d, 0xa5 };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_plane, &digest);
+
+    const region = try readRegionIndex(std.testing.allocator, data, 0, .{ .x = 17, .y = 19, .width = 16, .height = 12 });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 384), region.data.len);
+    const expected_region: [32]u8 = .{ 0xef, 0x3d, 0x0a, 0x0d, 0x83, 0xb3, 0xbc, 0xbd, 0x51, 0xb1, 0x83, 0x78, 0xe3, 0x6c, 0xa8, 0x31, 0x6f, 0x33, 0xfd, 0x33, 0x1a, 0x85, 0x5c, 0xad, 0x66, 0xa8, 0x0e, 0x78, 0x9d, 0x86, 0x63, 0x92 };
+    std.crypto.hash.sha2.Sha256.hash(region.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
 }

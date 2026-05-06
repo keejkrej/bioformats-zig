@@ -411,6 +411,7 @@ fn readInnerRegionIndex(
     if (entry.kind == .ometiff) return ometiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .operetta) return operetta.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .bdpathway) return bdpathway.readRegionIndex(allocator, entry.data, plane_index, region);
+    if (entry.kind == .dcimg) return dcimg.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .dng) return dng.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .feitiff) return feitiff.readRegionIndex(allocator, entry.data, plane_index, region);
     if (entry.kind == .flowsight) return flowsight.readRegionIndex(allocator, entry.data, plane_index, region);

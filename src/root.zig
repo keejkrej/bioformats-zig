@@ -2042,6 +2042,7 @@ pub fn readPlaneRegionIndex(
     region: Region,
 ) ReaderError!Plane {
     if (bdpathway.matches(data)) return bdpathway.readRegionIndex(allocator, data, plane_index, region);
+    if (dcimg.matches(data)) return dcimg.readRegionIndex(allocator, data, plane_index, region);
     if (dng.matches(data)) return dng.readRegionIndex(allocator, data, plane_index, region);
     if (feitiff.matches(data)) return feitiff.readRegionIndex(allocator, data, plane_index, region);
     if (fluoview.matches(data)) return fluoview.readRegionIndex(allocator, data, plane_index, region);
