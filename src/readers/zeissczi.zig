@@ -1944,4 +1944,8 @@ test "cached CZI path region read matches full-plane crop" {
     const cropped = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, 31, region);
     defer std.testing.allocator.free(cropped.data);
     try std.testing.expectEqualSlices(u8, expected, cropped.data);
+    const expected_region_hash: [32]u8 = .{ 0x25, 0x49, 0x52, 0x09, 0x7b, 0x96, 0x2a, 0x80, 0xe6, 0x3b, 0x4a, 0x7d, 0x1d, 0x7e, 0x20, 0x36, 0x64, 0xfa, 0xc7, 0xb3, 0x3e, 0xd5, 0xad, 0x1e, 0x96, 0xd3, 0x47, 0x8c, 0x0b, 0x45, 0x9d, 0x35 };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(cropped.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region_hash, &digest);
 }
