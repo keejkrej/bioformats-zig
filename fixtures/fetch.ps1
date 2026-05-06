@@ -181,7 +181,7 @@ function Find-Candidate {
         if ($hasPreferredPattern -and $leaf -match $PreferredPattern) {
             return $resolved
         }
-        if ($null -eq $fallback) {
+        if (-not $hasPreferredPattern -and $null -eq $fallback) {
             $fallback = $resolved
         }
     }
@@ -213,7 +213,7 @@ function Find-ZenodoCandidate {
         if ($hasPreferredPattern -and $name -match $PreferredPattern) {
             return $candidate
         }
-        if ($null -eq $fallback) {
+        if (-not $hasPreferredPattern -and $null -eq $fallback) {
             $fallback = $candidate
         }
     }
