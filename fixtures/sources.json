@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "checked": "2026-05-05",
+  "checked": "2026-05-06",
   "public_roots": {
     "ome_images": "https://downloads.openmicroscopy.org/images/",
     "bioformats_zenodo_community": "https://zenodo.org/communities/bio-formats",
@@ -12,7 +12,10 @@
     "Use Zenodo for missing public fixtures or newly contributed datasets.",
     "The local ../bioformats checkout contains source code, OME-XML schema samples, and the Bio-Formats logo PNG, not the full binary test image corpus.",
     "OME /images/ was checked on 2026-05-05; no Openlab LIFF or Openlab RAW directory was present in the public index.",
-    "Bio-Formats Zenodo community records were checked on 2026-05-05 for DNG, DCIMG, CellSens VSI, Olympus OIR, Zeiss LSM, Imaris IMS, ND2, and Nikon NEF leads."
+    "Bio-Formats Zenodo community records were checked on 2026-05-05 for DNG, DCIMG, CellSens VSI, Olympus OIR, Zeiss LSM, Imaris IMS, ND2, and Nikon NEF leads.",
+    "OME Olympus FluoView OIB was pixel-smoke verified on 2026-05-06 for the fv1000 reader.",
+    "Public Olympus OIR and Hamamatsu VMS samples were metadata-readable on 2026-05-06, but their pixel smoke checks currently expose unsupported-reader variants.",
+    "The Figshare MINC lead was checked on 2026-05-06; its small public .mnc.gz files are MINC2/HDF5-style and do not match the current classic NetCDF MINC reader."
   ],
   "implemented_format_sources": {
     "amira": ["ome_images/AmiraMesh/"],

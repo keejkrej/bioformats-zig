@@ -18,6 +18,25 @@ because many microscopy datasets are large or have redistribution limits.
 - For Openlab LIFF/RAW specifically, Bio-Formats documentation says OME has
   datasets internally, but the public OME image index has no Openlab directory
   and the 2026-05-05 Zenodo/web search did not turn up a small public download.
+- Public probes on 2026-05-06 found that the OME Olympus FluoView `.oib`
+  fixture works as an FV1000 pixel smoke test. OME Olympus OIR `.oir` and
+  OpenSlide/OME Hamamatsu VMS fixtures are useful metadata leads, but currently
+  expose Zig reader pixel-read gaps. The Figshare MINC dataset provides small
+  `.mnc.gz` downloads, but those are MINC2/HDF5-style files rather than the
+  classic NetCDF variant supported by the current Zig MINC reader.
+
+## Verified Pixel Fixtures
+
+These public cached fixtures have been smoke-tested with `probe`, `metadata`,
+and a small `readPlane` request against the Zig JSON-RPC binary:
+
+| Format | Public source | Representative file |
+| --- | --- | --- |
+| fv1000 | `ome_images/Olympus-FluoView/imagesc-71616/` | `20220824_4492_cord_dapi__iba568_60x.oib` |
+
+The full local cache may contain additional verified formats depending on what
+has been fetched on the machine running the tests; `fixtures/cache/` remains
+ignored by git.
 
 ## Workflow
 
