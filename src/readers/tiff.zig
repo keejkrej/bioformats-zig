@@ -3410,6 +3410,19 @@ test "matches Bio-Formats plane hashes for cached ImageJ TIFF fixture" {
         std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
         try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
     }
+
+    const region = try readRegionIndex(std.testing.allocator, data, 23, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 384), region.data.len);
+    const expected_region: [32]u8 = .{ 0x11, 0xb4, 0x5a, 0x15, 0xc2, 0xf5, 0xa2, 0x4b, 0xcb, 0x54, 0x0f, 0x1c, 0x52, 0xff, 0xb7, 0x8a, 0xc5, 0x65, 0xba, 0x79, 0xbe, 0x61, 0x27, 0x45, 0x77, 0xcc, 0x0a, 0x4b, 0x08, 0xe0, 0x52, 0x7d };
+    var region_digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region.data, &region_digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &region_digest);
 }
 
 fn appendTestIfd(list: *std.ArrayList(u8), strip_offset: u32, next_ifd_offset: u32) !void {

@@ -158,4 +158,17 @@ test "matches Bio-Formats plane hashes for cached OME-TIFF fixture" {
         std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
         try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
     }
+
+    const region = try readRegionIndex(std.testing.allocator, data, 1, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 192), region.data.len);
+    const expected_region: [32]u8 = .{ 0x48, 0xdf, 0x4d, 0x40, 0x9e, 0x17, 0x53, 0xf1, 0x2a, 0x18, 0xda, 0xf1, 0x53, 0x0d, 0x9c, 0x89, 0x02, 0xfc, 0x66, 0x66, 0x3a, 0xf8, 0x9f, 0xcb, 0xde, 0xbf, 0xb2, 0x3d, 0x46, 0x84, 0x48, 0x92 };
+    var region_digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region.data, &region_digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &region_digest);
 }
