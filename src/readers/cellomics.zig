@@ -75,7 +75,7 @@ fn metadataFromHeader(header: Header) bio.Metadata {
         .pixel_type = header.pixel_type,
         .little_endian = true,
         .plane_count = header.plane_count,
-        .dimension_order = "XYZCT",
+        .dimension_order = "XYCZT",
     };
 }
 
@@ -156,4 +156,33 @@ test "reads cellomics dib header variant" {
     const plane = try readPlane(std.testing.allocator, data.items);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x12 }, plane.data);
+}
+
+test "matches Bio-Formats default metadata and plane hash for cached Cellomics fixture" {
+    const file_path = "fixtures/cache/cellomics/AS_09125_050118150001_A03f00d0.DIB";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(2 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("cellomics", metadata.format);
+    try std.testing.expectEqual(@as(u32, 512), metadata.width);
+    try std.testing.expectEqual(@as(u32, 512), metadata.height);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(@as(usize, 524288), plane.data.len);
+    const expected_plane: [32]u8 = .{ 0xa9, 0xd4, 0xa1, 0x7e, 0xa5, 0x62, 0x40, 0xd8, 0xe3, 0xf9, 0x00, 0x00, 0xfc, 0xff, 0xd6, 0x42, 0x3f, 0x86, 0xd8, 0x7e, 0x3a, 0x54, 0xe7, 0x5f, 0x01, 0x34, 0x60, 0x6d, 0xf3, 0xc6, 0x20, 0xa3 };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_plane, &digest);
 }
