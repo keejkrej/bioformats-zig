@@ -94,10 +94,28 @@ pub fn readPlanePathRegionIndex(
             defer allocator.free(tile_path);
             const tile = try readFile(allocator, io, tile_path);
             defer allocator.free(tile);
-            const tile_plane = try bio.jpeg.readPlaneIndexAs(allocator, tile, 0, "hamamatsuvms");
+            const tile_x0 = col * max_tile_span;
+            const tile_y0 = row * max_tile_span;
+            const tile_x1 = @min(metadata.width, tile_x0 + max_tile_span);
+            const tile_y1 = @min(metadata.height, tile_y0 + max_tile_span);
+            const region_x1 = region.x + region.width;
+            const region_y1 = region.y + region.height;
+            const x0 = @max(region.x, tile_x0);
+            const y0 = @max(region.y, tile_y0);
+            const x1 = @min(region_x1, tile_x1);
+            const y1 = @min(region_y1, tile_y1);
+            if (x0 >= x1 or y0 >= y1) continue;
+
+            const tile_region = bio.Region{
+                .x = x0 - tile_x0,
+                .y = y0 - tile_y0,
+                .width = x1 - x0,
+                .height = y1 - y0,
+            };
+            const tile_plane = try bio.jpeg.readRegionIndexAs(allocator, tile, 0, "hamamatsuvms", tile_region);
             defer allocator.free(tile_plane.data);
             if (tile_plane.metadata.pixel_type != .rgb8 or tile_plane.metadata.samples_per_pixel != 3) return error.UnsupportedVariant;
-            try copyTileRegion(out, region, tile_plane, col * max_tile_span, row * max_tile_span);
+            try copyDecodedTileRegion(out, region, tile_plane, x0, y0, tile_region.width, tile_region.height);
         }
     }
 
@@ -163,28 +181,16 @@ fn tileName(data: []const u8, col: u32, row: u32) ?[]const u8 {
     return valueForKey(data, key);
 }
 
-fn copyTileRegion(out: []u8, region: bio.Region, tile: bio.Plane, tile_x0: u32, tile_y0: u32) !void {
+fn copyDecodedTileRegion(out: []u8, region: bio.Region, tile: bio.Plane, tile_x0: u32, tile_y0: u32, width: u32, height: u32) !void {
     const bytes_per_pixel = tile.metadata.bytesPerPixel();
-    const tile_x1 = std.math.add(u32, tile_x0, tile.metadata.width) catch return error.UnsupportedVariant;
-    const tile_y1 = std.math.add(u32, tile_y0, tile.metadata.height) catch return error.UnsupportedVariant;
-    const region_x1 = std.math.add(u32, region.x, region.width) catch return error.InvalidRegion;
-    const region_y1 = std.math.add(u32, region.y, region.height) catch return error.InvalidRegion;
-    const x0 = @max(region.x, tile_x0);
-    const y0 = @max(region.y, tile_y0);
-    const x1 = @min(region_x1, tile_x1);
-    const y1 = @min(region_y1, tile_y1);
-    if (x0 >= x1 or y0 >= y1) return;
-
-    const tile_row_bytes = std.math.mul(usize, tile.metadata.width, bytes_per_pixel) catch return error.UnsupportedVariant;
+    const tile_row_bytes = std.math.mul(usize, width, bytes_per_pixel) catch return error.UnsupportedVariant;
     const out_row_bytes = std.math.mul(usize, region.width, bytes_per_pixel) catch return error.UnsupportedVariant;
-    const copy_bytes = std.math.mul(usize, x1 - x0, bytes_per_pixel) catch return error.UnsupportedVariant;
-    var y = y0;
-    while (y < y1) : (y += 1) {
-        const src_row = @as(usize, y - tile_y0);
-        const src_x = @as(usize, x0 - tile_x0) * bytes_per_pixel;
-        const dst_row = @as(usize, y - region.y);
-        const dst_x = @as(usize, x0 - region.x) * bytes_per_pixel;
-        const src_offset = src_row * tile_row_bytes + src_x;
+    const copy_bytes = tile_row_bytes;
+    var y: u32 = 0;
+    while (y < height) : (y += 1) {
+        const dst_row = @as(usize, tile_y0 + y - region.y);
+        const dst_x = @as(usize, tile_x0 - region.x) * bytes_per_pixel;
+        const src_offset = @as(usize, y) * tile_row_bytes;
         const dst_offset = dst_row * out_row_bytes + dst_x;
         @memcpy(out[dst_offset..][0..copy_bytes], tile.data[src_offset..][0..copy_bytes]);
     }

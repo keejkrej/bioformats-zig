@@ -41,6 +41,27 @@ pub fn readPlaneIndexAs(allocator: std.mem.Allocator, data: []const u8, plane_in
     };
 }
 
+pub fn readRegionIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32, region: bio.Region) bio.ReaderError!bio.Plane {
+    return readRegionIndexAs(allocator, data, plane_index, "jpeg", region);
+}
+
+pub fn readRegionIndexAs(allocator: std.mem.Allocator, data: []const u8, plane_index: u32, format: []const u8, region: bio.Region) bio.ReaderError!bio.Plane {
+    if (plane_index != 0) return error.InvalidPlaneIndex;
+    var decoder = try Decoder.parse(data);
+    const metadata = try decoder.metadata(format);
+    try region.validate(metadata);
+    if (region.isFull(metadata)) {
+        return .{
+            .metadata = metadata,
+            .data = try decoder.decode(allocator),
+        };
+    }
+    return .{
+        .metadata = metadata,
+        .data = try decoder.decodeRegion(allocator, region),
+    };
+}
+
 const JpegInfo = struct {
     width: u32,
     height: u32,
@@ -144,6 +165,7 @@ const Decoder = struct {
     huffman_dc: [4]?HuffmanTable = .{ null, null, null, null },
     huffman_ac: [4]?HuffmanTable = .{ null, null, null, null },
     scan_offset: usize = 0,
+    restart_interval: u16 = 0,
 
     fn parse(data: []const u8) bio.ReaderError!Decoder {
         if (data.len < 4 or data[0] != 0xff or data[1] != 0xd8) return error.InvalidFormat;
@@ -166,6 +188,7 @@ const Decoder = struct {
                 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf => return error.UnsupportedVariant,
                 0xc4 => try self.parseDht(segment),
                 0xdb => try self.parseDqt(segment),
+                0xdd => try self.parseDri(segment),
                 0xda => {
                     try self.parseSos(segment);
                     self.scan_offset = pos + segment_len;
@@ -215,6 +238,11 @@ const Decoder = struct {
             if (self.components[i].quant_table >= 4) return error.InvalidFormat;
             pos += 3;
         }
+    }
+
+    fn parseDri(self: *Decoder, segment: []const u8) bio.ReaderError!void {
+        if (segment.len != 2) return error.InvalidFormat;
+        self.restart_interval = readU16BE(segment[0..2]);
     }
 
     fn parseDqt(self: *Decoder, segment: []const u8) bio.ReaderError!void {
@@ -309,11 +337,17 @@ const Decoder = struct {
     }
 
     fn decode(self: *Decoder, allocator: std.mem.Allocator) bio.ReaderError![]u8 {
+        const image_metadata = try self.metadata("jpeg");
+        return self.decodeRegion(allocator, bio.Region.full(image_metadata));
+    }
+
+    fn decodeRegion(self: *Decoder, allocator: std.mem.Allocator, region: bio.Region) bio.ReaderError![]u8 {
         if (self.scan_offset == 0) return error.InvalidFormat;
         const samples: usize = if (self.component_count == 1) 1 else 3;
-        const pixel_count = std.math.mul(usize, self.width, self.height) catch return error.UnsupportedVariant;
+        const pixel_count = std.math.mul(usize, region.width, region.height) catch return error.UnsupportedVariant;
         const out = try allocator.alloc(u8, std.math.mul(usize, pixel_count, samples) catch return error.UnsupportedVariant);
         errdefer allocator.free(out);
+        @memset(out, 0);
 
         var hmax: u8 = 1;
         var vmax: u8 = 1;
@@ -330,12 +364,17 @@ const Decoder = struct {
         const mcu_h = @as(u32, vmax) * 8;
         const mcu_cols = (self.width + mcu_w - 1) / mcu_w;
         const mcu_rows = (self.height + mcu_h - 1) / mcu_h;
+        const mcu_total = std.math.mul(u32, mcu_cols, mcu_rows) catch return error.UnsupportedVariant;
+        var mcu_index: u32 = 0;
         var bits = BitReader{ .data = self.data[self.scan_offset..] };
         var blocks: [4][16][64]u8 = undefined;
         var row: u32 = 0;
         while (row < mcu_rows) : (row += 1) {
             var col: u32 = 0;
             while (col < mcu_cols) : (col += 1) {
+                const origin_x = col * mcu_w;
+                const origin_y = row * mcu_h;
+                const intersects = mcuIntersectsRegion(origin_x, origin_y, mcu_w, mcu_h, self.width, self.height, region);
                 ci = 0;
                 while (ci < self.component_count) : (ci += 1) {
                     const comp = &self.components[ci];
@@ -344,17 +383,33 @@ const Decoder = struct {
                         var bx: usize = 0;
                         while (bx < comp.h) : (bx += 1) {
                             const block_index = by * comp.h + bx;
-                            try self.decodeBlock(&bits, comp, &blocks[ci][block_index]);
+                            const block_out: ?*[64]u8 = if (intersects) &blocks[ci][block_index] else null;
+                            try self.decodeBlock(&bits, comp, block_out);
                         }
                     }
                 }
-                try self.writeMcu(out, &blocks, col * mcu_w, row * mcu_h, hmax, vmax);
+                if (intersects) try self.writeMcuRegion(out, &blocks, origin_x, origin_y, hmax, vmax, region);
+                mcu_index += 1;
+                if (self.restart_interval != 0 and mcu_index < mcu_total and mcu_index % self.restart_interval == 0) {
+                    try bits.consumeRestartMarker();
+                    self.resetDcPredictors();
+                }
+                if (origin_y + mcu_h >= region.y + region.height and origin_x + mcu_w >= region.x + region.width) {
+                    return out;
+                }
             }
         }
         return out;
     }
 
-    fn decodeBlock(self: *Decoder, bits: *BitReader, comp: *Component, out: *[64]u8) bio.ReaderError!void {
+    fn resetDcPredictors(self: *Decoder) void {
+        var i: usize = 0;
+        while (i < self.component_count) : (i += 1) {
+            self.components[i].previous_dc = 0;
+        }
+    }
+
+    fn decodeBlock(self: *Decoder, bits: *BitReader, comp: *Component, out: ?*[64]u8) bio.ReaderError!void {
         const dc_table = &(self.huffman_dc[comp.dc_table] orelse return error.InvalidFormat);
         const ac_table = &(self.huffman_ac[comp.ac_table] orelse return error.InvalidFormat);
         const quant = self.quant_tables[comp.quant_table] orelse return error.InvalidFormat;
@@ -382,27 +437,48 @@ const Decoder = struct {
             coeffs[zigzag[k]] = (receiveExtend(bits, size) catch return error.TruncatedData) * quant[zigzag[k]];
             k += 1;
         }
-        inverseDct(coeffs, out);
+        if (out) |block| inverseDct(coeffs, block);
     }
 
-    fn writeMcu(self: Decoder, out: []u8, blocks: *[4][16][64]u8, origin_x: u32, origin_y: u32, hmax: u8, vmax: u8) bio.ReaderError!void {
-        var y: u32 = 0;
-        while (y < @as(u32, vmax) * 8 and origin_y + y < self.height) : (y += 1) {
-            var x: u32 = 0;
-            while (x < @as(u32, hmax) * 8 and origin_x + x < self.width) : (x += 1) {
-                const dst_pixel = (@as(usize, origin_y + y) * self.width + origin_x + x) * if (self.component_count == 1) @as(usize, 1) else 3;
+    fn writeMcuRegion(self: Decoder, out: []u8, blocks: *[4][16][64]u8, origin_x: u32, origin_y: u32, hmax: u8, vmax: u8, region: bio.Region) bio.ReaderError!void {
+        const bytes_per_pixel: usize = if (self.component_count == 1) 1 else 3;
+        const region_x1 = region.x + region.width;
+        const region_y1 = region.y + region.height;
+        const mcu_x1 = @min(self.width, origin_x + @as(u32, hmax) * 8);
+        const mcu_y1 = @min(self.height, origin_y + @as(u32, vmax) * 8);
+        const x0 = @max(region.x, origin_x);
+        const y0 = @max(region.y, origin_y);
+        const x1 = @min(region_x1, mcu_x1);
+        const y1 = @min(region_y1, mcu_y1);
+        if (x0 >= x1 or y0 >= y1) return;
+
+        var y = y0;
+        while (y < y1) : (y += 1) {
+            var x = x0;
+            while (x < x1) : (x += 1) {
+                const local_x = x - origin_x;
+                const local_y = y - origin_y;
+                const dst_pixel = (@as(usize, y - region.y) * region.width + x - region.x) * bytes_per_pixel;
                 if (self.component_count == 1) {
-                    out[dst_pixel] = sampleComponent(blocks, self.components[0], 0, x, y, hmax, vmax);
+                    out[dst_pixel] = sampleComponent(blocks, self.components[0], 0, local_x, local_y, hmax, vmax);
                 } else {
-                    const yy = sampleComponent(blocks, self.components[0], 0, x, y, hmax, vmax);
-                    const cb = sampleComponent(blocks, self.components[1], 1, x, y, hmax, vmax);
-                    const cr = sampleComponent(blocks, self.components[2], 2, x, y, hmax, vmax);
+                    const yy = sampleComponent(blocks, self.components[0], 0, local_x, local_y, hmax, vmax);
+                    const cb = sampleComponent(blocks, self.components[1], 1, local_x, local_y, hmax, vmax);
+                    const cr = sampleComponent(blocks, self.components[2], 2, local_x, local_y, hmax, vmax);
                     writeYCbCr(out[dst_pixel..][0..3], yy, cb, cr);
                 }
             }
         }
     }
 };
+
+fn mcuIntersectsRegion(origin_x: u32, origin_y: u32, mcu_w: u32, mcu_h: u32, image_w: u32, image_h: u32, region: bio.Region) bool {
+    const mcu_x1 = @min(image_w, origin_x + mcu_w);
+    const mcu_y1 = @min(image_h, origin_y + mcu_h);
+    const region_x1 = region.x + region.width;
+    const region_y1 = region.y + region.height;
+    return origin_x < region_x1 and mcu_x1 > region.x and origin_y < region_y1 and mcu_y1 > region.y;
+}
 
 const BitReader = struct {
     data: []const u8,
@@ -439,6 +515,15 @@ const BitReader = struct {
         }
         self.buffer = byte;
         self.bits = 8;
+    }
+
+    fn consumeRestartMarker(self: *BitReader) !void {
+        self.bits = 0;
+        while (self.pos < self.data.len and self.data[self.pos] == 0xff) : (self.pos += 1) {}
+        if (self.pos >= self.data.len) return error.TruncatedData;
+        const marker = self.data[self.pos];
+        self.pos += 1;
+        if (marker < 0xd0 or marker > 0xd7) return error.TruncatedData;
     }
 };
 

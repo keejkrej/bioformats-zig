@@ -2070,6 +2070,7 @@ pub fn readPlaneRegionIndex(
     if (ometiff.matches(data)) return ometiff.readRegionIndex(allocator, data, plane_index, region);
     if (zeisslsm.matches(data)) return zeisslsm.readRegionIndex(allocator, data, plane_index, region);
     if (tiff.matches(data)) return tiff.readRegionIndex(allocator, data, plane_index, region);
+    if (jpeg.matches(data)) return jpeg.readRegionIndex(allocator, data, plane_index, region);
     if (zip.matches(data)) return zip.readRegionIndex(allocator, data, plane_index, region);
     const plane = try readPlaneIndex(allocator, data, plane_index);
     errdefer allocator.free(plane.data);

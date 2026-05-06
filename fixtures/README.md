@@ -19,11 +19,12 @@ because many microscopy datasets are large or have redistribution limits.
   datasets internally, but the public OME image index has no Openlab directory
   and the 2026-05-05 Zenodo/web search did not turn up a small public download.
 - Public probes on 2026-05-06 found that the OME Olympus FluoView `.oib`
-  fixture works as an FV1000 pixel smoke test. OME Olympus OIR `.oir` and
-  OpenSlide/OME Hamamatsu VMS fixtures are useful metadata leads, but currently
-  expose Zig reader pixel-read gaps. The Figshare MINC dataset provides small
-  `.mnc.gz` downloads, but those are MINC2/HDF5-style files rather than the
-  classic NetCDF variant supported by the current Zig MINC reader.
+  fixture works as an FV1000 pixel smoke test, and the OpenSlide/OME
+  Hamamatsu VMS fixture works as a regional JPEG-tile pixel smoke test. OME
+  Olympus OIR `.oir` files are useful metadata leads, but currently expose Zig
+  reader pixel-read gaps. The Figshare MINC dataset provides small `.mnc.gz`
+  downloads, but those are MINC2/HDF5-style files rather than the classic
+  NetCDF variant supported by the current Zig MINC reader.
 
 ## Verified Pixel Fixtures
 
@@ -33,6 +34,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | Format | Public source | Representative file |
 | --- | --- | --- |
 | fv1000 | `ome_images/Olympus-FluoView/imagesc-71616/` | `20220824_4492_cord_dapi__iba568_60x.oib` |
+| hamamatsuvms | `ome_images/Hamamatsu-VMS/openslide/CMU-3/` | `CMU-3-40x - 2010-01-12 13.57.09.vms` |
 
 The full local cache may contain additional verified formats depending on what
 has been fetched on the machine running the tests; `fixtures/cache/` remains
