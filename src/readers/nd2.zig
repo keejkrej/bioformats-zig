@@ -2,6 +2,7 @@ const std = @import("std");
 const bio = @import("../root.zig");
 
 const magic1: u32 = 0xdacebe0a;
+const magic1_alt: u32 = 0x0abeceda;
 const magic2: u32 = 0x6a502020;
 
 const Scan = struct {
@@ -54,16 +55,19 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
 fn hasMagic(data: []const u8) bool {
     const first = std.mem.readInt(u32, data[0..4], .little);
     const second = std.mem.readInt(u32, data[4..8], .little);
-    return first == magic1 or second == magic2;
+    return first == magic1 or first == magic1_alt or second == magic2;
 }
 
 fn parseAscii(data: []const u8, scan: *Scan) void {
-    setScanValue(scan, .width, findNumberAfterAny(data, &.{ "uiWidth=\"", "<uiWidth>", "uiWidth=", "Width=", "SizeX=" }));
-    setScanValue(scan, .height, findNumberAfterAny(data, &.{ "uiHeight=\"", "<uiHeight>", "uiHeight=", "Height=", "SizeY=" }));
-    setScanValue(scan, .size_c, findNumberAfterAny(data, &.{ "SizeC=", "uiCompCount=\"", "<uiCompCount>", "ChannelCount=", "Channels=" }));
+    setScanValue(scan, .width, findNumberAfterAny(data, &.{ "uiWidth=\"", "<uiWidth>", "uiWidth=", "Width=", "SizeX=" }) orelse findXmlValueAfter(data, "<uiWidth"));
+    setScanValue(scan, .height, findNumberAfterAny(data, &.{ "uiHeight=\"", "<uiHeight>", "uiHeight=", "Height=", "SizeY=" }) orelse findXmlValueAfter(data, "<uiHeight"));
+    setScanValue(scan, .size_c, findNumberAfterAny(data, &.{ "SizeC=", "uiCompCount=\"", "<uiCompCount>", "ChannelCount=", "Channels=" }) orelse findXmlValueAfter(data, "<uiComp"));
     setScanValue(scan, .size_z, findNumberAfterAny(data, &.{ "SizeZ=", "Z Stack Loop", "Z-Stack Loop", "ZCount=", "Slices=" }));
-    setScanValue(scan, .size_t, findNumberAfterAny(data, &.{ "SizeT=", "Time Loop", "TimeLoop", "TCount=", "Frames=" }));
-    if (findNumberAfterAny(data, &.{ "uiBpcInMemory=\"", "<uiBpcInMemory>", "uiBpcSignificant=\"", "<uiBpcSignificant>", "BitsPerPixel=", "bitDepth=" })) |bits| {
+    setScanValue(scan, .size_t, findNumberAfterAny(data, &.{ "SizeT=", "Time Loop", "TimeLoop", "TCount=", "Frames=", "Dimensions: T(" }));
+    const bits_value = findNumberAfterAny(data, &.{ "uiBpcInMemory=\"", "<uiBpcInMemory>", "uiBpcSignificant=\"", "<uiBpcSignificant>", "BitsPerPixel=", "bitDepth=" }) orelse
+        findXmlValueAfter(data, "<uiBpcInMemory") orelse
+        findXmlValueAfter(data, "<uiBpcSignificant");
+    if (bits_value) |bits| {
         scan.pixel_type = pixelTypeFromBits(bits) catch scan.pixel_type;
     }
 }
@@ -112,6 +116,16 @@ fn findNumberAfter(data: []const u8, needle: []const u8) ?u32 {
     var start = pos + needle.len;
     while (start < data.len and !std.ascii.isDigit(data[start])) : (start += 1) {}
     if (start >= data.len) return null;
+    var end = start;
+    while (end < data.len and std.ascii.isDigit(data[end])) : (end += 1) {}
+    return std.fmt.parseUnsigned(u32, data[start..end], 10) catch null;
+}
+
+fn findXmlValueAfter(data: []const u8, element_start: []const u8) ?u32 {
+    const pos = std.mem.indexOf(u8, data, element_start) orelse return null;
+    const value_pos = std.mem.indexOfPos(u8, data, pos + element_start.len, "value=\"") orelse return null;
+    const start = value_pos + "value=\"".len;
+    if (start >= data.len or !std.ascii.isDigit(data[start])) return null;
     var end = start;
     while (end < data.len and std.ascii.isDigit(data[end])) : (end += 1) {}
     return std.fmt.parseUnsigned(u32, data[start..end], 10) catch null;
@@ -192,6 +206,41 @@ test "reads nd2 metadata from utf16 text and rejects missing pixels" {
     try std.testing.expectEqual(@as(u16, 3), metadata.size_c);
     try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
     try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data.items, 0));
+}
+
+test "reads nd2 metadata from alternate file magic byte order" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendSlice(std.testing.allocator, &.{ 0xda, 0xce, 0xbe, 0x0a, 0, 0, 0, 0 });
+    try data.appendSlice(std.testing.allocator,
+        \\<uiWidth>3</uiWidth><uiHeight>2</uiHeight><uiBpcInMemory>16</uiBpcInMemory>
+    );
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("nd2", metadata.format);
+    try std.testing.expectEqual(@as(u32, 3), metadata.width);
+    try std.testing.expectEqual(@as(u32, 2), metadata.height);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+}
+
+test "reads nd2 metadata from xml value attributes" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendSlice(std.testing.allocator, &.{ 0xda, 0xce, 0xbe, 0x0a, 0, 0, 0, 0 });
+    try data.appendSlice(std.testing.allocator,
+        \\<uiWidth runtype="lx_uint32" value="800"/>
+        \\<uiHeight runtype="lx_uint32" value="600"/>
+        \\<uiComp runtype="lx_uint32" value="1"/>
+        \\<uiBpcInMemory runtype="lx_uint32" value="16"/>
+        \\Dimensions: T(13) x   (1)
+    );
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(@as(u32, 800), metadata.width);
+    try std.testing.expectEqual(@as(u32, 600), metadata.height);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 13), metadata.size_t);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
 }
 
 test "reads nd2 raw image data sequence payload" {

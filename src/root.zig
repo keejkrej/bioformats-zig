@@ -1506,9 +1506,9 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (pqbin.matches(data)) return "pqbin";
     if (psd.matches(data)) return "psd";
     if (zeissczi.matches(data)) return "zeissczi";
+    if (nd2.matches(data)) return "nd2";
     if (mrc.matches(data)) return "mrc";
     if (naf.matches(data)) return "naf";
-    if (nd2.matches(data)) return "nd2";
     if (ndpi.matches(data)) return "ndpi";
     if (nifti.matches(data)) return "nifti";
     if (nrrd.matches(data)) return "nrrd";
@@ -1675,9 +1675,9 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (pqbin.matches(data)) return pqbin.readMetadata(data);
     if (psd.matches(data)) return psd.readMetadata(data);
     if (zeissczi.matches(data)) return zeissczi.readMetadata(data);
+    if (nd2.matches(data)) return nd2.readMetadata(data);
     if (mrc.matches(data)) return mrc.readMetadata(data);
     if (naf.matches(data)) return naf.readMetadata(data);
-    if (nd2.matches(data)) return nd2.readMetadata(data);
     if (ndpi.matches(data)) return ndpi.readMetadata(data);
     if (nifti.matches(data)) return nifti.readMetadata(data);
     if (nrrd.matches(data)) return nrrd.readMetadata(data);
@@ -1880,9 +1880,9 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return psd.readPlane(allocator, data);
     }
     if (zeissczi.matches(data)) return zeissczi.readPlaneIndex(allocator, data, plane_index);
+    if (nd2.matches(data)) return nd2.readPlaneIndex(allocator, data, plane_index);
     if (mrc.matches(data)) return mrc.readPlaneIndex(allocator, data, plane_index);
     if (naf.matches(data)) return naf.readPlaneIndex(allocator, data, plane_index);
-    if (nd2.matches(data)) return nd2.readPlaneIndex(allocator, data, plane_index);
     if (ndpi.matches(data)) return ndpi.readPlaneIndex(allocator, data, plane_index);
     if (nifti.matches(data)) return nifti.readPlaneIndex(allocator, data, plane_index);
     if (nrrd.matches(data)) return nrrd.readPlaneIndex(allocator, data, plane_index);

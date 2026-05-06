@@ -5,6 +5,9 @@ const header_len = 1024;
 const endian_stamp_offset = 212;
 const ext_header_size_offset = 92;
 const czi_magic = "ZISRAWFILE";
+const nd2_magic1: u32 = 0xdacebe0a;
+const nd2_magic1_alt: u32 = 0x0abeceda;
+const nd2_magic2: u32 = 0x6a502020;
 
 const ByteOrder = enum {
     little,
@@ -41,6 +44,7 @@ const Header = struct {
 pub fn matches(data: []const u8) bool {
     if (data.len < header_len) return false;
     if (std.mem.startsWith(u8, data, czi_magic)) return false;
+    if (looksLikeNd2(data)) return false;
     if (looksLikeEcat7(data)) return false;
     const stamp = data[endian_stamp_offset];
     if (stamp == 68) return candidateValid(data, .little);
@@ -87,6 +91,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (data.len < header_len) return error.InvalidFormat;
     if (std.mem.startsWith(u8, data, czi_magic)) return error.InvalidFormat;
+    if (looksLikeNd2(data)) return error.InvalidFormat;
     if (looksLikeEcat7(data)) return error.InvalidFormat;
     const stamp = data[endian_stamp_offset];
     const order: ByteOrder = if (stamp == 68)
@@ -117,6 +122,13 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
 fn looksLikeEcat7(data: []const u8) bool {
     return std.mem.startsWith(u8, data, "MATRIX70v") or
         std.mem.startsWith(u8, data, "MATRIX72v");
+}
+
+fn looksLikeNd2(data: []const u8) bool {
+    if (data.len < 8) return false;
+    const first = std.mem.readInt(u32, data[0..4], .little);
+    const second = std.mem.readInt(u32, data[4..8], .little);
+    return first == nd2_magic1 or first == nd2_magic1_alt or second == nd2_magic2;
 }
 
 fn candidateValid(data: []const u8, order: ByteOrder) bool {
@@ -216,6 +228,14 @@ test "rejects ecat7 matrix headers as mrc candidates" {
 test "rejects zeiss czi headers as mrc candidates" {
     var data = [_]u8{0} ** header_len;
     @memcpy(data[0..czi_magic.len], czi_magic);
+
+    try std.testing.expect(!matches(&data));
+    try std.testing.expectError(error.InvalidFormat, readMetadata(&data));
+}
+
+test "rejects nikon nd2 headers as mrc candidates" {
+    var data = [_]u8{0} ** header_len;
+    std.mem.writeInt(u32, data[0..4], nd2_magic1_alt, .little);
 
     try std.testing.expect(!matches(&data));
     try std.testing.expectError(error.InvalidFormat, readMetadata(&data));
