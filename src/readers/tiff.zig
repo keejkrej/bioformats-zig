@@ -3337,6 +3337,28 @@ test "matches Bio-Formats core metadata for cached ImageJ TIFF fixture" {
     try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 }
 
+test "matches Bio-Formats plane hashes for cached ImageJ TIFF fixture" {
+    const file_path = "fixtures/cache/tiff/A1.pattern1.tif";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(16 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0x20, 0x2e, 0xfd, 0x81, 0x69, 0x08, 0x74, 0x43, 0xba, 0xfe, 0x96, 0xa4, 0xa8, 0xc3, 0xb0, 0xa6, 0xe4, 0xa7, 0x0b, 0x00, 0x10, 0xfb, 0x50, 0xb5, 0x65, 0x99, 0x3e, 0xf6, 0xb0, 0x1c, 0x07, 0xf2 } },
+        .{ .plane = 23, .sha256 = .{ 0x46, 0xb7, 0x73, 0x13, 0xa8, 0xc0, 0xa6, 0x21, 0x1e, 0xab, 0x8c, 0xfa, 0x55, 0x0e, 0x51, 0x3e, 0xe4, 0x7c, 0x99, 0x13, 0x32, 0x67, 0x40, 0x6d, 0xda, 0x82, 0x8d, 0x05, 0xb2, 0xa2, 0x8d, 0x33 } },
+        .{ .plane = 45, .sha256 = .{ 0x5d, 0xec, 0x8e, 0x6b, 0x83, 0x26, 0x0f, 0xf3, 0xe5, 0x37, 0x91, 0x9c, 0x30, 0xab, 0x78, 0x50, 0x27, 0xd0, 0x7e, 0xbc, 0x36, 0x01, 0xa5, 0xa1, 0xb4, 0xb4, 0x49, 0x55, 0xdb, 0x64, 0x88, 0x8a } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlaneIndex(std.testing.allocator, data, sample.plane);
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 146400), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+}
+
 fn appendTestIfd(list: *std.ArrayList(u8), strip_offset: u32, next_ifd_offset: u32) !void {
     try appendTestIfdWithCompression(list, strip_offset, next_ifd_offset, 1, 1);
 }
