@@ -166,6 +166,10 @@ pub const Server = struct {
                 return .{ .wrote_response = true };
             };
             defer self.allocator.free(bytes);
+            if (bio.omexml.matches(bytes)) {
+                try writeProbeFormat(writer, id, path, "omexml");
+                return .{ .wrote_response = true };
+            }
             if (try self.probePathPriorityFormat(path)) |format| {
                 try writeProbeFormat(writer, id, path, format);
                 return .{ .wrote_response = true };
@@ -495,6 +499,8 @@ pub const Server = struct {
     }
 
     fn metadataFromPathBytes(self: *Server, path: []const u8, bytes: []const u8) !bio.Metadata {
+        if (bio.omexml.matches(bytes)) return bio.omexml.readMetadata(bytes);
+
         if (bio.afi.isPath(path)) {
             if (bio.afi.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
         }
@@ -1703,6 +1709,39 @@ test "server opens path and reads through returned handle" {
     );
     try std.testing.expectEqual(@as(usize, 0), server.handles.items.len);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"result\":true") != null);
+}
+
+test "server keeps OME-XML path content ahead of XML companion probes" {
+    const file_path = "protocol-ome-path-priority.ome.xml";
+    const data =
+        \\<?xml version="1.0" encoding="UTF-8"?>
+        \\<OME><Image ID="Image:0"><Pixels DimensionOrder="XYZCT" Type="uint8" SizeX="2" SizeY="1" SizeZ="1" SizeC="1" SizeT="1"><BinData>AQI=</BinData></Pixels></Image></OME>
+    ;
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = file_path, .data = data });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, file_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"probe\",\"params\":{\"path\":\"protocol-ome-path-priority.ome.xml\"}}",
+        &out.writer,
+    );
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"metadata\",\"params\":{\"path\":\"protocol-ome-path-priority.ome.xml\"}}",
+        &out.writer,
+    );
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"readPlane\",\"params\":{\"path\":\"protocol-ome-path-priority.ome.xml\"}}",
+        &out.writer,
+    );
+
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"omexml\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"width\":2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AQI=\"") != null);
 }
 
 test "server opens analyze img path and reads companion pixels" {

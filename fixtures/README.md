@@ -61,6 +61,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | nifti | `ome_images/NIfTI/` | `avg152T1_LR_nifti.nii` |
 | nrrd | `ome_images/NRRD/gordon/` | `dt-helix.nhdr` |
 | obf | `ome_images/OBF/ngladitz/v4/` | `test-v4-uncompressed.obf` |
+| omexml | `ome_images/OME-XML/2011-06/` | `single-image.ome.xml` |
 | ometiff | `ome_images/OME-TIFF/` | `Iron-Plate.ome.tiff` |
 | operetta | `ome_images/PerkinElmer-Operetta/omer/006P_M3/006P__2017-08-19T12_42_59-Measurement 3/Images/` | `r01c02f01p01-ch1sk1fk1fl1.tiff` |
 | png | `ome_images/PNG/` | `user-1 05 TEST.png` |
