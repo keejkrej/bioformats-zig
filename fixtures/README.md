@@ -40,6 +40,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | imaristiff | `ome_images/Imaris-IMS/davemason/` | `Convallaria_3C_10T_confocal_IMS3.ims` |
 | jdce | `ome_images/JDCE/molecular-devices/Converted/mini-actin_confocal_CDE/` | `mini-actin_confocal_CDE.JDCE` |
 | micromanager | `ome_images/Micro-Manager/1.4.16/serge/Pos0/` | `metadata.txt` |
+| ndpi | `ome_images/Hamamatsu-NDPI/manuel/` | `test3-DAPI 2 (387) .ndpi` |
 | nd2 | `ome_images/ND2/` | `MeOh_high_fluo_003.nd2` |
 | spc | `ome_images/SPC-FIFO/biofisika/` | `conv-256x256.set` |
 | zeissczi | `ome_images/Zeiss-CZI/` | `Plate1-Blue-A-02-Scene-1-P2-E1-01.czi` |
