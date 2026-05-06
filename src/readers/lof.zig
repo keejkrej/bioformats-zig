@@ -54,7 +54,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
         .pixel_type = scan.pixel_type,
         .little_endian = true,
         .plane_count = std.math.mul(u32, zc, scan.size_t) catch return error.UnsupportedVariant,
-        .dimension_order = "XYZCT",
+        .dimension_order = "XYCZT",
     };
 }
 
@@ -355,6 +355,7 @@ test "reads leica lof metadata from xml section" {
     try std.testing.expectEqual(@as(u16, 5), metadata.size_t);
     try std.testing.expectEqual(@as(u32, 20), metadata.plane_count);
     try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
     try std.testing.expectError(error.TruncatedData, readPlaneIndex(std.testing.allocator, data.items, 0));
 }
 
@@ -403,4 +404,25 @@ test "reads lof rows with padding bytes" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqual(bio.PixelType.uint8, plane.metadata.pixel_type);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 4, 5, 6 }, plane.data);
+}
+
+test "matches Bio-Formats core metadata for cached LOF fixture" {
+    const file_path = "fixtures/cache/lof/mono 8bit.lof";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(8 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("lof", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1600), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1200), metadata.height);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 }
