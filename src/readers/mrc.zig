@@ -66,6 +66,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
         .pixel_type = pixel_type,
         .little_endian = header.order == .little,
         .plane_count = header.planes,
+        .dimension_order = "XYZTC",
     };
 }
 
@@ -239,4 +240,63 @@ test "rejects nikon nd2 headers as mrc candidates" {
 
     try std.testing.expect(!matches(&data));
     try std.testing.expectError(error.InvalidFormat, readMetadata(&data));
+}
+
+test "matches Bio-Formats default metadata for cached MRC fixture" {
+    const file_path = "fixtures/cache/mrc/EMD-2225.map";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(16 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("mrc", metadata.format);
+    try std.testing.expectEqual(@as(u32, 128), metadata.width);
+    try std.testing.expectEqual(@as(u32, 128), metadata.height);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 128), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 128), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.float32, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYZTC", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats default plane and region hashes for cached MRC fixture" {
+    const file_path = "fixtures/cache/mrc/EMD-2225.map";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(16 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0xa4, 0x5e, 0x67, 0x24, 0x9f, 0xe3, 0xdf, 0x7f, 0x86, 0xd5, 0x5a, 0x46, 0x2e, 0x9d, 0xef, 0x2d, 0xb3, 0x63, 0x5d, 0xf1, 0x87, 0xc8, 0x1a, 0xc2, 0xf3, 0x44, 0xa9, 0x03, 0x38, 0x67, 0x18, 0x74 } },
+        .{ .plane = 64, .sha256 = .{ 0xba, 0xaa, 0x5f, 0xe2, 0x25, 0x9d, 0x08, 0xea, 0xcc, 0x10, 0x34, 0x69, 0x11, 0x5c, 0x0b, 0x0b, 0x56, 0x10, 0x7c, 0x02, 0xe6, 0xe5, 0x08, 0xef, 0x4b, 0x99, 0xb0, 0x41, 0x22, 0xc7, 0x65, 0xc0 } },
+        .{ .plane = 127, .sha256 = .{ 0x2d, 0x7e, 0x45, 0x8d, 0x64, 0x7c, 0x75, 0x87, 0xe7, 0x7f, 0xe7, 0xc1, 0x0f, 0xda, 0x45, 0x94, 0x1c, 0x1c, 0x4f, 0xe0, 0x84, 0xe4, 0x02, 0xa9, 0x8a, 0x98, 0x7d, 0x4c, 0xd2, 0xa6, 0x46, 0xb3 } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlaneIndex(std.testing.allocator, data, sample.plane);
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 65536), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    const region_data = try bio.cropPlane(std.testing.allocator, plane, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region_data);
+    try std.testing.expectEqual(@as(usize, 768), region_data.len);
+    const expected_region: [32]u8 = .{ 0x88, 0x83, 0x1e, 0xca, 0x7f, 0x59, 0x14, 0x79, 0x30, 0x09, 0x9a, 0xef, 0xad, 0xab, 0x40, 0x47, 0x34, 0x39, 0x8e, 0x38, 0xce, 0x01, 0x19, 0x23, 0x66, 0x67, 0x35, 0x9e, 0x38, 0xde, 0x62, 0xc6 };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region_data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
 }
