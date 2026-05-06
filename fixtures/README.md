@@ -72,6 +72,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | sdt | `ome_images/SDT/` | `FocalCheck_A1_20x_8xzoom_800nm.sdt` |
 | spc | `ome_images/SPC-FIFO/biofisika/` | `conv-256x256.set` |
 | tiff | `ome_images/TIFF/` | `A1.pattern1.tif` |
+| vectra | `ome_images/Vectra-QPTIFF/perkinelmer/PKI_fields/` | `HandEcompressed_[11004,54205]_2x2component_data.tif` |
 | xlef | `ome_images/Leica-XLEF/format test/format test TIF/` | `format-test tif.xlef` |
 | zeissczi | `ome_images/Zeiss-CZI/` | `Plate1-Blue-A-02-Scene-1-P2-E1-01.czi` |
 | zeisslsm | `zenodo/10.5281/zenodo.14510432` | `10-01.lsm` |

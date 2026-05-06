@@ -10,7 +10,7 @@ const ParsedHtml = struct {
 };
 
 pub fn matches(data: []const u8) bool {
-    return isPerkinElmerHtml(data);
+    return looksLikeHtml(data) and isPerkinElmerHtml(data);
 }
 
 pub fn isPath(path: []const u8) bool {
@@ -210,6 +210,13 @@ fn isPerkinElmerHtml(data: []const u8) bool {
             (std.ascii.indexOfIgnoreCase(data, "Wavelengths") != null or std.ascii.indexOfIgnoreCase(data, "Frames") != null));
 }
 
+fn looksLikeHtml(data: []const u8) bool {
+    const prefix = data[0..@min(data.len, 4096)];
+    return std.ascii.indexOfIgnoreCase(prefix, "<html") != null or
+        std.ascii.indexOfIgnoreCase(prefix, "<body") != null or
+        std.ascii.indexOfIgnoreCase(prefix, "<!doctype html") != null;
+}
+
 fn readFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
     return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(max_companion_bytes));
 }
@@ -312,6 +319,7 @@ const html_fixture =
 test "detects perkinelmer html metadata" {
     try std.testing.expect(matches(html_fixture));
     try std.testing.expect(!matches("<html>plain</html>"));
+    try std.testing.expect(!matches("II*\x00PerkinElmer-QPI"));
 }
 
 test "reads perkinelmer tiff-backed metadata" {

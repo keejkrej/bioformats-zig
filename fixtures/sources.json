@@ -24,6 +24,7 @@
     "OME-XML single-image public sample was pixel-smoke verified on 2026-05-06 after prioritizing OME-XML content before XML companion probes.",
     "OME Hamamatsu NDPIS public sidecar was pixel-smoke verified on 2026-05-06 with its first NDPI companion.",
     "OME InCell3000 public FRM sample was pixel-smoke verified on 2026-05-06 after accepting the payload byte count header field used by the public file.",
+    "OME Vectra-QPTIFF public sample was pixel-smoke verified on 2026-05-06 after limiting PerkinElmer byte detection to HTML metadata.",
     "OME CV7000 public samples reach the CV7000 reader, but the tested TIFF plane exposes an unsupported TIFF variant in the current Zig implementation.",
     "The OME CellH5 reduced public sample 0038.ch5 is 606148334 bytes, above the default public fixture cap."
   ],
@@ -59,7 +60,7 @@
     "svs": ["ome_images/SVS/"],
     "tiff": ["ome_images/TIFF/"],
     "trestle": ["ome_images/Trestle/"],
-    "vectra": ["ome_images/Vectra-QPTIFF/"],
+    "vectra": ["ome_images/Vectra-QPTIFF/perkinelmer/PKI_fields/", "ome_images/Vectra-QPTIFF/"],
     "ventana": ["ome_images/Ventana/"],
     "afi": ["needs-public-sample"],
     "aim": ["needs-public-sample"],
