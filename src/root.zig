@@ -1477,6 +1477,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (eps.matches(data)) return "eps";
     if (fei.matches(data)) return "fei";
     if (fits.matches(data)) return "fits";
+    if (operetta.matches(data)) return "operetta";
     if (flex.matches(data)) return "flex";
     if (fuji.matches(data)) return "fuji";
     if (gif.matches(data)) return "gif";
@@ -1516,7 +1517,6 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (oir.matches(data)) return "oir";
     if (olympustile.matches(data)) return "olympustile";
     if (omexml.matches(data)) return "omexml";
-    if (operetta.matches(data)) return "operetta";
     if (openlab.matches(data)) return "openlab";
     if (openlabraw.matches(data)) return "openlabraw";
     if (oxfordinstruments.matches(data)) return "oxfordinstruments";
@@ -1645,6 +1645,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (eps.matches(data)) return eps.readMetadata(data);
     if (fei.matches(data)) return fei.readMetadata(data);
     if (fits.matches(data)) return fits.readMetadata(data);
+    if (operetta.matches(data)) return operetta.readMetadata(data);
     if (flex.matches(data)) return flex.readMetadata(data);
     if (flowsight.matches(data)) return flowsight.readMetadata(data);
     if (fuji.matches(data)) return fuji.readMetadata(data);
@@ -1685,7 +1686,6 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (oir.matches(data)) return oir.readMetadata(data);
     if (olympustile.matches(data)) return olympustile.readMetadata(data);
     if (omexml.matches(data)) return omexml.readMetadata(data);
-    if (operetta.matches(data)) return operetta.readMetadata(data);
     if (openlab.matches(data)) return openlab.readMetadata(data);
     if (openlabraw.matches(data)) return openlabraw.readMetadata(data);
     if (oxfordinstruments.matches(data)) return oxfordinstruments.readMetadata(data);
@@ -1833,6 +1833,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return fei.readPlane(allocator, data);
     }
     if (fits.matches(data)) return fits.readPlaneIndex(allocator, data, plane_index);
+    if (operetta.matches(data)) return operetta.readPlaneIndex(allocator, data, plane_index);
     if (flex.matches(data)) return flex.readPlaneIndex(allocator, data, plane_index);
     if (flowsight.matches(data)) return flowsight.readPlaneIndex(allocator, data, plane_index);
     if (fuji.matches(data)) return fuji.readPlaneIndex(allocator, data, plane_index);
@@ -1890,7 +1891,6 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (oir.matches(data)) return oir.readPlaneIndex(allocator, data, plane_index);
     if (olympustile.matches(data)) return olympustile.readPlaneIndex(allocator, data, plane_index);
     if (omexml.matches(data)) return omexml.readPlaneIndex(allocator, data, plane_index);
-    if (operetta.matches(data)) return operetta.readPlaneIndex(allocator, data, plane_index);
     if (openlab.matches(data)) return openlab.readPlaneIndex(allocator, data, plane_index);
     if (openlabraw.matches(data)) return openlabraw.readPlaneIndex(allocator, data, plane_index);
     if (oxfordinstruments.matches(data)) return oxfordinstruments.readPlaneIndex(allocator, data, plane_index);

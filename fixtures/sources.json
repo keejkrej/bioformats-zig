@@ -16,7 +16,8 @@
     "OME Olympus FluoView OIB was pixel-smoke verified on 2026-05-06 for the fv1000 reader.",
     "OpenSlide/OME Hamamatsu VMS was pixel-smoke verified on 2026-05-06 after adding regional JPEG restart-marker handling.",
     "Public Olympus OIR samples were metadata-readable on 2026-05-06, but their pixel smoke checks currently expose unsupported-reader variants.",
-    "The Figshare MINC lead was checked on 2026-05-06; its small public .mnc.gz files are MINC2/HDF5-style and do not match the current classic NetCDF MINC reader."
+    "The Figshare MINC lead was checked on 2026-05-06; its small public .mnc.gz files are MINC2/HDF5-style and do not match the current classic NetCDF MINC reader.",
+    "OME PerkinElmer Operetta public TIFFs were metadata-readable on 2026-05-06 after accepting Harmony XML in byte tag 65500, but their LZW pixel smoke checks still expose a TIFF decoder gap."
   ],
   "implemented_format_sources": {
     "amira": ["ome_images/AmiraMesh/"],

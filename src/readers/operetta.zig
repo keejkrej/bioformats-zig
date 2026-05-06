@@ -7,8 +7,14 @@ const harmony_magic = "Harmony";
 const operetta_magic = "Operett";
 
 pub fn matches(data: []const u8) bool {
-    const xml = tiff.firstIfdAsciiTag(data, xml_tag) orelse return false;
-    const prefix = xml[0..@min(xml.len, 1024)];
+    if (containsOperettaMarker(tiff.firstIfdAsciiTag(data, xml_tag))) return true;
+    if (containsOperettaMarker(tiff.firstIfdByteTag(data, xml_tag))) return true;
+    return containsOperettaMarker(tiff.firstIfdAsciiTag(data, 270));
+}
+
+fn containsOperettaMarker(xml: ?[]const u8) bool {
+    const value = xml orelse return false;
+    const prefix = value[0..@min(value.len, 2048)];
     return std.mem.indexOf(u8, prefix, harmony_magic) != null or
         std.mem.indexOf(u8, prefix, operetta_magic) != null;
 }
@@ -139,4 +145,41 @@ test "rejects unrelated xml tag" {
     try data.append(std.testing.allocator, 1);
 
     try std.testing.expect(!matches(data.items));
+}
+
+test "matches operetta image description" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    try data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&data, 42);
+    try appendU32Le(&data, 8);
+
+    const entry_count = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const xml = "<TiffImageDescription xmlns=\"http://www.perkinelmer.com/PEHH/HarmonyV5\"><MeasurementLayout><Type>Operette</Type></MeasurementLayout></TiffImageDescription>\x00";
+    const xml_offset = ifd_end;
+    const pixel_offset = xml_offset + xml.len;
+
+    try appendU16Le(&data, entry_count);
+    try appendEntry(&data, 256, 4, 1, 1);
+    try appendEntry(&data, 257, 4, 1, 1);
+    try appendEntry(&data, 258, 3, 1, 8);
+    try appendEntry(&data, 259, 3, 1, 1);
+    try appendEntry(&data, 262, 3, 1, 1);
+    try appendEntry(&data, 270, 2, xml.len, @intCast(xml_offset));
+    try appendEntry(&data, 273, 4, 1, @intCast(pixel_offset));
+    try appendEntry(&data, 277, 3, 1, 1);
+    try appendEntry(&data, 278, 4, 1, 1);
+    try appendEntry(&data, 279, 4, 1, 1);
+    try appendU32Le(&data, 0);
+    try data.appendSlice(std.testing.allocator, xml);
+    try data.append(std.testing.allocator, 9);
+
+    try std.testing.expect(matches(data.items));
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqualStrings("operetta", metadata.format);
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{9}, plane.data);
 }
