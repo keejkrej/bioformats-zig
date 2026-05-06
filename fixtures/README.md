@@ -34,16 +34,38 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | Format | Public source | Representative file |
 | --- | --- | --- |
 | amira | `ome_images/AmiraMesh/ignacio/` | `test.am` |
+| cellomics | `ome_images/Cellomics/BBBC001/` | `AS_09125_050118150001_A03f00d0.DIB` |
+| cellsens | `ome_images/CellSens/` | `Image_V4.1_BF.vsi` |
+| dcimg | `ome_images/DCIMG/` | `bead_bot4__560_00000_00000.dcimg` |
+| deltavision | `ome_images/DV/` | `U2OS_AurB_AurA_001_R3D.dv` |
+| dicom | `ome_images/DICOM/` | `CR-MONO1-10-chest.dcm` |
+| dng | `zenodo/10.5281/zenodo.15933943` | `PXL_20250709_150255952.RAW-02.ORIGINAL.dng` |
+| ecat7 | `ome_images/ECAT7/torsten/` | `gradient-512x512x10.v` |
 | flex | `ome_images/Flex/idr0007/Plate1/` | `001001000.flex` |
 | fv1000 | `ome_images/Olympus-FluoView/imagesc-71616/` | `20220824_4492_cord_dapi__iba568_60x.oib` |
+| gatan | `ome_images/Gatan/imagesc-36590/` | `191041a_ctl_M2_3VBSED_0045.dm4` |
 | hamamatsuvms | `ome_images/Hamamatsu-VMS/openslide/CMU-3/` | `CMU-3-40x - 2010-01-12 13.57.09.vms` |
+| ics | `ome_images/ICS/jan/` | `benchmark_v1_2018_x64y64z5c2s1t11_w1Laser4054BD4BP_5c8bc101d6559_hrm.ics` |
 | imaristiff | `ome_images/Imaris-IMS/davemason/` | `Convallaria_3C_10T_confocal_IMS3.ims` |
+| incell | `ome_images/InCell2000/zenodo-14777242/` | `Training_Demo_1.xdce` |
 | jdce | `ome_images/JDCE/molecular-devices/Converted/mini-actin_confocal_CDE/` | `mini-actin_confocal_CDE.JDCE` |
+| leo | `ome_images/LEO/` | `2160grating 1024.tif` |
+| lif | `ome_images/Leica-LIF/` | `20191025 Test FRET 585. 423, 426.lif` |
+| metaxpress | `ome_images/MetaXpress/idr0005/Primary_001/` | `2011-04-19-plate-1.HTD` |
 | micromanager | `ome_images/Micro-Manager/1.4.16/serge/Pos0/` | `metadata.txt` |
-| ndpi | `ome_images/Hamamatsu-NDPI/manuel/` | `test3-DAPI 2 (387) .ndpi` |
+| mrc | `ome_images/MRC/EMDB/EMD-2225/` | `EMD-2225.map` |
 | nd2 | `ome_images/ND2/` | `MeOh_high_fluo_003.nd2` |
+| ndpi | `ome_images/Hamamatsu-NDPI/manuel/` | `test3-DAPI 2 (387) .ndpi` |
+| nifti | `ome_images/NIfTI/` | `avg152T1_LR_nifti.nii` |
+| nrrd | `ome_images/NRRD/gordon/` | `dt-helix.nhdr` |
+| obf | `ome_images/OBF/ngladitz/v4/` | `test-v4-uncompressed.obf` |
+| ometiff | `ome_images/OME-TIFF/` | `Iron-Plate.ome.tiff` |
 | operetta | `ome_images/PerkinElmer-Operetta/omer/006P_M3/006P__2017-08-19T12_42_59-Measurement 3/Images/` | `r01c02f01p01-ch1sk1fk1fl1.tiff` |
+| png | `ome_images/PNG/` | `user-1 05 TEST.png` |
+| scanr | `ome_images/ScanR/idr0009/0307-10--2007-05-30/data/` | `--W00002--P00001--Z00000--T00000--nucleus-dapi.tif` |
+| sdt | `ome_images/SDT/` | `FocalCheck_A1_20x_8xzoom_800nm.sdt` |
 | spc | `ome_images/SPC-FIFO/biofisika/` | `conv-256x256.set` |
+| tiff | `ome_images/TIFF/` | `A1.pattern1.tif` |
 | zeissczi | `ome_images/Zeiss-CZI/` | `Plate1-Blue-A-02-Scene-1-P2-E1-01.czi` |
 | zeisslsm | `zenodo/10.5281/zenodo.14510432` | `10-01.lsm` |
 
