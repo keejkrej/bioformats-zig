@@ -2158,6 +2158,7 @@ test {
     _ = incell3000;
     _ = imaris;
     _ = imarishdf;
+    _ = imaristiff;
     _ = imod;
     _ = improvisiontiff;
     _ = imspector;

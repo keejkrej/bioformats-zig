@@ -151,17 +151,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
     const info = try readTiffInfo(data);
     const header = try parseHeaderAtIndex(data, info, 0);
     try validateReadable(header);
-    var metadata = bio.Metadata{
-        .format = "tiff",
-        .width = header.width,
-        .height = header.height,
-        .size_c = if (header.photometric == 3) 3 else header.samples_per_pixel,
-        .samples_per_pixel = if (header.photometric == 3) 3 else header.samples_per_pixel,
-        .pixel_type = pixelType(header),
-        .little_endian = header.order == .little,
-        .plane_count = try countIfds(data, info),
-        .image_description = header.image_description,
-    };
+    var metadata = metadataFromHeader(header, try countIfds(data, info));
     if (header.image_description) |description| {
         if (parseOmePixels(description)) |ome| {
             metadata.size_z = ome.size_z orelse metadata.size_z;
@@ -182,6 +172,20 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
     return metadata;
 }
 
+pub fn readMetadataAtIndex(data: []const u8, ifd_index: u32, plane_count: u32) bio.ReaderError!bio.Metadata {
+    const info = try readTiffInfo(data);
+    const header = try parseHeaderAtIndex(data, info, ifd_index);
+    try validateReadable(header);
+    return metadataFromHeader(header, plane_count);
+}
+
+pub fn blockCountAtIndex(data: []const u8, ifd_index: u32) bio.ReaderError!u32 {
+    const info = try readTiffInfo(data);
+    const header = try parseHeaderAtIndex(data, info, ifd_index);
+    try validateReadable(header);
+    return @intCast(if (header.tile_count != 0) header.tile_count else header.strip_count);
+}
+
 pub fn readPlane(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError!bio.Plane {
     return readPlaneIndex(allocator, data, 0);
 }
@@ -191,6 +195,17 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     const header = try parseHeaderAtIndex(data, info, plane_index);
     try validateReadable(header);
     const metadata = try readMetadata(data);
+    return readPlaneWithHeader(allocator, data, header, metadata);
+}
+
+pub fn readPlaneAtIndexAs(allocator: std.mem.Allocator, data: []const u8, ifd_index: u32, metadata: bio.Metadata) bio.ReaderError!bio.Plane {
+    const info = try readTiffInfo(data);
+    const header = try parseHeaderAtIndex(data, info, ifd_index);
+    try validateReadable(header);
+    return readPlaneWithHeader(allocator, data, header, metadata);
+}
+
+fn readPlaneWithHeader(allocator: std.mem.Allocator, data: []const u8, header: Header, metadata: bio.Metadata) bio.ReaderError!bio.Plane {
     if (header.compression == 7) {
         if (header.tile_count != 0) {
             const bytes_per_pixel = metadata.bytesPerPixel();
@@ -272,8 +287,32 @@ pub fn readRegionIndex(
     const header = try parseHeaderAtIndex(data, info, plane_index);
     try validateReadable(header);
     const metadata = try readMetadata(data);
+    return readRegionWithHeader(allocator, data, header, metadata, region, plane_index);
+}
+
+pub fn readRegionAtIndexAs(
+    allocator: std.mem.Allocator,
+    data: []const u8,
+    ifd_index: u32,
+    metadata: bio.Metadata,
+    region: bio.Region,
+) bio.ReaderError!bio.Plane {
+    const info = try readTiffInfo(data);
+    const header = try parseHeaderAtIndex(data, info, ifd_index);
+    try validateReadable(header);
+    return readRegionWithHeader(allocator, data, header, metadata, region, ifd_index);
+}
+
+fn readRegionWithHeader(
+    allocator: std.mem.Allocator,
+    data: []const u8,
+    header: Header,
+    metadata: bio.Metadata,
+    region: bio.Region,
+    plane_index: u32,
+) bio.ReaderError!bio.Plane {
     try region.validate(metadata);
-    if (region.isFull(metadata) and !(header.compression == 7 and header.tile_count != 0)) return readPlaneIndex(allocator, data, plane_index);
+    if (region.isFull(metadata) and !(header.compression == 7 and header.tile_count != 0)) return readPlaneAtIndexAs(allocator, data, plane_index, metadata);
     if (header.compression == 7) {
         if (header.tile_count != 0) {
             const bytes_per_pixel = metadata.bytesPerPixel();
@@ -284,19 +323,19 @@ pub fn readRegionIndex(
             try readJpegTiledRegion(allocator, data, header, metadata, region, row_bytes, out);
             return .{ .metadata = metadata, .data = out };
         }
-        const plane = try readPlaneIndex(allocator, data, plane_index);
+        const plane = try readPlaneAtIndexAs(allocator, data, plane_index, metadata);
         defer allocator.free(plane.data);
         return .{ .metadata = metadata, .data = try bio.cropPlane(allocator, plane, region) };
     }
 
     if (header.bits_per_sample[0] < 8 and header.photometric != 3) {
-        const plane = try readPlaneIndex(allocator, data, plane_index);
+        const plane = try readPlaneAtIndexAs(allocator, data, plane_index, metadata);
         defer allocator.free(plane.data);
         return .{ .metadata = metadata, .data = try bio.cropPlane(allocator, plane, region) };
     }
 
     if (header.photometric == 3) {
-        const plane = try readPlaneIndex(allocator, data, plane_index);
+        const plane = try readPlaneAtIndexAs(allocator, data, plane_index, metadata);
         defer allocator.free(plane.data);
         return .{ .metadata = metadata, .data = try bio.cropPlane(allocator, plane, region) };
     }
@@ -322,7 +361,7 @@ pub fn readRegionIndex(
     }
 
     if (header.tile_count == 0) {
-        const plane = try readPlaneIndex(allocator, data, plane_index);
+        const plane = try readPlaneAtIndexAs(allocator, data, plane_index, metadata);
         defer allocator.free(plane.data);
         return .{ .metadata = metadata, .data = try bio.cropPlane(allocator, plane, region) };
     }
@@ -344,6 +383,20 @@ pub fn readRegionIndex(
     errdefer allocator.free(out);
     try readTiledRegion(allocator, data, header, metadata, region, row_bytes, out);
     return .{ .metadata = metadata, .data = out };
+}
+
+fn metadataFromHeader(header: Header, plane_count: u32) bio.Metadata {
+    return .{
+        .format = "tiff",
+        .width = header.width,
+        .height = header.height,
+        .size_c = if (header.photometric == 3) 3 else header.samples_per_pixel,
+        .samples_per_pixel = if (header.photometric == 3) 3 else header.samples_per_pixel,
+        .pixel_type = pixelType(header),
+        .little_endian = header.order == .little,
+        .plane_count = plane_count,
+        .image_description = header.image_description,
+    };
 }
 
 fn readTiffInfo(data: []const u8) bio.ReaderError!TiffInfo {
