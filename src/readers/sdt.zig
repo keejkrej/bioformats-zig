@@ -37,6 +37,7 @@ const Parsed = struct {
     channels: u16,
     timepoints: u16,
     increment: u16,
+    block_count: u32,
     data_block_offset: usize,
     separate_channel_blocks: bool,
     block: Block,
@@ -61,6 +62,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
         .pixel_type = .uint16,
         .little_endian = true,
         .plane_count = plane_count,
+        .series_count = parsed.block_count,
         .dimension_order = "XYZTC",
     };
 }
@@ -90,26 +92,27 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     plane_stride = std.math.mul(usize, plane_stride, times) catch return error.UnsupportedVariant;
     plane_stride = std.math.mul(usize, plane_stride, bytes_per_sample) catch return error.UnsupportedVariant;
     const padded_all_channels = std.math.mul(usize, plane_stride, parsed.channels) catch return error.UnsupportedVariant;
-    if (padded_width > parsed.width and padded_all_channels > parsed.block.length) {
+    if (padded_width > parsed.width and padded_all_channels > block.length) {
         const unpadded_stride = std.math.mul(usize, parsed.width, parsed.height) catch return error.UnsupportedVariant;
         const unpadded_time_stride = std.math.mul(usize, unpadded_stride, times) catch return error.UnsupportedVariant;
         const unpadded_plane_stride = std.math.mul(usize, unpadded_time_stride, bytes_per_sample) catch return error.UnsupportedVariant;
         const unpadded_all_channels = std.math.mul(usize, unpadded_plane_stride, parsed.channels) catch return error.UnsupportedVariant;
-        if (unpadded_all_channels <= parsed.block.length) {
+        if (unpadded_all_channels <= block.length) {
             padded_width = parsed.width;
             plane_stride = unpadded_plane_stride;
         }
     }
     const channel_offset = if (parsed.separate_channel_blocks) 0 else std.math.mul(usize, slab, plane_stride) catch return error.UnsupportedVariant;
-    if (channel_offset > block_data.len or block_data.len - channel_offset < plane_stride) return error.TruncatedData;
+    const zip_entry: ?ZipEntry = parseZipEntry(block_data) catch null;
+    if (zip_entry == null and (channel_offset > block_data.len or block_data.len - channel_offset < plane_stride)) return error.TruncatedData;
 
     const out_len = try planeByteCount(metadata);
     const out = try allocator.alloc(u8, out_len);
     errdefer allocator.free(out);
-    if (parseZipEntry(block_data)) |zip| {
+    if (zip_entry) |zip| {
         try copyZippedPlane(allocator, zip, parsed, channel_offset, time_bin, out);
         return .{ .metadata = metadata, .data = out };
-    } else |_| {}
+    }
 
     var row: usize = 0;
     while (row < parsed.height) : (row += 1) {
@@ -135,6 +138,11 @@ fn parse(data: []const u8) bio.ReaderError!Parsed {
     if (measure.height > 0) dims.height = measure.height;
     if (measure.time_bins > 0) dims.time_bins = measure.time_bins;
     if (measure.channels > 0) dims.channels = measure.channels;
+    if (measure.mode13) {
+        dims.width = dims.mode13_width;
+        dims.height = dims.mode13_height;
+        dims.channels = header.measure_count;
+    }
     var timepoints = measure.timepoints;
     if (timepoints == 0) timepoints = 1;
     var increment = measure.increment;
@@ -142,12 +150,6 @@ fn parse(data: []const u8) bio.ReaderError!Parsed {
     if (dims.width == 0 or dims.height == 0 or dims.time_bins == 0) return error.InvalidFormat;
     if (dims.channels == 0) dims.channels = 1;
     const block = try parseFirstBlock(data, header.data_block_offset);
-    const bytes_per_sample = 2;
-    const pixels = std.math.mul(usize, dims.width, dims.height) catch return error.UnsupportedVariant;
-    const bin_bytes = std.math.mul(usize, pixels, bytes_per_sample) catch return error.UnsupportedVariant;
-    if (bin_bytes == 0) return error.InvalidFormat;
-    const bins_in_first_block = block.length / bin_bytes;
-    if (bins_in_first_block > 0 and bins_in_first_block < dims.time_bins) dims.time_bins = @intCast(bins_in_first_block);
     return .{
         .width = dims.width,
         .height = dims.height,
@@ -155,6 +157,7 @@ fn parse(data: []const u8) bio.ReaderError!Parsed {
         .channels = try u16FromU32(dims.channels),
         .timepoints = try u16FromU32(timepoints),
         .increment = try u16FromU32(increment),
+        .block_count = header.block_count,
         .data_block_offset = header.data_block_offset,
         .separate_channel_blocks = measure.separate_channel_blocks,
         .block = block,
@@ -277,14 +280,18 @@ fn setupSlice(data: []const u8, header: Header) bio.ReaderError![]const u8 {
 const SetupDimensions = struct {
     width: u32 = 0,
     height: u32 = 0,
+    mode13_width: u32 = 0,
+    mode13_height: u32 = 0,
     time_bins: u32 = 0,
     channels: u32 = 0,
 };
 
 fn parseSetupDimensions(setup: []const u8) SetupDimensions {
     return .{
-        .width = parseTaggedU32(setup, "#SP [SP_SCAN_X,I,") orelse parseTaggedU32(setup, "#SP [SP_IMG_X,I,") orelse 0,
-        .height = parseTaggedU32(setup, "#SP [SP_SCAN_Y,I,") orelse parseTaggedU32(setup, "#SP [SP_IMG_Y,I,") orelse 0,
+        .width = parseTaggedU32(setup, "#SP [SP_SCAN_X,I,") orelse 0,
+        .height = parseTaggedU32(setup, "#SP [SP_SCAN_Y,I,") orelse 0,
+        .mode13_width = parseTaggedU32(setup, "#SP [SP_IMG_X,I,") orelse 0,
+        .mode13_height = parseTaggedU32(setup, "#SP [SP_IMG_Y,I,") orelse 0,
         .time_bins = parseTaggedU32(setup, "#SP [SP_ADC_RE,I,") orelse 0,
         .channels = parseTaggedU32(setup, "#SP [SP_SCAN_RX,I,") orelse 1,
     };
@@ -304,6 +311,7 @@ const Measure = struct {
     channels: u32 = 0,
     timepoints: u32 = 0,
     increment: u32 = 1,
+    mode13: bool = false,
     separate_channel_blocks: bool = false,
 };
 
@@ -329,7 +337,7 @@ fn parseMeasure(data: []const u8, header: Header) Measure {
         parsed.width = 1;
         parsed.height = 1;
     } else if (meas_mode == 13) {
-        parsed.channels = header.measure_count;
+        parsed.mode13 = true;
         parsed.separate_channel_blocks = true;
     }
     return parsed;
@@ -563,4 +571,58 @@ test "reads stored zipped sdt block" {
     const plane = try readPlane(std.testing.allocator, data.items);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 8, 0 }, plane.data);
+}
+
+test "matches Bio-Formats default metadata for cached SDT fixture" {
+    const file_path = "fixtures/cache/sdt/FocalCheck_A1_20x_8xzoom_800nm.sdt";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(64 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("sdt", metadata.format);
+    try std.testing.expectEqual(@as(u32, 512), metadata.width);
+    try std.testing.expectEqual(@as(u32, 512), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 4096), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 8192), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 2), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYZTC", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats default plane and region hashes for cached SDT fixture" {
+    const file_path = "fixtures/cache/sdt/FocalCheck_A1_20x_8xzoom_800nm.sdt";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(64 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0x07, 0x85, 0x4d, 0x2f, 0xef, 0x29, 0x7a, 0x06, 0xba, 0x81, 0x68, 0x5e, 0x66, 0x0c, 0x33, 0x2d, 0xe3, 0x6d, 0x5d, 0x18, 0xd5, 0x46, 0x92, 0x7d, 0x30, 0xda, 0xad, 0x6d, 0x7f, 0xda, 0x15, 0x41 } },
+        .{ .plane = 4096, .sha256 = .{ 0x07, 0x85, 0x4d, 0x2f, 0xef, 0x29, 0x7a, 0x06, 0xba, 0x81, 0x68, 0x5e, 0x66, 0x0c, 0x33, 0x2d, 0xe3, 0x6d, 0x5d, 0x18, 0xd5, 0x46, 0x92, 0x7d, 0x30, 0xda, 0xad, 0x6d, 0x7f, 0xda, 0x15, 0x41 } },
+        .{ .plane = 8191, .sha256 = .{ 0x07, 0x85, 0x4d, 0x2f, 0xef, 0x29, 0x7a, 0x06, 0xba, 0x81, 0x68, 0x5e, 0x66, 0x0c, 0x33, 0x2d, 0xe3, 0x6d, 0x5d, 0x18, 0xd5, 0x46, 0x92, 0x7d, 0x30, 0xda, 0xad, 0x6d, 0x7f, 0xda, 0x15, 0x41 } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlaneIndex(std.testing.allocator, data, sample.plane);
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 524288), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    const region_data = try bio.cropPlane(std.testing.allocator, plane, .{ .x = 17, .y = 19, .width = 16, .height = 12 });
+    defer std.testing.allocator.free(region_data);
+    try std.testing.expectEqual(@as(usize, 384), region_data.len);
+    const expected_region: [32]u8 = .{ 0xa1, 0xa4, 0xf5, 0x72, 0x1c, 0x1c, 0x46, 0x10, 0xaf, 0x7f, 0x71, 0x07, 0x8f, 0x3a, 0x68, 0xc3, 0x30, 0x53, 0x6d, 0x67, 0x98, 0x03, 0xb0, 0xe0, 0x50, 0x7e, 0xe8, 0xdc, 0x10, 0xc5, 0xdf, 0xca };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region_data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
 }
