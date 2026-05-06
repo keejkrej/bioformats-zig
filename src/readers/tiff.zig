@@ -82,6 +82,13 @@ const OmePixels = struct {
     dimension_order: ?[]const u8 = null,
 };
 
+const ImageJComment = struct {
+    size_z: u16 = 1,
+    size_c: u16 = 1,
+    size_t: u16 = 1,
+    image_count: u32 = 1,
+};
+
 pub fn matches(data: []const u8) bool {
     if (data.len < 4) return false;
     const little = data[0] == 'I' and data[1] == 'I';
@@ -161,6 +168,15 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
             metadata.size_c = ome.size_c orelse metadata.size_c;
             metadata.size_t = ome.size_t orelse metadata.size_t;
             metadata.dimension_order = ome.dimension_order;
+        } else if (parseImageJComment(description)) |imagej| {
+            metadata.dimension_order = "XYCZT";
+            const zct = std.math.mul(u32, imagej.size_z, imagej.size_c) catch return error.UnsupportedVariant;
+            const planes = std.math.mul(u32, zct, imagej.size_t) catch return error.UnsupportedVariant;
+            if (planes == metadata.plane_count or imagej.image_count == metadata.plane_count) {
+                metadata.size_z = imagej.size_z;
+                metadata.size_c = imagej.size_c;
+                metadata.size_t = imagej.size_t;
+            }
         }
     }
     return metadata;
@@ -1781,6 +1797,51 @@ fn parseOmePixels(xml: []const u8) ?OmePixels {
     };
 }
 
+fn parseImageJComment(description: []const u8) ?ImageJComment {
+    if (!std.mem.startsWith(u8, description, "ImageJ=")) return null;
+    var parsed = ImageJComment{};
+    var saw_dimension = false;
+    var pos: usize = 0;
+    while (pos <= description.len) {
+        const line_end = std.mem.indexOfScalarPos(u8, description, pos, '\n') orelse description.len;
+        const line = std.mem.trim(u8, description[pos..line_end], " \t\r\n");
+        if (std.mem.startsWith(u8, line, "channels=")) {
+            if (parseImageJU16(line["channels=".len..])) |value| {
+                parsed.size_c = value;
+                saw_dimension = true;
+            }
+        } else if (std.mem.startsWith(u8, line, "slices=")) {
+            if (parseImageJU16(line["slices=".len..])) |value| {
+                parsed.size_z = value;
+                saw_dimension = true;
+            }
+        } else if (std.mem.startsWith(u8, line, "frames=")) {
+            if (parseImageJU16(line["frames=".len..])) |value| {
+                parsed.size_t = value;
+                saw_dimension = true;
+            }
+        } else if (std.mem.startsWith(u8, line, "images=")) {
+            if (parseImageJU32(line["images=".len..])) |value| {
+                parsed.image_count = value;
+                saw_dimension = true;
+            }
+        }
+        if (line_end == description.len) break;
+        pos = line_end + 1;
+    }
+    return if (saw_dimension) parsed else null;
+}
+
+fn parseImageJU16(value: []const u8) ?u16 {
+    const parsed = parseImageJU32(value) orelse return null;
+    if (parsed == 0 or parsed > std.math.maxInt(u16)) return null;
+    return @intCast(parsed);
+}
+
+fn parseImageJU32(value: []const u8) ?u32 {
+    return std.fmt.parseUnsigned(u32, std.mem.trim(u8, value, " \t\r\n"), 10) catch null;
+}
+
 fn parseU16Attr(tag: []const u8, name: []const u8) ?u16 {
     const value = parseStringAttr(tag, name) orelse return null;
     const parsed = std.fmt.parseInt(u16, value, 10) catch return null;
@@ -3238,6 +3299,42 @@ test "reads ome pixels dimensions from image description" {
     try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
     try std.testing.expectEqual(@as(usize, 1), metadata.bytesPerPixel());
     try std.testing.expectEqualStrings("XYZCT", metadata.dimension_order.?);
+}
+
+test "parses ImageJ hyperstack dimensions from image description" {
+    const parsed = parseImageJComment(
+        "ImageJ=1.51r\n" ++
+            "images=46\n" ++
+            "channels=2\n" ++
+            "frames=23\n" ++
+            "hyperstack=true\n",
+    ).?;
+
+    try std.testing.expectEqual(@as(u16, 1), parsed.size_z);
+    try std.testing.expectEqual(@as(u16, 2), parsed.size_c);
+    try std.testing.expectEqual(@as(u16, 23), parsed.size_t);
+    try std.testing.expectEqual(@as(u32, 46), parsed.image_count);
+}
+
+test "matches Bio-Formats core metadata for cached ImageJ TIFF fixture" {
+    const file_path = "fixtures/cache/tiff/A1.pattern1.tif";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(16 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("tiff", metadata.format);
+    try std.testing.expectEqual(@as(u32, 305), metadata.width);
+    try std.testing.expectEqual(@as(u32, 240), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 23), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 46), metadata.plane_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(!metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 }
 
 fn appendTestIfd(list: *std.ArrayList(u8), strip_offset: u32, next_ifd_offset: u32) !void {
