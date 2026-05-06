@@ -34,7 +34,9 @@
     "OME Ventana public BIF files were checked on 2026-05-06; the smallest checked BIF is 227377284 bytes, above the default public fixture cap.",
     "OME Leica-SCN public files were checked on 2026-05-06; the smallest checked SCN is 291812870 bytes, above the default public fixture cap.",
     "OME Imspector public test.msr was checked on 2026-05-06; it is 275404088 bytes, above the default public fixture cap.",
-    "OME CellWorX idr0005, idr0006, and idr0008 public directories were checked on 2026-05-06 and did not list fetchable HTD/PNL/LOG candidates."
+    "OME CellWorX idr0005, idr0006, and idr0008 public directories were checked on 2026-05-06 and did not list fetchable HTD/PNL/LOG candidates.",
+    "OME Imaris-HDF public candidates croppedCDM3DLz4.ims and Convallaria_3C_1T_confocal.ims were checked on 2026-05-06; both are metadata-readable but their pixels use unsupported HDF5 filter or chunk layouts in the current lightweight reader.",
+    "OME Imaris public directories checked on 2026-05-06 cover HDF5 .ims and IMS3 TIFF-style fixtures, not the classic Imaris raw format implemented by the imaris reader."
   ],
   "implemented_format_sources": {
     "amira": ["ome_images/AmiraMesh/"],
@@ -112,8 +114,8 @@
     "imacon": ["needs-public-sample"],
     "im3": ["needs-public-sample"],
     "imagic": ["needs-public-sample"],
-    "imaris": ["ome_images/Imaris-IMS/", "zenodo/10.5281/zenodo.17406102", "zenodo/10.5281/zenodo.18852087"],
-    "imarishdf": ["ome_images/Imaris-IMS/bitplane/lz4/", "ome_images/Imaris-IMS/davemason/", "zenodo/10.5281/zenodo.17406102", "zenodo/10.5281/zenodo.18852087", "bioformats-docs/bitplane-imaris-hdf-public-sample-images"],
+    "imaris": ["needs-public-sample", "note-ome-imaris-public-dirs-cover-hdf-and-ims3-not-classic-imaris"],
+    "imarishdf": ["ome_images/Imaris-IMS/bitplane/lz4/", "ome_images/Imaris-IMS/davemason/", "zenodo/10.5281/zenodo.17406102", "zenodo/10.5281/zenodo.18852087", "bioformats-docs/bitplane-imaris-hdf-public-sample-images", "note-public-samples-metadata-readable-pixels-unsupported"],
     "imaristiff": ["ome_images/Imaris-IMS/", "zenodo/10.5281/zenodo.17406102", "zenodo/10.5281/zenodo.18852087"],
     "imod": ["needs-public-sample"],
     "improvisiontiff": ["needs-public-sample"],
