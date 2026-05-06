@@ -472,4 +472,13 @@ test "matches Bio-Formats plane hashes for cached OIR fixture" {
         std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
         try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
     }
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 8);
+    defer std.testing.allocator.free(plane.data);
+    const region_data = try bio.cropPlane(std.testing.allocator, plane, .{ .x = 17, .y = 19, .width = 16, .height = 12 });
+    defer std.testing.allocator.free(region_data);
+    const expected_region: [32]u8 = .{ 0xb9, 0x4c, 0xf7, 0x29, 0x2a, 0x3d, 0x82, 0x8f, 0xe4, 0x39, 0xee, 0x53, 0x1c, 0xf4, 0x89, 0x98, 0xe0, 0x71, 0x87, 0x5b, 0xf1, 0x89, 0xad, 0xa8, 0x66, 0xe5, 0x7b, 0x49, 0x81, 0xc2, 0xa0, 0x58 };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region_data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
 }
