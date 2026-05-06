@@ -1505,6 +1505,7 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (png.matches(data)) return "png";
     if (pqbin.matches(data)) return "pqbin";
     if (psd.matches(data)) return "psd";
+    if (zeissczi.matches(data)) return "zeissczi";
     if (mrc.matches(data)) return "mrc";
     if (naf.matches(data)) return "naf";
     if (nd2.matches(data)) return "nd2";
@@ -1541,7 +1542,6 @@ pub fn detect(data: []const u8) ?[]const u8 {
     if (volocityclipping.matches(data)) return "volocityclipping";
     if (watop.matches(data)) return "watop";
     if (xlef.matches(data)) return "xlef";
-    if (zeissczi.matches(data)) return "zeissczi";
     if (zeisslms.matches(data)) return "zeisslms";
     if (zeissxrm.matches(data)) return "zeissxrm";
     if (zeisszvi.matches(data)) return "zeisszvi";
@@ -1674,6 +1674,7 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (png.matches(data)) return png.readMetadata(data);
     if (pqbin.matches(data)) return pqbin.readMetadata(data);
     if (psd.matches(data)) return psd.readMetadata(data);
+    if (zeissczi.matches(data)) return zeissczi.readMetadata(data);
     if (mrc.matches(data)) return mrc.readMetadata(data);
     if (naf.matches(data)) return naf.readMetadata(data);
     if (nd2.matches(data)) return nd2.readMetadata(data);
@@ -1710,7 +1711,6 @@ pub fn readMetadata(data: []const u8) ReaderError!Metadata {
     if (volocityclipping.matches(data)) return volocityclipping.readMetadata(data);
     if (watop.matches(data)) return watop.readMetadata(data);
     if (xlef.matches(data)) return xlef.readMetadata(data);
-    if (zeissczi.matches(data)) return zeissczi.readMetadata(data);
     if (zeisslms.matches(data)) return zeisslms.readMetadata(data);
     if (zeissxrm.matches(data)) return zeissxrm.readMetadata(data);
     if (zeisszvi.matches(data)) return zeisszvi.readMetadata(data);
@@ -1879,6 +1879,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (plane_index != 0) return error.InvalidPlaneIndex;
         return psd.readPlane(allocator, data);
     }
+    if (zeissczi.matches(data)) return zeissczi.readPlaneIndex(allocator, data, plane_index);
     if (mrc.matches(data)) return mrc.readPlaneIndex(allocator, data, plane_index);
     if (naf.matches(data)) return naf.readPlaneIndex(allocator, data, plane_index);
     if (nd2.matches(data)) return nd2.readPlaneIndex(allocator, data, plane_index);
@@ -1939,7 +1940,6 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         return watop.readPlane(allocator, data);
     }
     if (xlef.matches(data)) return xlef.readPlaneIndex(allocator, data, plane_index);
-    if (zeissczi.matches(data)) return zeissczi.readPlaneIndex(allocator, data, plane_index);
     if (zeisslms.matches(data)) return zeisslms.readPlaneIndex(allocator, data, plane_index);
     if (zeissxrm.matches(data)) return zeissxrm.readPlaneIndex(allocator, data, plane_index);
     if (zeisszvi.matches(data)) return zeisszvi.readPlaneIndex(allocator, data, plane_index);

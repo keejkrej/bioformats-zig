@@ -40,6 +40,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | jdce | `ome_images/JDCE/molecular-devices/Converted/mini-actin_confocal_CDE/` | `mini-actin_confocal_CDE.JDCE` |
 | micromanager | `ome_images/Micro-Manager/1.4.16/serge/Pos0/` | `metadata.txt` |
 | spc | `ome_images/SPC-FIFO/biofisika/` | `conv-256x256.set` |
+| zeissczi | `ome_images/Zeiss-CZI/` | `Plate1-Blue-A-02-Scene-1-P2-E1-01.czi` |
 
 The full local cache may contain additional verified formats depending on what
 has been fetched on the machine running the tests; `fixtures/cache/` remains

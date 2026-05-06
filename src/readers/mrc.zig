@@ -4,6 +4,7 @@ const bio = @import("../root.zig");
 const header_len = 1024;
 const endian_stamp_offset = 212;
 const ext_header_size_offset = 92;
+const czi_magic = "ZISRAWFILE";
 
 const ByteOrder = enum {
     little,
@@ -39,6 +40,7 @@ const Header = struct {
 
 pub fn matches(data: []const u8) bool {
     if (data.len < header_len) return false;
+    if (std.mem.startsWith(u8, data, czi_magic)) return false;
     if (looksLikeEcat7(data)) return false;
     const stamp = data[endian_stamp_offset];
     if (stamp == 68) return candidateValid(data, .little);
@@ -84,6 +86,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
 
 fn parseHeader(data: []const u8) bio.ReaderError!Header {
     if (data.len < header_len) return error.InvalidFormat;
+    if (std.mem.startsWith(u8, data, czi_magic)) return error.InvalidFormat;
     if (looksLikeEcat7(data)) return error.InvalidFormat;
     const stamp = data[endian_stamp_offset];
     const order: ByteOrder = if (stamp == 68)
@@ -205,6 +208,14 @@ test "reads rgb mrc metadata and pixels" {
 test "rejects ecat7 matrix headers as mrc candidates" {
     var data = [_]u8{0} ** header_len;
     @memcpy(data[0.."MATRIX70v".len], "MATRIX70v");
+
+    try std.testing.expect(!matches(&data));
+    try std.testing.expectError(error.InvalidFormat, readMetadata(&data));
+}
+
+test "rejects zeiss czi headers as mrc candidates" {
+    var data = [_]u8{0} ** header_len;
+    @memcpy(data[0..czi_magic.len], czi_magic);
 
     try std.testing.expect(!matches(&data));
     try std.testing.expectError(error.InvalidFormat, readMetadata(&data));
