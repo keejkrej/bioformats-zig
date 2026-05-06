@@ -1616,3 +1616,60 @@ test "reads nd2 series plane using SLxExperiment raster mapping" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &pixels[5], plane.data);
 }
+
+test "reads nd2 Z/T/position planes using ImageMetadataLV raster mapping" {
+    const file_path = "nd2-z-t-position-raster-map-test.nd2";
+    std.Io.Dir.cwd().deleteFile(std.testing.io, file_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, file_path) catch {};
+
+    var file_bytes: std.ArrayList(u8) = .empty;
+    defer file_bytes.deinit(std.testing.allocator);
+    var attributes: std.ArrayList(u8) = .empty;
+    defer attributes.deinit(std.testing.allocator);
+
+    try appendAttributeField(&attributes, "uiWidth", 1);
+    try appendAttributeField(&attributes, "uiHeight", 1);
+    try appendAttributeField(&attributes, "uiComp", 1);
+    try appendAttributeField(&attributes, "uiBpcInMemory", 16);
+    try appendAttributeField(&attributes, "SLxExperiment", 0);
+    try appendAttributeField(&attributes, "eType", 4);
+    try appendAttributeField(&attributes, "uiCount", 2);
+    try appendAttributeField(&attributes, "uiNextLevelCount", 1);
+    try appendAttributeField(&attributes, "eType", 1);
+    try appendAttributeField(&attributes, "uiCount", 3);
+    try appendAttributeField(&attributes, "uiNextLevelCount", 1);
+    try appendAttributeField(&attributes, "eType", 2);
+    try appendAttributeField(&attributes, "uiCount", 2);
+    try appendAttributeField(&attributes, "uiNextLevelCount", 0);
+
+    _ = try appendChunk(&file_bytes, "ND2 FILE SIGNATURE CHUNK NAME01!", "Ver3.0");
+    _ = try appendChunk(&file_bytes, "ImageMetadataLV!", attributes.items);
+
+    var offsets: [12]u64 = undefined;
+    var pixels: [12][2]u8 = undefined;
+    for (&pixels, 0..) |*pixel, i| {
+        pixel.* = .{ @intCast(i + 1), 0 };
+        const name = try std.fmt.allocPrint(std.testing.allocator, "ImageDataSeq|{}!", .{i});
+        defer std.testing.allocator.free(name);
+        offsets[i] = try appendChunk(&file_bytes, name, pixel);
+    }
+
+    try file_bytes.appendSlice(std.testing.allocator, "ND2 FILEMAP SIGNATURE NAME 0001!");
+    for (offsets, pixels, 0..) |offset, pixel, i| {
+        const name = try std.fmt.allocPrint(std.testing.allocator, "ImageDataSeq|{}", .{i});
+        defer std.testing.allocator.free(name);
+        try appendFileMapEntry(&file_bytes, name, offset, pixel.len);
+    }
+    try appendFileMapEntry(&file_bytes, "ND2 CHUNK MAP SIGNATURE 0000001", 0, 0);
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = file_path, .data = file_bytes.items });
+
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, file_path);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 3), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 2), metadata.series_count);
+    try std.testing.expectEqual(@as(u32, 6), metadata.plane_count);
+
+    const plane = try readPlanePathRegionSeriesIndex(std.testing.allocator, std.testing.io, file_path, 1, 5, .{ .x = 0, .y = 0, .width = 1, .height = 1 });
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &pixels[11], plane.data);
+}
