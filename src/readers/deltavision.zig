@@ -321,3 +321,39 @@ test "maps deltavision channel-first sequence" {
 test "rejects tiff as deltavision" {
     try std.testing.expect(!matches("II*\x00"));
 }
+
+test "matches Bio-Formats metadata and plane hashes for cached DeltaVision fixture" {
+    const file_path = "fixtures/cache/deltavision/U2OS_AurB_AurA_001_R3D.dv";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(64 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("deltavision", metadata.format);
+    try std.testing.expectEqual(@as(u32, 512), metadata.width);
+    try std.testing.expectEqual(@as(u32, 512), metadata.height);
+    try std.testing.expectEqual(@as(u16, 4), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 20), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 80), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYZCT", metadata.dimension_order.?);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0x54, 0x59, 0xf7, 0x7c, 0x6f, 0xf9, 0xfe, 0x4f, 0xbb, 0x68, 0x2a, 0xe8, 0x90, 0x8d, 0x1e, 0xe7, 0x6c, 0x0b, 0x58, 0x10, 0xa2, 0x47, 0x41, 0xce, 0x13, 0xd4, 0x4e, 0x7a, 0xf6, 0x07, 0x6e, 0x04 } },
+        .{ .plane = 40, .sha256 = .{ 0xc0, 0x6f, 0x15, 0xb5, 0x48, 0x9a, 0xe8, 0x06, 0x03, 0x55, 0xe0, 0x8d, 0x02, 0x38, 0x53, 0xc9, 0xa1, 0xb7, 0x70, 0x56, 0xd4, 0xe7, 0x93, 0x74, 0xb0, 0xd5, 0x26, 0x17, 0x44, 0x88, 0x78, 0xe8 } },
+        .{ .plane = 79, .sha256 = .{ 0x7d, 0x0b, 0x23, 0x74, 0x9d, 0x39, 0x3d, 0x47, 0x91, 0xc0, 0x8d, 0xa5, 0x35, 0x53, 0xbc, 0x44, 0xe7, 0xf0, 0xcc, 0xbf, 0x8a, 0xa6, 0x73, 0xb3, 0xdb, 0x74, 0xb5, 0xa8, 0x5d, 0x83, 0xd7, 0x67 } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlaneIndex(std.testing.allocator, data, sample.plane);
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 524288), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+}
