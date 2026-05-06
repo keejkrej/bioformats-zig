@@ -122,6 +122,7 @@ function Preferred-NamePattern {
         "amira" { return '\.(am|amiramesh|grey|hx|labels)$' }
         "cellsens" { return '\.vsi$' }
         "cellomics" { return '\.(c01|dib)$' }
+        "columbus" { return '^MeasurementIndex\.ColumbusIDX\.xml$' }
         "dcimg" { return '\.dcimg$' }
         "ecat7" { return '\.v$' }
         "flex" { return '\.(flex|mea|res)$' }
@@ -612,6 +613,18 @@ function Download-MetaxpressCompanions {
     }
 }
 
+function Download-ColumbusCompanions {
+    param(
+        [string]$IndexSource,
+        [string]$TargetDir
+    )
+
+    $baseUrl = [Uri]::new([Uri]$IndexSource, ".").AbsoluteUri
+    foreach ($name in @("ImageIndex.ColumbusIDX.xml", "001001-1.tif")) {
+        Download-Companion $baseUrl $name $TargetDir
+    }
+}
+
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
 $zenodoRecordId = Resolve-ZenodoRecordId ([string[]]$formatEntry.Value)
 if ($null -eq $sourceUrl -and $null -eq $zenodoRecordId) {
@@ -687,4 +700,7 @@ if ($Format -eq "micromanager") {
 }
 if ($Format -eq "metaxpress") {
     Download-MetaxpressCompanions $candidate.Url $targetPath $targetDir
+}
+if ($Format -eq "columbus") {
+    Download-ColumbusCompanions $candidate.Url $targetDir
 }

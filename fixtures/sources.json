@@ -20,7 +20,7 @@
     "OME PerkinElmer Operetta public TIFF was pixel-smoke verified on 2026-05-06 after accepting Harmony XML in byte tag 65500 and fixing TIFF LZW code-width transitions.",
     "OME Gatan public directories were checked on 2026-05-06; the available small public files cover DM3/DM4 but no DM2 fixture was found.",
     "The current OME public image index was checked on 2026-05-06 for Zeiss AxioVision TIFF; only Zeiss-CZI is listed under Zeiss.",
-    "OME Columbus public samples can answer some one-shot JSON-RPC requests, but the long-lived fixture smoke path currently stalls and should not be counted as verified fixture coverage.",
+    "OME Columbus public sample was pixel-smoke verified on 2026-05-06 after prioritizing Columbus measurement-index content before XML companion probes.",
     "OME-XML single-image public sample was pixel-smoke verified on 2026-05-06 after prioritizing OME-XML content before XML companion probes.",
     "OME CV7000 public samples reach the CV7000 reader, but the tested TIFF plane exposes an unsupported TIFF variant in the current Zig implementation.",
     "The OME CellH5 reduced public sample 0038.ch5 is 606148334 bytes, above the default public fixture cap."
@@ -78,7 +78,7 @@
     "cellsens": ["ome_images/CellSens/", "zenodo/10.5281/zenodo.17590655"],
     "cellworx": ["ome_images/CellWorX/"],
     "dng": ["zenodo/10.5281/zenodo.15933943"],
-    "columbus": ["ome_images/PerkinElmer-Columbus/"],
+    "columbus": ["ome_images/PerkinElmer-Columbus/zenodo-6327496/tif/", "ome_images/PerkinElmer-Columbus/"],
     "cv7000": ["ome_images/CV7000/", "zenodo/10.5281/zenodo.10683043"],
     "eps": ["generated-fixture"],
     "fake": ["generated-fixture"],

@@ -170,6 +170,10 @@ pub const Server = struct {
                 try writeProbeFormat(writer, id, path, "omexml");
                 return .{ .wrote_response = true };
             }
+            if (bio.columbus.matches(bytes)) {
+                try writeProbeFormat(writer, id, path, "columbus");
+                return .{ .wrote_response = true };
+            }
             if (try self.probePathPriorityFormat(path)) |format| {
                 try writeProbeFormat(writer, id, path, format);
                 return .{ .wrote_response = true };
@@ -500,6 +504,7 @@ pub const Server = struct {
 
     fn metadataFromPathBytes(self: *Server, path: []const u8, bytes: []const u8) !bio.Metadata {
         if (bio.omexml.matches(bytes)) return bio.omexml.readMetadata(bytes);
+        if (bio.columbus.matches(bytes)) return bio.columbus.readMetadataPath(self.allocator, self.io, path);
 
         if (bio.afi.isPath(path)) {
             if (bio.afi.readMetadataPath(self.allocator, self.io, path)) |metadata| return metadata else |_| {}
@@ -1742,6 +1747,63 @@ test "server keeps OME-XML path content ahead of XML companion probes" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"omexml\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"width\":2") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AQI=\"") != null);
+}
+
+test "server keeps Columbus measurement index ahead of XML companion probes" {
+    const root = "protocol-columbus-priority";
+    const subdir = "protocol-columbus-priority/TimePoint_1";
+    const xml_path = "protocol-columbus-priority/MeasurementIndex.ColumbusIDX.xml";
+    const tiff_path = "protocol-columbus-priority/TimePoint_1/r01c01f01p01-ch1sk1fk1fl1.tiff";
+    const xml =
+        \\<?xml version="1.0"?><ColumbusMeasurementIndex>
+        \\<Plates><Plate><Rows>1</Rows><Columns>1</Columns></Plate></Plates>
+        \\</ColumbusMeasurementIndex>
+    ;
+    const tiff = [_]u8{
+        'I', 'I', 42, 0, 8, 0, 0,  0, 9, 0, 0,  1, 4, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 1,  1, 4, 0, 1,  0, 0, 0, 1,   0,
+        0,   0,   2,  1, 3, 0, 1,  0, 0, 0, 8,  0, 0, 0, 3,   1,
+        3,   0,   1,  0, 0, 0, 1,  0, 0, 0, 6,  1, 3, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 17, 1, 4, 0, 1,  0, 0, 0, 122, 0,
+        0,   0,   21, 1, 3, 0, 1,  0, 0, 0, 1,  0, 0, 0, 22,  1,
+        4,   0,   1,  0, 0, 0, 1,  0, 0, 0, 23, 1, 4, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 0,  0, 0, 0, 77,
+    };
+    std.Io.Dir.cwd().deleteFile(std.testing.io, tiff_path) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, xml_path) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, subdir) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, root) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, root) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, subdir, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, subdir) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xml_path, .data = xml });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, xml_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = tiff_path, .data = &tiff });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, tiff_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"probe\",\"params\":{\"path\":\"protocol-columbus-priority/MeasurementIndex.ColumbusIDX.xml\"}}",
+        &out.writer,
+    );
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"metadata\",\"params\":{\"path\":\"protocol-columbus-priority/MeasurementIndex.ColumbusIDX.xml\"}}",
+        &out.writer,
+    );
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"readPlane\",\"params\":{\"path\":\"protocol-columbus-priority/MeasurementIndex.ColumbusIDX.xml\"}}",
+        &out.writer,
+    );
+
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"columbus\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"width\":1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
 }
 
 test "server opens analyze img path and reads companion pixels" {
