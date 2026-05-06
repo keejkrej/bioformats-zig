@@ -9,6 +9,8 @@ const software_tag = 305;
 const max_ets_dimensions = 8;
 const ets_raw_compression = 0;
 const ets_jpeg_compression = 2;
+const image_boundary_tag = 2053;
+const int_rect_type = 259;
 
 pub fn matches(data: []const u8) bool {
     return containsCellSensMarker(data);
@@ -41,7 +43,8 @@ pub fn readMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const 
         defer allocator.free(companion);
         const ets = try readFile(allocator, io, companion);
         defer allocator.free(ets);
-        metadata = mergeEtsMetadata(metadata, try parseEtsHeader(ets));
+        const header = try parseEtsHeader(ets);
+        metadata = mergeEtsMetadata(metadata, header, maxImageBoundary(bytes, header));
     }
     return metadata;
 }
@@ -89,6 +92,9 @@ const EtsHeader = struct {
     tile_width: u32,
     tile_height: u32,
     use_pyramid: bool,
+    resolution_count: u32,
+    padded_width: u32,
+    padded_height: u32,
 
     fn bytesPerPixel(self: EtsHeader) usize {
         return @as(usize, self.samples_per_pixel) * self.pixel_type.bytesPerSample();
@@ -101,15 +107,50 @@ const EtsChunk = struct {
     byte_count: usize,
 };
 
-fn mergeEtsMetadata(metadata: bio.Metadata, header: EtsHeader) bio.Metadata {
+const ImageBoundary = struct {
+    width: u32,
+    height: u32,
+};
+
+fn mergeEtsMetadata(metadata: bio.Metadata, header: EtsHeader, boundary: ?ImageBoundary) bio.Metadata {
     var merged = metadata;
+    if (boundary) |bounds| {
+        merged.width = bounds.width;
+        merged.height = bounds.height;
+    }
     merged.pixel_type = header.pixel_type;
     merged.size_c = header.size_c;
     merged.samples_per_pixel = header.samples_per_pixel;
-    merged.little_endian = true;
+    merged.little_endian = header.compression == ets_raw_compression;
+    merged.plane_count = 1;
+    if (header.use_pyramid and header.resolution_count > 1) {
+        merged.series_count = header.resolution_count + 1;
+    }
     merged.format = "cellsens";
     merged.image_description = null;
     return merged;
+}
+
+fn maxImageBoundary(data: []const u8, header: EtsHeader) ?ImageBoundary {
+    var best: ?ImageBoundary = null;
+    var best_area: u64 = 0;
+    var pos: usize = 0;
+    while (pos + 32 <= data.len) : (pos += 1) {
+        if (readU32Le(data[pos..][0..4]) != int_rect_type) continue;
+        if (readU32Le(data[pos + 4 ..][0..4]) != image_boundary_tag) continue;
+        if (readU32Le(data[pos + 12 ..][0..4]) != 16) continue;
+        const width = readU32Le(data[pos + 24 ..][0..4]);
+        const height = readU32Le(data[pos + 28 ..][0..4]);
+        if (width == 0 or height == 0) continue;
+        if (header.padded_width > 0 and width > header.padded_width) continue;
+        if (header.padded_height > 0 and height > header.padded_height) continue;
+        const area = @as(u64, width) * height;
+        if (area > best_area) {
+            best_area = area;
+            best = .{ .width = width, .height = height };
+        }
+    }
+    return best;
 }
 
 fn readRawEtsRegion(
@@ -126,7 +167,7 @@ fn readRawEtsRegion(
     const vsi_bytes = try readFile(allocator, io, vsi_path);
     defer allocator.free(vsi_bytes);
     const tiff_metadata = try metadataFromTiff(vsi_bytes);
-    const metadata = mergeEtsMetadata(tiff_metadata, header);
+    const metadata = mergeEtsMetadata(tiff_metadata, header, maxImageBoundary(vsi_bytes, header));
 
     const bytes_per_pixel = header.bytesPerPixel();
     const out_len = std.math.mul(usize, std.math.mul(usize, region.width, region.height) catch return error.UnsupportedVariant, bytes_per_pixel) catch return error.UnsupportedVariant;
@@ -180,7 +221,7 @@ fn parseEtsHeader(data: []const u8) bio.ReaderError!EtsHeader {
     if (component_order_offset > data.len or data.len - component_order_offset < 8) return error.TruncatedData;
     const use_pyramid = readU32Le(data[component_order_offset + 4 ..][0..4]) != 0;
 
-    return .{
+    var header: EtsHeader = .{
         .n_dimensions = n_dimensions,
         .used_chunk_offset = used_chunk_offset,
         .n_used_chunks = n_used_chunks,
@@ -191,7 +232,29 @@ fn parseEtsHeader(data: []const u8) bio.ReaderError!EtsHeader {
         .tile_width = tile_width,
         .tile_height = tile_height,
         .use_pyramid = use_pyramid,
+        .resolution_count = 1,
+        .padded_width = 0,
+        .padded_height = 0,
     };
+    if (use_pyramid and n_dimensions > 0) {
+        var pos = used_chunk_offset;
+        var chunk_index: u32 = 0;
+        var max_resolution: u32 = 0;
+        var max_base_x: u32 = 0;
+        var max_base_y: u32 = 0;
+        while (chunk_index < n_used_chunks) : (chunk_index += 1) {
+            const chunk = parseEtsChunk(data, header, &pos) catch break;
+            max_resolution = @max(max_resolution, chunk.coords[n_dimensions - 1]);
+            if (chunk.coords[n_dimensions - 1] == 0) {
+                max_base_x = @max(max_base_x, chunk.coords[0]);
+                max_base_y = @max(max_base_y, chunk.coords[1]);
+            }
+        }
+        header.resolution_count = max_resolution + 1;
+        header.padded_width = std.math.mul(u32, max_base_x + 1, tile_width) catch 0;
+        header.padded_height = std.math.mul(u32, max_base_y + 1, tile_height) catch 0;
+    }
+    return header;
 }
 
 fn parseEtsChunk(data: []const u8, header: EtsHeader, pos: *usize) bio.ReaderError!EtsChunk {
@@ -563,4 +626,31 @@ test "reads cellSens raw ets companion through vsi path" {
     });
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x12 }, plane.data);
+}
+
+test "matches Bio-Formats core metadata for cached CellSens fixture" {
+    const file_path = "fixtures/cache/cellsens/Image_V4.1_BF.vsi";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, file_path);
+    try std.testing.expectEqualStrings("cellsens", metadata.format);
+    try std.testing.expectEqual(@as(u32, 8042), metadata.width);
+    try std.testing.expectEqual(@as(u32, 9403), metadata.height);
+    try std.testing.expectEqual(@as(u16, 3), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 7), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 3), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+    try std.testing.expect(!metadata.little_endian);
+
+    const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 16,
+        .height = 16,
+    });
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(@as(usize, 16 * 16 * 3), plane.data.len);
 }
