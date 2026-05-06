@@ -24,6 +24,8 @@ const Header = struct {
     pixel_representation: u16 = 0,
     planar_configuration: u16 = 0,
     inverted_grayscale: bool = false,
+    window_center: ?i32 = null,
+    window_width: ?i32 = null,
     frames: u32 = 1,
     transfer_syntax: TransferSyntax = .explicit_little,
     pixel_offset: usize = 0,
@@ -56,6 +58,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
         .pixel_type = try pixelType(header),
         .little_endian = header.transfer_syntax.littleEndian(),
         .plane_count = header.frames,
+        .dimension_order = "XYCZT",
     };
 }
 
@@ -118,6 +121,8 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
                 0x0011 => header.width = try readU16Value(data, element),
                 0x0100 => header.bits_allocated = try readU16Value(data, element),
                 0x0103 => header.pixel_representation = try readU16Value(data, element),
+                0x1050 => header.window_center = try readI32TextValue(data, element),
+                0x1051 => header.window_width = try readI32TextValue(data, element),
                 else => {},
             },
             pixel_data_group => if (element.element == pixel_data_element) {
@@ -141,6 +146,7 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
         .pixel_type = try pixelType(header),
         .little_endian = header.transfer_syntax.littleEndian(),
         .plane_count = header.frames,
+        .dimension_order = "XYCZT",
     };
     const plane_len = try planeByteCount(metadata);
     const needed = std.math.mul(usize, plane_len, header.frames) catch return error.UnsupportedVariant;
@@ -220,6 +226,14 @@ fn parseFrameCount(text: []const u8) bio.ReaderError!u32 {
     return std.fmt.parseInt(u32, trimmed, 10) catch return error.InvalidFormat;
 }
 
+fn readI32TextValue(data: []const u8, element: Element) bio.ReaderError!i32 {
+    const bytes = trimFirstTextValue(elementValue(data, element));
+    if (bytes.len == 0) return -1;
+    const value = std.fmt.parseFloat(f64, bytes) catch return error.InvalidFormat;
+    if (value < @as(f64, @floatFromInt(std.math.minInt(i32))) or value > @as(f64, @floatFromInt(std.math.maxInt(i32)))) return error.UnsupportedVariant;
+    return @intFromFloat(value);
+}
+
 fn readU16Value(data: []const u8, element: Element) bio.ReaderError!u16 {
     const bytes = elementValue(data, element);
     if (bytes.len < 2) return error.TruncatedData;
@@ -232,6 +246,12 @@ fn elementValue(data: []const u8, element: Element) []const u8 {
 
 fn trimText(text: []const u8) []const u8 {
     return std.mem.trim(u8, text, " \t\r\n\x00");
+}
+
+fn trimFirstTextValue(text: []const u8) []const u8 {
+    const trimmed = trimText(text);
+    const end = std.mem.indexOfScalar(u8, trimmed, '\\') orelse trimmed.len;
+    return trimText(trimmed[0..end]);
 }
 
 fn isMonochrome1(text: []const u8) bool {
@@ -268,15 +288,25 @@ fn invertGrayscale(bytes: []u8, header: Header) bio.ReaderError!void {
         },
         16 => {
             if ((bytes.len & 1) != 0) return error.TruncatedData;
+            const max_pixel_value = grayscaleInversionMax(header);
             var offset: usize = 0;
             while (offset < bytes.len) : (offset += 2) {
                 const value = readU16(bytes[offset..][0..2], header.transfer_syntax.littleEndian());
-                const inverted = std.math.maxInt(u16) - value;
+                const diff = max_pixel_value - @as(i64, value);
+                const inverted: u16 = @intCast(std.math.clamp(diff, 0, std.math.maxInt(u16)));
                 std.mem.writeInt(u16, bytes[offset..][0..2], inverted, if (header.transfer_syntax.littleEndian()) .little else .big);
             }
         },
         else => return error.UnsupportedVariant,
     }
+}
+
+fn grayscaleInversionMax(header: Header) i64 {
+    const default_max: i64 = std.math.maxInt(u16);
+    const width = header.window_width orelse return default_max;
+    const center = header.window_center orelse return default_max;
+    if (width == -1 or center < @divTrunc(width, 2)) return default_max;
+    return @as(i64, width) + @divTrunc(@as(i64, center), 2);
 }
 
 fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
@@ -521,6 +551,21 @@ test "inverts monochrome1 uint16 dicom plane with transfer endian" {
     try std.testing.expectEqualSlices(u8, &.{ 0xff, 0xff, 0xed, 0xcb }, plane.data);
 }
 
+test "inverts monochrome1 uint16 dicom plane with window range" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    try appendDicomPreamble(&data, "1.2.840.10008.1.2.1");
+    try appendExplicitCorePhotometric(&data, 1, 1, 1, 16, null, "MONOCHROME1");
+    try appendExplicitElement(&data, 0x0028, 0x1050, "DS", "550");
+    try appendExplicitElement(&data, 0x0028, 0x1051, "DS", "1024");
+    try appendExplicitElement(&data, pixel_data_group, pixel_data_element, "OW", &.{ 0x0c, 0x02 });
+
+    const plane = try readPlane(std.testing.allocator, data.items);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 0x07, 0x03 }, plane.data);
+}
+
 test "reads second explicit little endian dicom frame" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
@@ -592,4 +637,54 @@ test "rejects compressed dicom transfer syntax" {
     try appendExplicitElement(&data, pixel_data_group, pixel_data_element, "OB", &.{1});
 
     try std.testing.expectError(error.UnsupportedVariant, readMetadata(data.items));
+}
+
+test "matches Bio-Formats default metadata for cached DICOM fixture" {
+    const file_path = "fixtures/cache/dicom/CR-MONO1-10-chest.dcm";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("dicom", metadata.format);
+    try std.testing.expectEqual(@as(u32, 440), metadata.width);
+    try std.testing.expectEqual(@as(u32, 440), metadata.height);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats default plane and region hashes for cached DICOM fixture" {
+    const file_path = "fixtures/cache/dicom/CR-MONO1-10-chest.dcm";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const plane = try readPlane(std.testing.allocator, data);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(@as(usize, 387200), plane.data.len);
+    const expected_plane: [32]u8 = .{ 0x5e, 0x5b, 0x75, 0xfb, 0x59, 0x3b, 0x9c, 0x14, 0xac, 0x8c, 0xed, 0xd8, 0x3d, 0xaf, 0x6e, 0xa6, 0xa1, 0x0c, 0x63, 0x49, 0x37, 0x09, 0xf4, 0xae, 0x05, 0x00, 0x20, 0xff, 0x21, 0xfc, 0x97, 0x51 };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_plane, &digest);
+
+    const region_data = try bio.cropPlane(std.testing.allocator, plane, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region_data);
+    try std.testing.expectEqual(@as(usize, 384), region_data.len);
+    const expected_region: [32]u8 = .{ 0xae, 0x03, 0x02, 0x78, 0x8e, 0x78, 0x67, 0x71, 0xda, 0xdd, 0xf2, 0xfa, 0x2e, 0xc5, 0xc9, 0x90, 0xd0, 0x2f, 0x59, 0xbe, 0x56, 0xac, 0x3d, 0x33, 0xd8, 0x8d, 0x71, 0x4c, 0x3b, 0x3f, 0x73, 0x79 };
+    std.crypto.hash.sha2.Sha256.hash(region_data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
 }
