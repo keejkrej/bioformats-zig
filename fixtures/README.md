@@ -33,8 +33,13 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 
 | Format | Public source | Representative file |
 | --- | --- | --- |
+| amira | `ome_images/AmiraMesh/ignacio/` | `test.am` |
+| flex | `ome_images/Flex/idr0007/Plate1/` | `001001000.flex` |
 | fv1000 | `ome_images/Olympus-FluoView/imagesc-71616/` | `20220824_4492_cord_dapi__iba568_60x.oib` |
 | hamamatsuvms | `ome_images/Hamamatsu-VMS/openslide/CMU-3/` | `CMU-3-40x - 2010-01-12 13.57.09.vms` |
+| jdce | `ome_images/JDCE/molecular-devices/Converted/mini-actin_confocal_CDE/` | `mini-actin_confocal_CDE.JDCE` |
+| micromanager | `ome_images/Micro-Manager/1.4.16/serge/Pos0/` | `metadata.txt` |
+| spc | `ome_images/SPC-FIFO/biofisika/` | `conv-256x256.set` |
 
 The full local cache may contain additional verified formats depending on what
 has been fetched on the machine running the tests; `fixtures/cache/` remains
