@@ -17,7 +17,7 @@
     "OpenSlide/OME Hamamatsu VMS was pixel-smoke verified on 2026-05-06 after adding regional JPEG restart-marker handling.",
     "Public Olympus OIR samples were metadata-readable on 2026-05-06, but their pixel smoke checks currently expose unsupported-reader variants.",
     "The Figshare MINC lead was checked on 2026-05-06; its small public .mnc.gz files are MINC2/HDF5-style and do not match the current classic NetCDF MINC reader.",
-    "OME PerkinElmer Operetta public TIFFs were metadata-readable on 2026-05-06 after accepting Harmony XML in byte tag 65500, but their LZW pixel smoke checks still expose a TIFF decoder gap."
+    "OME PerkinElmer Operetta public TIFF was pixel-smoke verified on 2026-05-06 after accepting Harmony XML in byte tag 65500 and fixing TIFF LZW code-width transitions."
   ],
   "implemented_format_sources": {
     "amira": ["ome_images/AmiraMesh/"],
@@ -45,7 +45,7 @@
     "obf": ["ome_images/OBF/ngladitz/v4/", "ome_images/OBF/"],
     "ometiff": ["ome_images/OME-TIFF/"],
     "omexml": ["ome_images/OME-XML/"],
-    "operetta": ["ome_images/PerkinElmer-Operetta/"],
+    "operetta": ["ome_images/PerkinElmer-Operetta/omer/006P_M3/006P__2017-08-19T12_42_59-Measurement%203/Images/", "ome_images/PerkinElmer-Operetta/"],
     "png": ["ome_images/PNG/"],
     "scanr": ["ome_images/ScanR/idr0009/0307-10--2007-05-30/data/", "ome_images/ScanR/"],
     "svs": ["ome_images/SVS/"],

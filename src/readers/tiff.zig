@@ -1494,7 +1494,7 @@ fn decodeLzw(src: []const u8, dst: []u8) bio.ReaderError!void {
             prefixes[next_code] = previous_code.?;
             suffixes[next_code] = first;
             next_code += 1;
-            if (next_code == (@as(u16, 1) << code_size) and code_size < 12) code_size += 1;
+            if (next_code == ((@as(u16, 1) << code_size) - 1) and code_size < 12) code_size += 1;
         }
         previous_code = code;
         previous_first = first;

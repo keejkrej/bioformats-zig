@@ -141,6 +141,7 @@ function Preferred-NamePattern {
         "nifti" { return '\.nii$' }
         "nrrd" { return '\.(nrrd|nhdr)$' }
         "obf" { return 'uncompressed\.obf$' }
+        "operetta" { return '^r01c02f01p01-ch1sk1fk1fl1\.tiff$' }
         "scanr" { return '^--W00002--P00001--Z00000--T00000--nucleus-dapi\.tif$' }
         "sdt" { return '\.sdt$' }
         "spc" { return '\.set$' }

@@ -42,6 +42,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | micromanager | `ome_images/Micro-Manager/1.4.16/serge/Pos0/` | `metadata.txt` |
 | ndpi | `ome_images/Hamamatsu-NDPI/manuel/` | `test3-DAPI 2 (387) .ndpi` |
 | nd2 | `ome_images/ND2/` | `MeOh_high_fluo_003.nd2` |
+| operetta | `ome_images/PerkinElmer-Operetta/omer/006P_M3/006P__2017-08-19T12_42_59-Measurement 3/Images/` | `r01c02f01p01-ch1sk1fk1fl1.tiff` |
 | spc | `ome_images/SPC-FIFO/biofisika/` | `conv-256x256.set` |
 | zeissczi | `ome_images/Zeiss-CZI/` | `Plate1-Blue-A-02-Scene-1-P2-E1-01.czi` |
 | zeisslsm | `zenodo/10.5281/zenodo.14510432` | `10-01.lsm` |
