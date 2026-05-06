@@ -397,3 +397,49 @@ test "reads spc fifo metadata and first lifetime plane" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 1, 0, 1, 0 }, plane.data);
 }
+
+test "matches Bio-Formats default metadata for cached SPC fixture" {
+    const file_path = "fixtures/cache/spc/conv-256x256.set";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, file_path);
+    try std.testing.expectEqualStrings("spc", metadata.format);
+    try std.testing.expectEqual(@as(u32, 266), metadata.width);
+    try std.testing.expectEqual(@as(u32, 256), metadata.height);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 5056), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 5056), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYZTC", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats default plane and region hashes for cached SPC fixture" {
+    const file_path = "fixtures/cache/spc/conv-256x256.set";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0x54, 0xf1, 0x55, 0x4c, 0x48, 0xce, 0xc6, 0x5c, 0x49, 0x03, 0x90, 0xa5, 0xd3, 0xb4, 0xc6, 0xdd, 0xdc, 0x7f, 0x7f, 0xfe, 0x54, 0x14, 0x88, 0xe8, 0xca, 0x0a, 0xbd, 0x8a, 0x18, 0xea, 0xbb, 0xcd } },
+        .{ .plane = 2528, .sha256 = .{ 0x45, 0xc1, 0x8e, 0x09, 0xdb, 0x49, 0x02, 0xcb, 0xdd, 0x3c, 0xd5, 0x89, 0xbc, 0x10, 0x1b, 0x8f, 0xaa, 0x5a, 0x41, 0x41, 0xb2, 0xc0, 0x4e, 0x66, 0xa1, 0x68, 0x65, 0xca, 0x97, 0x0f, 0xd8, 0x1d } },
+        .{ .plane = 5055, .sha256 = .{ 0x40, 0x32, 0x8d, 0x08, 0x5a, 0xde, 0x75, 0xb7, 0x51, 0x74, 0x80, 0xca, 0x45, 0xcf, 0x2e, 0x37, 0x2a, 0x9c, 0x61, 0xf9, 0xea, 0x29, 0xca, 0xde, 0x10, 0x31, 0x18, 0x67, 0xe6, 0x6a, 0xe0, 0x50 } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, sample.plane, .{ .x = 0, .y = 0, .width = 266, .height = 256 });
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 136192), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+
+    const region = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, 0, .{ .x = 17, .y = 19, .width = 16, .height = 12 });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 384), region.data.len);
+    const expected_region: [32]u8 = .{ 0xa1, 0xa4, 0xf5, 0x72, 0x1c, 0x1c, 0x46, 0x10, 0xaf, 0x7f, 0x71, 0x07, 0x8f, 0x3a, 0x68, 0xc3, 0x30, 0x53, 0x6d, 0x67, 0x98, 0x03, 0xb0, 0xe0, 0x50, 0x7e, 0xe8, 0xdc, 0x10, 0xc5, 0xdf, 0xca };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
+}
