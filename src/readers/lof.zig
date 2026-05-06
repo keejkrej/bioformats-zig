@@ -426,3 +426,19 @@ test "matches Bio-Formats core metadata for cached LOF fixture" {
     try std.testing.expect(metadata.little_endian);
     try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 }
+
+test "matches Bio-Formats plane hash for cached LOF fixture" {
+    const file_path = "fixtures/cache/lof/mono 8bit.lof";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(8 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(@as(usize, 1920000), plane.data.len);
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+    const expected = [_]u8{ 0x68, 0x39, 0x57, 0xaf, 0x36, 0x58, 0xa9, 0xe9, 0x66, 0x97, 0x83, 0x0a, 0xdc, 0x1a, 0xe9, 0x71, 0xce, 0x45, 0xb7, 0x50, 0x2e, 0x00, 0x77, 0xae, 0xa7, 0x9e, 0xcf, 0x1c, 0x3b, 0xc2, 0x1b, 0x09 };
+    try std.testing.expectEqualSlices(u8, &expected, &digest);
+}
