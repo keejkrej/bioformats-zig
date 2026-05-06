@@ -9,6 +9,7 @@ const Htd = struct {
     first_well_row: u32 = 0,
     first_well_col: u32 = 0,
     has_well: bool = false,
+    selected_wells: u32 = 0,
     x_sites: u32 = 1,
     y_sites: u32 = 1,
     sites_enabled: bool = true,
@@ -53,6 +54,7 @@ pub fn readMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const 
     metadata.size_z = htd.size_z;
     metadata.size_t = htd.size_t;
     metadata.plane_count = @as(u32, htd.size_c) * @as(u32, htd.size_z) * @as(u32, htd.size_t);
+    metadata.series_count = htdSeriesCount(htd);
     metadata.samples_per_pixel = 1;
     metadata.dimension_order = "XYCZT";
     return metadata;
@@ -81,9 +83,15 @@ pub fn readPlanePathRegionIndex(
     plane.metadata.size_z = htd.size_z;
     plane.metadata.size_t = htd.size_t;
     plane.metadata.plane_count = plane_count;
+    plane.metadata.series_count = htdSeriesCount(htd);
     plane.metadata.samples_per_pixel = 1;
     plane.metadata.dimension_order = "XYCZT";
     return plane;
+}
+
+fn htdSeriesCount(htd: Htd) u32 {
+    const wells = if (htd.selected_wells == 0) 1 else htd.selected_wells;
+    return wells * htd.selected_fields;
 }
 
 fn findImagePath(allocator: std.mem.Allocator, io: std.Io, path: []const u8, plane_index: u32) ![]u8 {
@@ -141,6 +149,10 @@ fn parseHtd(data: []const u8) bio.ReaderError!Htd {
                         break;
                     }
                 }
+            }
+            var selected_cols = std.mem.splitScalar(u8, value, ',');
+            while (selected_cols.next()) |raw_token| {
+                if (parseBool(std.mem.trim(u8, raw_token, " \t\""))) htd.selected_wells += 1;
             }
         } else if (std.mem.eql(u8, key, "XSites")) {
             htd.x_sites = parseU32(value) catch return error.InvalidFormat;
@@ -376,6 +388,7 @@ test "parses metaxpress htd dimensions" {
     try std.testing.expect(parsed.has_well);
     try std.testing.expectEqual(@as(u32, 0), parsed.first_well_row);
     try std.testing.expectEqual(@as(u32, 0), parsed.first_well_col);
+    try std.testing.expectEqual(@as(u32, 1), parsed.selected_wells);
     try std.testing.expectEqual(@as(u16, 2), parsed.size_c);
     try std.testing.expectEqual(@as(u16, 2), parsed.size_t);
 }
@@ -434,4 +447,53 @@ test "reads metaxpress htd plane through expected tiff" {
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("metaxpress", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{77}, plane.data);
+}
+
+test "matches Bio-Formats default metadata for cached MetaXpress fixture" {
+    const file_path = "fixtures/cache/metaxpress/2011-04-19-plate-1.HTD";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, file_path);
+    try std.testing.expectEqualStrings("metaxpress", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1392), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1040), metadata.height);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 288), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats default plane and region hashes for cached MetaXpress fixture" {
+    const file_path = "fixtures/cache/metaxpress/2011-04-19-plate-1.HTD";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1392,
+        .height = 1040,
+    });
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(@as(usize, 2895360), plane.data.len);
+    const expected_plane: [32]u8 = .{ 0x5b, 0x40, 0x3b, 0x64, 0xf3, 0xe2, 0xd1, 0x9a, 0xa9, 0x10, 0x73, 0x7a, 0xdb, 0x51, 0x14, 0xd9, 0xaa, 0xa8, 0xb7, 0xd4, 0xd4, 0x39, 0x61, 0xcd, 0x08, 0x30, 0xf8, 0x9b, 0xa1, 0xec, 0x63, 0x3d };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_plane, &digest);
+
+    const region = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, 0, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 384), region.data.len);
+    const expected_region: [32]u8 = .{ 0x6b, 0x0e, 0x81, 0x38, 0xbc, 0x6b, 0x46, 0x2f, 0x22, 0x79, 0xf1, 0x52, 0xae, 0x60, 0x9c, 0xb7, 0x6c, 0x1f, 0xb6, 0x8f, 0x6b, 0xda, 0xd0, 0x97, 0xf5, 0x73, 0xe0, 0xc5, 0x55, 0xcc, 0x15, 0x4d };
+    std.crypto.hash.sha2.Sha256.hash(region.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
 }
