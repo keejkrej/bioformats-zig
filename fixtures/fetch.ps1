@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|ndpi|czi|lif|lof|htd|ics|ids|dv|dcimg|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|sdt|jdce|xlef|xlif|xdce|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|ndpi|ndpis|czi|lif|lof|htd|ics|ids|dv|dcimg|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|sdt|jdce|xlef|xlif|xdce|xml)$',
     [switch]$List
 )
 
@@ -139,6 +139,7 @@ function Preferred-NamePattern {
         "micromanager" { return '^metadata\.txt$' }
         "mrc" { return '\.(mrc|map)$' }
         "ndpi" { return '\.ndpi$' }
+        "ndpis" { return '\.ndpis$' }
         "nifti" { return '\.nii$' }
         "nrrd" { return '\.(nrrd|nhdr)$' }
         "obf" { return 'uncompressed\.obf$' }
@@ -625,6 +626,22 @@ function Download-ColumbusCompanions {
     }
 }
 
+function Download-NdpisCompanions {
+    param(
+        [string]$SidecarSource,
+        [string]$SidecarPath,
+        [string]$TargetDir
+    )
+
+    $content = Get-Content -LiteralPath $SidecarPath -Raw
+    $match = [regex]::Match($content, '(?im)^\s*Image0\s*=\s*(.+?)\s*$')
+    if (-not $match.Success) {
+        return
+    }
+    $baseUrl = [Uri]::new([Uri]$SidecarSource, ".").AbsoluteUri
+    Download-Companion $baseUrl ([Uri]::EscapeUriString($match.Groups[1].Value.Trim())) $TargetDir
+}
+
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
 $zenodoRecordId = Resolve-ZenodoRecordId ([string[]]$formatEntry.Value)
 if ($null -eq $sourceUrl -and $null -eq $zenodoRecordId) {
@@ -703,4 +720,7 @@ if ($Format -eq "metaxpress") {
 }
 if ($Format -eq "columbus") {
     Download-ColumbusCompanions $candidate.Url $targetDir
+}
+if ($Format -eq "ndpis") {
+    Download-NdpisCompanions $candidate.Url $targetPath $targetDir
 }

@@ -22,6 +22,7 @@
     "The current OME public image index was checked on 2026-05-06 for Zeiss AxioVision TIFF; only Zeiss-CZI is listed under Zeiss.",
     "OME Columbus public sample was pixel-smoke verified on 2026-05-06 after prioritizing Columbus measurement-index content before XML companion probes.",
     "OME-XML single-image public sample was pixel-smoke verified on 2026-05-06 after prioritizing OME-XML content before XML companion probes.",
+    "OME Hamamatsu NDPIS public sidecar was pixel-smoke verified on 2026-05-06 with its first NDPI companion.",
     "OME CV7000 public samples reach the CV7000 reader, but the tested TIFF plane exposes an unsupported TIFF variant in the current Zig implementation.",
     "The OME CellH5 reduced public sample 0038.ch5 is 606148334 bytes, above the default public fixture cap."
   ],
@@ -147,7 +148,7 @@
     "pgm": ["alias-of-netpbm"],
     "nd2": ["ome_images/ND2/", "zenodo/10.5281/zenodo.16921650", "zenodo/10.5281/zenodo.15493140"],
     "nikon": ["zenodo/10.5281/zenodo.17914642"],
-    "ndpis": ["ome_images/Hamamatsu-NDPI/"],
+    "ndpis": ["ome_images/Hamamatsu-NDPI/manuel/", "ome_images/Hamamatsu-NDPI/"],
     "nikonelements": ["needs-public-sample"],
     "nikonelementstiff": ["alias-of-nikonelements"],
     "nikontiff": ["needs-public-sample"],

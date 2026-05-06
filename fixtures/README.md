@@ -59,6 +59,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | mrc | `ome_images/MRC/EMDB/EMD-2225/` | `EMD-2225.map` |
 | nd2 | `ome_images/ND2/` | `MeOh_high_fluo_003.nd2` |
 | ndpi | `ome_images/Hamamatsu-NDPI/manuel/` | `test3-DAPI 2 (387) .ndpi` |
+| ndpis | `ome_images/Hamamatsu-NDPI/manuel/` | `test3.ndpis` |
 | nifti | `ome_images/NIfTI/` | `avg152T1_LR_nifti.nii` |
 | nrrd | `ome_images/NRRD/gordon/` | `dt-helix.nhdr` |
 | obf | `ome_images/OBF/ngladitz/v4/` | `test-v4-uncompressed.obf` |

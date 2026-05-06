@@ -93,10 +93,12 @@ $files = @(Get-ChildItem -LiteralPath $cachePath -Recurse -File | Where-Object {
     $hasNrrdHeaderSibling = @(Get-ChildItem -LiteralPath $_.DirectoryName -Filter "*.nhdr" -File -ErrorAction SilentlyContinue).Count -gt 0
     $hasIcsHeaderSibling = @(Get-ChildItem -LiteralPath $_.DirectoryName -Filter "*.ics" -File -ErrorAction SilentlyContinue).Count -gt 0
     $hasColumbusIndexSibling = @(Get-ChildItem -LiteralPath $_.DirectoryName -Filter "MeasurementIndex.ColumbusIDX.xml" -File -ErrorAction SilentlyContinue).Count -gt 0
+    $hasNdpisSibling = @(Get-ChildItem -LiteralPath $_.DirectoryName -Filter "*.ndpis" -File -ErrorAction SilentlyContinue).Count -gt 0
     -not ($hasVmsSibling -and $_.Extension -match '^\.(jpg|jpeg|opt)$') -and
         -not (($hasVsiSibling -or $hasVsiInCache) -and $_.Extension -ieq ".ets") -and
         -not ($hasNrrdHeaderSibling -and $_.Extension -ieq ".raw") -and
         -not ($hasIcsHeaderSibling -and $_.Extension -ieq ".ids") -and
+        -not ($hasNdpisSibling -and $_.Extension -ieq ".ndpi") -and
         -not ($hasColumbusIndexSibling -and (
             $_.Extension -match '^\.(tif|tiff)$' -or
             $_.Name -match '^ImageIndex\.ColumbusIDX\.(xml|csv)$'
