@@ -48,6 +48,9 @@ pub fn readPlanePathRegionIndex(
     const image = try readFile(allocator, io, image_path);
     defer allocator.free(image);
     var plane = try bio.readPlaneRegionIndex(allocator, image, plane_index, region);
+    if (plane.metadata.samples_per_pixel > 1) {
+        plane.data = try interleavedToPlanar(allocator, plane.data, plane.metadata);
+    }
     plane.metadata.format = "xlef";
     plane.metadata.image_description = null;
     if (plane.metadata.dimension_order == null) plane.metadata.dimension_order = "XYCZT";
@@ -289,6 +292,28 @@ fn hasReadableFrameExtension(path: []const u8) bool {
         hasExtension(path, "png") or hasExtension(path, "bmp");
 }
 
+fn interleavedToPlanar(allocator: std.mem.Allocator, data: []u8, metadata: bio.Metadata) ![]u8 {
+    const samples: usize = metadata.samples_per_pixel;
+    const bytes_per_sample = metadata.pixel_type.bytesPerSample();
+    if (samples <= 1 or bytes_per_sample == 0) return data;
+    const pixel_bytes = samples * bytes_per_sample;
+    if (data.len % pixel_bytes != 0) return data;
+    const pixels = data.len / pixel_bytes;
+    const planar = try allocator.alloc(u8, data.len);
+    errdefer allocator.free(planar);
+    var pixel: usize = 0;
+    while (pixel < pixels) : (pixel += 1) {
+        var sample: usize = 0;
+        while (sample < samples) : (sample += 1) {
+            const src = pixel * pixel_bytes + sample * bytes_per_sample;
+            const dst = sample * pixels * bytes_per_sample + pixel * bytes_per_sample;
+            @memcpy(planar[dst..][0..bytes_per_sample], data[src..][0..bytes_per_sample]);
+        }
+    }
+    allocator.free(data);
+    return planar;
+}
+
 fn hasExtension(path: []const u8, extension: []const u8) bool {
     const dot = std.mem.lastIndexOfScalar(u8, path, '.') orelse return false;
     return std.ascii.eqlIgnoreCase(path[dot + 1 ..], extension);
@@ -452,4 +477,34 @@ test "matches Bio-Formats core metadata for cached XLEF fixture" {
     try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
     try std.testing.expect(metadata.little_endian);
     try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats plane and region hashes for cached XLEF fixture" {
+    const file_path = "fixtures/cache/xlef/format-test tif.xlef";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, 0, .{
+        .x = 0,
+        .y = 0,
+        .width = 1600,
+        .height = 1200,
+    });
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(@as(usize, 5_760_000), plane.data.len);
+    const expected_plane: [32]u8 = .{ 0x82, 0xad, 0x2b, 0x89, 0x00, 0x30, 0x2b, 0x52, 0xd3, 0x4a, 0x8e, 0x16, 0x14, 0xd6, 0x51, 0x17, 0x05, 0x71, 0xdb, 0x2f, 0x57, 0xbb, 0xb5, 0x84, 0xf7, 0x4a, 0xb3, 0x29, 0xd4, 0xea, 0x37, 0x45 };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_plane, &digest);
+
+    const region = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, 0, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 576), region.data.len);
+    const expected_region: [32]u8 = .{ 0xe7, 0xd4, 0x0c, 0x85, 0x9a, 0x5f, 0x44, 0xe5, 0x3f, 0xca, 0xd4, 0x5c, 0x2a, 0xfa, 0x75, 0xdd, 0xd8, 0x3a, 0x11, 0x3d, 0x4c, 0xbd, 0x1b, 0x32, 0x5d, 0xc9, 0xa2, 0x13, 0xf1, 0xb6, 0x56, 0x23 };
+    std.crypto.hash.sha2.Sha256.hash(region.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
 }
