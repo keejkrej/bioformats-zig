@@ -414,6 +414,40 @@ pub const Server = struct {
                         try writeReaderError(writer, id, err);
                         return .{ .wrote_response = true };
                     };
+                    if (std.mem.eql(u8, metadata.format, "lif")) {
+                        const series_index = getSeriesIndex(params, metadata) catch {
+                            try writeError(writer, id, -32602, "Invalid series index");
+                            return .{ .wrote_response = true };
+                        };
+                        const series_metadata = bio.lif.readMetadataSeriesIndex(bytes, series_index) catch |err| {
+                            try writeReaderError(writer, id, err);
+                            return .{ .wrote_response = true };
+                        };
+                        const plane_index = getPlaneIndex(params, series_metadata) catch {
+                            try writeError(writer, id, -32602, "Invalid plane index");
+                            return .{ .wrote_response = true };
+                        };
+                        const region = getRegion(params, series_metadata) catch {
+                            try writeError(writer, id, -32602, "Invalid plane region");
+                            return .{ .wrote_response = true };
+                        };
+                        const plane = bio.lif.readPlaneSeriesIndex(self.allocator, bytes, series_index, plane_index) catch |err| {
+                            try writeReaderError(writer, id, err);
+                            return .{ .wrote_response = true };
+                        };
+                        defer self.allocator.free(plane.data);
+                        if (region.isFull(plane.metadata)) {
+                            try writePlane(writer, self.allocator, id, plane, region);
+                        } else {
+                            const cropped = bio.cropPlane(self.allocator, plane, region) catch |err| {
+                                try writeReaderError(writer, id, err);
+                                return .{ .wrote_response = true };
+                            };
+                            defer self.allocator.free(cropped);
+                            try writePlane(writer, self.allocator, id, .{ .metadata = plane.metadata, .data = cropped }, region);
+                        }
+                        return .{ .wrote_response = true };
+                    }
                     const plane_index = getPlaneIndex(params, metadata) catch {
                         try writeError(writer, id, -32602, "Invalid plane index");
                         return .{ .wrote_response = true };

@@ -20,8 +20,14 @@ const Scan = struct {
 
 const Sections = struct {
     xml: []u8,
+    blocks_start: usize = 0,
     memory_offset: usize = 0,
     memory_size: usize = 0,
+};
+
+const MemoryBlock = struct {
+    offset: usize,
+    size: usize,
 };
 
 pub fn matches(data: []const u8) bool {
@@ -30,6 +36,10 @@ pub fn matches(data: []const u8) bool {
 }
 
 pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
+    return readMetadataSeriesIndex(data, 0);
+}
+
+pub fn readMetadataSeriesIndex(data: []const u8, series_index: u32) bio.ReaderError!bio.Metadata {
     const allocator = std.heap.page_allocator;
     const sections = try readSections(allocator, data);
     defer allocator.free(sections.xml);
@@ -39,9 +49,13 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
     if (std.mem.indexOf(u8, sections.xml, "<DimensionDescription") == null) return error.InvalidFormat;
 
     var scan = Scan{};
-    try parseXml(sections.xml, &scan);
+    try parseXmlSeries(sections.xml, &scan, series_index);
     if (scan.width == 0 or scan.height == 0) return error.InvalidFormat;
 
+    return metadataFromScan(scan);
+}
+
+fn metadataFromScan(scan: Scan) bio.ReaderError!bio.Metadata {
     const zc = std.math.mul(u32, scan.size_z, scan.size_c) catch return error.UnsupportedVariant;
     return .{
         .format = "lif",
@@ -60,7 +74,11 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
-    const metadata = try readMetadata(data);
+    return readPlaneSeriesIndex(allocator, data, 0, plane_index);
+}
+
+pub fn readPlaneSeriesIndex(allocator: std.mem.Allocator, data: []const u8, series_index: u32, plane_index: u32) bio.ReaderError!bio.Plane {
+    const metadata = try readMetadataSeriesIndex(data, series_index);
     if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
 
     const sections = try readSections(allocator, data);
@@ -68,12 +86,16 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     if (sections.memory_size == 0) return error.UnsupportedVariant;
 
     var scan = Scan{};
-    try parseXml(sections.xml, &scan);
+    try parseXmlSeries(sections.xml, &scan, series_index);
+    const memory = seriesMemoryBlock(data, sections, series_index) orelse if (series_index == 0) MemoryBlock{
+        .offset = sections.memory_offset,
+        .size = sections.memory_size,
+    } else return error.UnsupportedVariant;
     const plane_len = try planeByteCount(metadata);
     const row_padding = try rowPaddingBytes(scan, metadata);
     const source_plane_len = std.math.add(usize, plane_len, std.math.mul(usize, row_padding, metadata.height) catch return error.UnsupportedVariant) catch return error.UnsupportedVariant;
-    const source_offset = std.math.add(usize, sections.memory_offset, std.math.mul(usize, source_plane_len, plane_index) catch return error.UnsupportedVariant) catch return error.UnsupportedVariant;
-    const memory_end = std.math.add(usize, sections.memory_offset, sections.memory_size) catch return error.UnsupportedVariant;
+    const source_offset = std.math.add(usize, memory.offset, std.math.mul(usize, source_plane_len, plane_index) catch return error.UnsupportedVariant) catch return error.UnsupportedVariant;
+    const memory_end = std.math.add(usize, memory.offset, memory.size) catch return error.UnsupportedVariant;
     if (source_offset > memory_end or memory_end - source_offset < source_plane_len) return error.TruncatedData;
 
     const out = try allocator.alloc(u8, plane_len);
@@ -144,25 +166,30 @@ fn readSections(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError!
         if (pos > data.len) return error.TruncatedData;
     }
 
-    return .{ .xml = out, .memory_offset = memory_offset, .memory_size = memory_size };
+    return .{ .xml = out, .blocks_start = end, .memory_offset = memory_offset, .memory_size = memory_size };
 }
 
 fn parseXml(xml: []const u8, scan: *Scan) bio.ReaderError!void {
+    return parseXmlSeries(xml, scan, 0);
+}
+
+fn parseXmlSeries(xml: []const u8, scan: *Scan, series_index: u32) bio.ReaderError!void {
     const image_count = countElementStarts(xml, "Image");
     if (image_count > 0) scan.series_count = image_count;
-    const first_image = firstElementSlice(xml, "Image") orelse xml;
+    if (series_index >= scan.series_count) return error.InvalidPlaneIndex;
+    const image = nthElementSlice(xml, "Image", series_index) orelse xml;
 
     var found_dimensions = false;
     var pos: usize = 0;
-    while (std.mem.indexOfPos(u8, first_image, pos, "<DimensionDescription")) |start| {
-        const end = std.mem.indexOfScalarPos(u8, first_image, start, '>') orelse return error.InvalidFormat;
-        try parseDimension(first_image[start .. end + 1], scan);
+    while (std.mem.indexOfPos(u8, image, pos, "<DimensionDescription")) |start| {
+        const end = std.mem.indexOfScalarPos(u8, image, start, '>') orelse return error.InvalidFormat;
+        try parseDimension(image[start .. end + 1], scan);
         found_dimensions = true;
         pos = end + 1;
     }
     if (!found_dimensions) return error.InvalidFormat;
 
-    const channels = countTagStarts(first_image, "ChannelDescription");
+    const channels = countTagStarts(image, "ChannelDescription");
     if (channels > 0 and scan.samples == 1) scan.size_c = @max(scan.size_c, boundedDimension(channels));
     if (scan.size_c > 1 or scan.size_t > 1) scan.dimension_order = "XYCZT";
 }
@@ -252,12 +279,75 @@ fn countElementStarts(xml: []const u8, tag: []const u8) u32 {
     return count;
 }
 
-fn firstElementSlice(xml: []const u8, tag: []const u8) ?[]const u8 {
-    const start = findElementStart(xml, tag, 0) orelse return null;
+fn nthElementSlice(xml: []const u8, tag: []const u8, index: u32) ?[]const u8 {
+    var pos: usize = 0;
+    var current: u32 = 0;
+    const start = while (findElementStart(xml, tag, pos)) |found| {
+        if (current == index) break found;
+        current += 1;
+        pos = found + tag.len + 1;
+    } else return null;
     var close_buf: [96]u8 = undefined;
     const close = std.fmt.bufPrint(&close_buf, "</{s}>", .{tag}) catch return null;
     const end = std.mem.indexOfPos(u8, xml, start, close) orelse return xml[start..];
     return xml[start .. end + close.len];
+}
+
+fn seriesMemoryBlock(data: []const u8, sections: Sections, series_index: u32) ?MemoryBlock {
+    const id = nthPositiveMemoryBlockId(sections.xml, series_index) orelse return null;
+    return memoryBlockById(data, sections.blocks_start, id);
+}
+
+fn nthPositiveMemoryBlockId(xml: []const u8, series_index: u32) ?[]const u8 {
+    var pos: usize = 0;
+    var current: u32 = 0;
+    while (std.mem.indexOfPos(u8, xml, pos, "<Memory")) |start| {
+        const end = std.mem.indexOfScalarPos(u8, xml, start, '>') orelse return null;
+        const tag = xml[start .. end + 1];
+        if ((attrUnsigned(tag, "Size") orelse 0) > 0) {
+            if (current == series_index) return attrValue(tag, "MemoryBlockID");
+            current += 1;
+        }
+        pos = end + 1;
+    }
+    return null;
+}
+
+fn memoryBlockById(data: []const u8, blocks_start: usize, id: []const u8) ?MemoryBlock {
+    var pos = blocks_start;
+    while (pos + 13 <= data.len) {
+        if (readU32At(data, pos) != lif_magic) return null;
+        pos += 8;
+        if (pos >= data.len or data[pos] != memory_magic) return null;
+        pos += 1;
+        var block_length: usize = checkedUsize(readU32At(data, pos)) catch return null;
+        pos += 4;
+        if (pos < data.len and data[pos] != memory_magic) {
+            pos -= 4;
+            block_length = checkedUsize(readU64At(data, pos)) catch return null;
+            pos += 8;
+        }
+        if (pos >= data.len or data[pos] != memory_magic) return null;
+        pos += 1;
+        if (pos + 4 > data.len) return null;
+        const desc_chars = readU32At(data, pos);
+        pos += 4;
+        const desc_bytes = std.math.mul(usize, desc_chars, 2) catch return null;
+        if (pos + desc_bytes > data.len) return null;
+        const desc = data[pos..][0..desc_bytes];
+        pos += desc_bytes;
+        if (utf16LeEqualsAscii(desc, id)) return .{ .offset = pos, .size = block_length };
+        pos = std.math.add(usize, pos, block_length) catch return null;
+    }
+    return null;
+}
+
+fn utf16LeEqualsAscii(utf16: []const u8, ascii: []const u8) bool {
+    if (utf16.len != ascii.len * 2) return false;
+    for (ascii, 0..) |byte, i| {
+        if (utf16[i * 2] != byte or utf16[i * 2 + 1] != 0) return false;
+    }
+    return true;
 }
 
 fn findElementStart(xml: []const u8, tag: []const u8, start_pos: usize) ?usize {
@@ -425,6 +515,73 @@ test "matches Bio-Formats default series plane hashes for cached LIF fixture" {
         const plane = try readPlaneIndex(std.testing.allocator, data, sample.plane);
         defer std.testing.allocator.free(plane.data);
         try std.testing.expectEqual(@as(usize, 1048576), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+}
+
+test "matches Bio-Formats per-series core metadata for cached LIF fixture" {
+    const file_path = "fixtures/cache/lif/20191025 Test FRET 585. 423, 426.lif";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(64 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const expected = [_]struct {
+        width: u32,
+        height: u32,
+        size_c: u16,
+        size_z: u16,
+        plane_count: u32,
+        dimension_order: []const u8,
+    }{
+        .{ .width = 1024, .height = 1024, .size_c = 2, .size_z = 1, .plane_count = 2, .dimension_order = "XYCZT" },
+        .{ .width = 1024, .height = 1024, .size_c = 2, .size_z = 1, .plane_count = 2, .dimension_order = "XYCZT" },
+        .{ .width = 1024, .height = 1024, .size_c = 2, .size_z = 1, .plane_count = 2, .dimension_order = "XYCZT" },
+        .{ .width = 1024, .height = 1024, .size_c = 1, .size_z = 10, .plane_count = 10, .dimension_order = "XYZCT" },
+        .{ .width = 1024, .height = 1024, .size_c = 2, .size_z = 1, .plane_count = 2, .dimension_order = "XYCZT" },
+        .{ .width = 1024, .height = 1024, .size_c = 1, .size_z = 1, .plane_count = 1, .dimension_order = "XYZCT" },
+        .{ .width = 512, .height = 512, .size_c = 2, .size_z = 16, .plane_count = 32, .dimension_order = "XYCZT" },
+        .{ .width = 512, .height = 512, .size_c = 2, .size_z = 39, .plane_count = 78, .dimension_order = "XYCZT" },
+    };
+
+    for (expected, 0..) |sample, i| {
+        const metadata = try readMetadataSeriesIndex(data, @intCast(i));
+        try std.testing.expectEqualStrings("lif", metadata.format);
+        try std.testing.expectEqual(sample.width, metadata.width);
+        try std.testing.expectEqual(sample.height, metadata.height);
+        try std.testing.expectEqual(sample.size_c, metadata.size_c);
+        try std.testing.expectEqual(sample.size_z, metadata.size_z);
+        try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+        try std.testing.expectEqual(sample.plane_count, metadata.plane_count);
+        try std.testing.expectEqual(@as(u32, 8), metadata.series_count);
+        try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+        try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+        try std.testing.expect(metadata.little_endian);
+        try std.testing.expectEqualStrings(sample.dimension_order, metadata.dimension_order.?);
+    }
+    try std.testing.expectError(error.InvalidPlaneIndex, readMetadataSeriesIndex(data, 8));
+}
+
+test "matches Bio-Formats selected per-series plane hashes for cached LIF fixture" {
+    const file_path = "fixtures/cache/lif/20191025 Test FRET 585. 423, 426.lif";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(64 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const expected = [_]struct { series: u32, plane: u32, len: usize, sha256: [32]u8 }{
+        .{ .series = 1, .plane = 0, .len = 1048576, .sha256 = .{ 0xd3, 0x6a, 0x8f, 0x26, 0x66, 0x18, 0x3e, 0xc1, 0x43, 0x34, 0x5d, 0x83, 0xc6, 0x8a, 0x6b, 0xa8, 0x63, 0x96, 0xe5, 0x35, 0xdb, 0x8c, 0xbb, 0x85, 0x3a, 0xdd, 0xe5, 0x44, 0x8a, 0xfc, 0xe6, 0x17 } },
+        .{ .series = 3, .plane = 5, .len = 1048576, .sha256 = .{ 0x55, 0x0e, 0xa6, 0x23, 0x43, 0xf3, 0x01, 0x5f, 0x63, 0x13, 0xdf, 0xfa, 0x83, 0xd4, 0x16, 0x1e, 0x60, 0x00, 0x61, 0x3e, 0x6f, 0xac, 0xe5, 0xd6, 0x6a, 0x40, 0x86, 0xf8, 0x11, 0x63, 0xec, 0x04 } },
+        .{ .series = 6, .plane = 31, .len = 262144, .sha256 = .{ 0x94, 0xc8, 0xe1, 0x6a, 0xf1, 0x72, 0xda, 0xea, 0x34, 0x70, 0x8e, 0x74, 0x5f, 0xe0, 0x60, 0x9c, 0xbf, 0x76, 0xf0, 0xbc, 0xa3, 0x46, 0xb2, 0x53, 0x05, 0x29, 0xba, 0x64, 0x4d, 0x8b, 0xc4, 0xb5 } },
+        .{ .series = 7, .plane = 77, .len = 262144, .sha256 = .{ 0xfd, 0xfc, 0x1a, 0x65, 0xac, 0x7a, 0xe9, 0xb4, 0x04, 0x36, 0xfb, 0x72, 0x46, 0xff, 0xbb, 0x37, 0x87, 0x2a, 0xfa, 0x89, 0xbd, 0xbc, 0xfd, 0x58, 0x98, 0xb0, 0x64, 0x09, 0xf1, 0xb6, 0x7d, 0xa8 } },
+    };
+
+    for (expected) |sample| {
+        const plane = try readPlaneSeriesIndex(std.testing.allocator, data, sample.series, sample.plane);
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(sample.len, plane.data.len);
         var digest: [32]u8 = undefined;
         std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
         try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
