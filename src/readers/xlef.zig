@@ -32,6 +32,7 @@ pub fn readMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const 
     var metadata = try bio.readMetadata(image);
     metadata.format = "xlef";
     metadata.image_description = null;
+    if (metadata.dimension_order == null) metadata.dimension_order = "XYCZT";
     return metadata;
 }
 
@@ -49,6 +50,7 @@ pub fn readPlanePathRegionIndex(
     var plane = try bio.readPlaneRegionIndex(allocator, image, plane_index, region);
     plane.metadata.format = "xlef";
     plane.metadata.image_description = null;
+    if (plane.metadata.dimension_order == null) plane.metadata.dimension_order = "XYCZT";
     return plane;
 }
 
@@ -356,10 +358,12 @@ test "reads xlef metadata through first xlif tiff frame" {
     try std.testing.expectEqualStrings("xlef", metadata.format);
     try std.testing.expectEqual(@as(u32, 1), metadata.width);
     try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 
     const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, xlef_path, 0, .{ .x = 0, .y = 0, .width = 1, .height = 1 });
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("xlef", plane.metadata.format);
+    try std.testing.expectEqualStrings("XYCZT", plane.metadata.dimension_order.?);
     try std.testing.expectEqualSlices(u8, &.{82}, plane.data);
 }
 
@@ -380,6 +384,7 @@ test "reads xlef metadata through xlif jpeg frame" {
     try std.testing.expectEqual(@as(u32, 1), metadata.width);
     try std.testing.expectEqual(@as(u32, 1), metadata.height);
     try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 
     const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, xlif_path, 0, .{ .x = 0, .y = 0, .width = 1, .height = 1 });
     defer std.testing.allocator.free(plane.data);
@@ -406,6 +411,7 @@ test "reads xlef metadata through xlif bmp frame" {
     try std.testing.expectEqual(@as(u32, 1), metadata.width);
     try std.testing.expectEqual(@as(u32, 1), metadata.height);
     try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 
     const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, xlif_path, 0, .{ .x = 0, .y = 0, .width = 1, .height = 1 });
     defer std.testing.allocator.free(plane.data);
@@ -427,4 +433,23 @@ test "reads xlef frame path with xml entity escaping" {
     try std.testing.expectEqualStrings("xlef", metadata.format);
     try std.testing.expectEqual(@as(u32, 1), metadata.width);
     try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats core metadata for cached XLEF fixture" {
+    const file_path = "fixtures/cache/xlef/format-test tif.xlef";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, file_path);
+    try std.testing.expectEqualStrings("xlef", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1600), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1200), metadata.height);
+    try std.testing.expectEqual(@as(u16, 3), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(@as(u16, 3), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 }
