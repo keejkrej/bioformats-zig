@@ -410,6 +410,27 @@ test "matches Bio-Formats default core metadata for cached LIF fixture" {
     try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 }
 
+test "matches Bio-Formats default series plane hashes for cached LIF fixture" {
+    const file_path = "fixtures/cache/lif/20191025 Test FRET 585. 423, 426.lif";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(64 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0x11, 0xc1, 0xf2, 0xe7, 0xa9, 0xc8, 0xad, 0xf8, 0x43, 0x9a, 0x18, 0x5d, 0x4e, 0xc2, 0x46, 0xc9, 0x19, 0xaa, 0x35, 0x3d, 0xeb, 0x6b, 0xbb, 0x80, 0xcb, 0xd3, 0x3a, 0xcb, 0x8a, 0x98, 0xcd, 0x2c } },
+        .{ .plane = 1, .sha256 = .{ 0x1c, 0x24, 0x7c, 0x4b, 0x59, 0x90, 0x16, 0x28, 0x7f, 0x63, 0x75, 0x09, 0xc9, 0x9e, 0x30, 0x11, 0x18, 0xd2, 0xe4, 0x3a, 0x89, 0xaa, 0xd1, 0x78, 0xca, 0x76, 0x6a, 0x80, 0x84, 0x1e, 0x35, 0x34 } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlaneIndex(std.testing.allocator, data, sample.plane);
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 1048576), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+}
+
 test "rejects leica lof header" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
