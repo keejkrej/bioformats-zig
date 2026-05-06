@@ -87,17 +87,18 @@ fn parsePixelBlockAt(data: []const u8, pos: usize) bio.ReaderError!PixelBlock {
     const check = leU32(data[pos + 4 ..][0..4]);
     if (check != 3) return error.InvalidFormat;
     const uid_len = leU32(data[pos + 16 ..][0..4]);
-    if (check_len != uid_len + 12 or uid_len == 0 or uid_len > 4096) return error.InvalidFormat;
+    if (uid_len == 0 or uid_len > 4096) return error.InvalidFormat;
+    if (uid_len > std.math.maxInt(u32) - 12 or check_len != uid_len + 12) return error.InvalidFormat;
     const uid_start = pos + 20;
     const uid_len_usize = try checkedUsize(uid_len);
     const uid_end = std.math.add(usize, uid_start, uid_len_usize) catch return error.UnsupportedVariant;
-    if (uid_end + 8 > data.len) return error.TruncatedData;
+    if (uid_end > data.len or data.len - uid_end < 8) return error.TruncatedData;
     const uid = data[uid_start..uid_end];
     if (std.mem.indexOfScalar(u8, uid, '_') == null) return error.InvalidFormat;
     const pixel_bytes = leU32(data[uid_end..][0..4]);
     if (pixel_bytes == 0) return error.InvalidFormat;
     const pixel_len = try checkedUsize(pixel_bytes);
-    const pixel_offset = uid_end + 8;
+    const pixel_offset = std.math.add(usize, uid_end, 8) catch return error.UnsupportedVariant;
     if (pixel_offset > data.len or data.len - pixel_offset < pixel_len) return error.TruncatedData;
     return .{ .data_offset = pixel_offset, .data_len = pixel_len };
 }
@@ -286,4 +287,20 @@ test "reads olympus oir full-plane raw pixel blocks" {
     try std.testing.expectEqual(bio.PixelType.uint16, plane.metadata.pixel_type);
     try std.testing.expectEqualSlices(u8, &second, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
+}
+
+test "rejects oversized oir candidate block length without overflow" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendSlice(std.testing.allocator, identifier ++ "<?xml version=\"1.0\"?><commonframe:frameProperties><commonframe:imageDefinition>");
+    try data.appendSlice(std.testing.allocator, "<base:width>1</base:width><base:height>1</base:height><base:depth>1</base:depth>");
+    try data.appendSlice(std.testing.allocator, "</commonframe:imageDefinition></commonframe:frameProperties>");
+    try appendU32Le(&data, 11);
+    try appendU32Le(&data, 3);
+    try appendU32Le(&data, 0);
+    try appendU32Le(&data, 0);
+    try appendU32Le(&data, std.math.maxInt(u32));
+    try data.appendNTimes(std.testing.allocator, 0, 16);
+
+    try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data.items, 0));
 }
