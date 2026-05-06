@@ -1560,7 +1560,7 @@ fn decodeDeflate(src: []const u8, dst: []u8, container: std.compress.flate.Conta
     if (written != dst.len) return error.TruncatedData;
 }
 
-fn decodeLzw(src: []const u8, dst: []u8) bio.ReaderError!void {
+pub fn decodeLzw(src: []const u8, dst: []u8) bio.ReaderError!void {
     const clear_code: u16 = 256;
     const end_code: u16 = 257;
     const first_code: u16 = 258;

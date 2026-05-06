@@ -156,7 +156,7 @@ Content-Length: 46
 `readPlane` returns raw plane bytes as base64:
 
 ```json
-{"metadata":{"format":"netpbm","width":1,"height":1,"sizeC":3,"sizeZ":1,"sizeT":1,"pixelType":"rgb8","littleEndian":false,"planeCount":1},"encoding":"base64","data":"ChQe"}
+{"metadata":{"format":"netpbm","width":1,"height":1,"sizeC":3,"sizeZ":1,"sizeT":1,"pixelType":"rgb8","littleEndian":false,"planeCount":1,"imageCount":1,"seriesCount":1,"samplesPerPixel":3},"encoding":"base64","data":"ChQe"}
 ```
 
 For hosts that already have image bytes in memory, `probe`, `open`, `metadata`,
@@ -177,7 +177,9 @@ For repeated reads, use the handle form:
 ```
 
 `planeIndex` is zero-based. Multi-IFD TIFF files expose additional planes via
-`metadata.planeCount`. `readPlane` also accepts an optional pixel region.
+`metadata.planeCount`; `metadata.imageCount` is the same per-series image count,
+and `metadata.seriesCount` reports the number of series modeled by the reader.
+`readPlane` also accepts an optional pixel region.
 Chunky stripped, separated planar stripped, and tiled TIFF regions are decoded
 selectively instead of materializing the whole plane first, including baseline
 TIFF entries reached through supported ZIP archives:
@@ -192,6 +194,9 @@ and `t` coordinates instead of `planeIndex`:
 ```json
 {"jsonrpc":"2.0","id":3,"method":"readPlane","params":{"handle":1,"z":1,"c":0,"t":0}}
 ```
+
+Path-based ND2 and CZI reads also accept zero-based `series` when
+`metadata.seriesCount` is greater than 1.
 
 These inline data, region, and `z`/`c`/`t` addressing capabilities are
 advertised by the `initialize` response.
@@ -307,7 +312,7 @@ plane, which can differ from logical OME `sizeC`.
 - Hamamatsu NDPI TIFF files identified by Hamamatsu private NDPI tags, decoded through the TIFF pixel path for TIFF-readable planes; JPEG tile acceleration, high-byte offset tags, pyramid/label/macro series mapping, and NDPI metadata expansion are not yet handled.
 - Hamamatsu NDPIS `.ndpis` sidecars that list neighboring `.ndpi` files, delegated through the first referenced NDPI image; multi-NDPI channel merging, emission wavelengths, and shading metadata are not yet modeled.
 - NIfTI single-file `.nii` images with inline 8/16/32-bit integer and 32/64-bit floating-point planes, plus RGB/RGBA byte samples; `.hdr/.img` pairs and `.nii.gz` are not yet handled.
-- Nikon ND2 files are detected from Nikon magic bytes and common embedded XML/text metadata keys are parsed as `nd2`, with simple ordered raw `ImageDataSeq|...!` scalar payloads or v3 tail chunk-map `ImageDataSeq|...!` offsets exposed as planes when payload lengths match the parsed dimensions; JPEG-2000/zlib-compressed pixel decoding, multi-position series, ROIs, LUTs, and full Nikon metadata are not yet implemented.
+- Nikon ND2 files are detected from Nikon magic bytes and common embedded XML/text metadata keys are parsed as `nd2`, with simple ordered raw `ImageDataSeq|...!` scalar payloads or v3 tail/file-map `ImageDataSeq|...!` offsets exposed as planes when payload lengths match the parsed dimensions, including Bio-Formats-style one-indexed image sequences, zlib/lossless chunk-map payloads, and 4-byte padded scanlines. ImageAttributesLV, ImageMetadataLV/SLxExperiment loop counts, series raster mapping, acquisition timestamp counts, and stage-position array counts are parsed, including CustomData counts referenced only from the path file map; JPEG-2000 pixel decoding, per-plane stage/time value exposure, ROIs, LUTs, and full Nikon metadata are not yet implemented.
 - Nikon NEF/TIFF files identified by TIFF-EP tags or Nikon Make tags, decoded through the TIFF pixel path when the stored image is directly TIFF-readable; Nikon compressed RAW decompression, maker-note metadata, CFA/white-balance expansion, and NEF subIFD handling are not yet handled.
 - Nikon Elements TIFF files identified by Nikon XML private metadata tags, decoded through the TIFF pixel path.
 - Nikon EZ-C1 TIFF files identified by Nikon software tags, decoded through the TIFF pixel path; Nikon microscope metadata parsing for objectives, lasers, filters, wavelengths, and physical sizes is not yet handled.
@@ -374,7 +379,7 @@ plane, which can differ from logical OME `sizeC`.
 - Volocity Library Clipping `.acff` files with inline uncompressed 8-bit planes; LZO-compressed clipping payloads are not yet handled.
 - WA Technology TOP `.wat` files with fixed-header little-endian signed 16-bit grayscale planes.
 - Leica XLEF projects that reference XLIF metadata and TIFF/JPEG/PNG/BMP frame files, including namespaced `Reference`/`Frame` XML elements, delegated through the first readable frame; LOF, multi-image/tile assembly, stage metadata, and Leica-specific metadata translation are not yet handled.
-- Zeiss CZI files are detected from `ZISRAWFILE` segments, subblock directory entries provide dimensions and pixel type, and full-size uncompressed scalar subblock planes are read directly; compressed payloads, BGR/RGBA planes, tiles, pyramids, attachments, XML metadata, scenes, and mosaics are not yet implemented.
+- Zeiss CZI files are detected from `ZISRAWFILE` segments, subblock directory entries provide dimensions and pixel type, `S` scene dimensions are exposed as series, raw `ZISRAWMETADATA` XML is exposed as `imageDescription`, full-size uncompressed scalar/BGR/RGBA subblock planes are read, and uint8/RGB8 JPEG-compressed, LZW-compressed, ZSTD-0/ZSTD-1-compressed, or camera-packed 12-bit full-size subblocks and tiles are decoded by path/range using C/Z/T/series subblock coordinates; pyramid subblocks are filtered from base-plane metadata/reads, but exposing pyramid resolutions, JPEG-XR compressed payloads, attachments, translated XML metadata, and mosaics is not yet implemented.
 - Zeiss LMS files identified by the LMSFLE marker, with CSM 700 fixed-size little-endian 16-bit Z planes read after the thumbnail and LUT blocks; the thumbnail series, palette LUT, objective magnification, and other instrument metadata are not yet surfaced.
 - Zeiss LSM TIFF files identified by the private `TIF_CZ_LSMINFO` tag, decoded through the TIFF pixel path with paired thumbnail IFDs skipped, multi-sample planes split into channel planes, and basic Z/C/T dimensions and scan-type dimension order parsed from the LSM info block; channel names/colors, LUTs, timestamps, ROIs, and MDB multi-file grouping are not yet parsed.
 - Zeiss AxioVision TIFF datasets with `_meta.xml` companion detection, delegated through the matching TIFF pixel path; XML tag metadata, multifile plane grouping, ROIs, and acquisition metadata are not yet handled.

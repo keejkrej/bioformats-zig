@@ -167,6 +167,13 @@ pub const Server = struct {
                     return .{ .wrote_response = true };
                 } else |_| {}
             }
+            if (bio.zeissczi.isPath(path)) {
+                if (bio.zeissczi.readMetadataPath(self.allocator, self.io, path)) |metadata| {
+                    defer freeOwnedImageDescription(self.allocator, metadata);
+                    try writeProbeFormat(writer, id, path, "zeissczi");
+                    return .{ .wrote_response = true };
+                } else |_| {}
+            }
             const bytes = readFile(self.allocator, self.io, path) catch |err| {
                 try writeReaderError(writer, id, err);
                 return .{ .wrote_response = true };
@@ -246,6 +253,15 @@ pub const Server = struct {
                     };
                     if (bio.nd2.isPath(path)) {
                         if (bio.nd2.readMetadataPath(self.allocator, self.io, path)) |metadata| {
+                            try beginResult(writer, id);
+                            try writeMetadataObject(writer, metadata);
+                            try endMessage(writer);
+                            return .{ .wrote_response = true };
+                        } else |_| {}
+                    }
+                    if (bio.zeissczi.isPath(path)) {
+                        if (bio.zeissczi.readMetadataPath(self.allocator, self.io, path)) |metadata| {
+                            defer freeOwnedImageDescription(self.allocator, metadata);
                             try beginResult(writer, id);
                             try writeMetadataObject(writer, metadata);
                             try endMessage(writer);
@@ -345,6 +361,10 @@ pub const Server = struct {
                     };
                     if (bio.nd2.isPath(path)) {
                         if (bio.nd2.readMetadataPath(self.allocator, self.io, path)) |metadata| {
+                            const series_index = getSeriesIndex(params, metadata) catch {
+                                try writeError(writer, id, -32602, "Invalid series index");
+                                return .{ .wrote_response = true };
+                            };
                             const plane_index = getPlaneIndex(params, metadata) catch {
                                 try writeError(writer, id, -32602, "Invalid plane index");
                                 return .{ .wrote_response = true };
@@ -353,7 +373,30 @@ pub const Server = struct {
                                 try writeError(writer, id, -32602, "Invalid plane region");
                                 return .{ .wrote_response = true };
                             };
-                            const plane = bio.nd2.readPlanePathRegionIndex(self.allocator, self.io, path, plane_index, region) catch |err| {
+                            const plane = bio.nd2.readPlanePathRegionSeriesIndex(self.allocator, self.io, path, series_index, plane_index, region) catch |err| {
+                                try writeReaderError(writer, id, err);
+                                return .{ .wrote_response = true };
+                            };
+                            defer self.allocator.free(plane.data);
+                            try writePlane(writer, self.allocator, id, plane, region);
+                            return .{ .wrote_response = true };
+                        } else |_| {}
+                    }
+                    if (bio.zeissczi.isPath(path)) {
+                        if (bio.zeissczi.readMetadataPath(self.allocator, self.io, path)) |metadata| {
+                            const series_index = getSeriesIndex(params, metadata) catch {
+                                try writeError(writer, id, -32602, "Invalid series index");
+                                return .{ .wrote_response = true };
+                            };
+                            const plane_index = getPlaneIndex(params, metadata) catch {
+                                try writeError(writer, id, -32602, "Invalid plane index");
+                                return .{ .wrote_response = true };
+                            };
+                            const region = getRegion(params, metadata) catch {
+                                try writeError(writer, id, -32602, "Invalid plane region");
+                                return .{ .wrote_response = true };
+                            };
+                            const plane = bio.zeissczi.readPlanePathRegionSeriesIndex(self.allocator, self.io, path, series_index, plane_index, region) catch |err| {
                                 try writeReaderError(writer, id, err);
                                 return .{ .wrote_response = true };
                             };
@@ -1193,6 +1236,14 @@ fn getPlaneIndex(params: ?std.json.Value, metadata: bio.Metadata) !u32 {
     return metadata.planeIndex(z, c, t);
 }
 
+fn getSeriesIndex(params: ?std.json.Value, metadata: bio.Metadata) !u32 {
+    const value = params orelse return 0;
+    if (value != .object) return 0;
+    const series = try getU32OrDefault(value.object.get("series"), 0);
+    if (series >= metadata.series_count) return error.InvalidPlaneIndex;
+    return series;
+}
+
 fn getU32OrDefault(value: ?std.json.Value, default: u32) !u32 {
     const item = value orelse return default;
     return switch (item) {
@@ -1319,7 +1370,7 @@ fn writePlane(
 
 fn writeMetadataObject(writer: *std.Io.Writer, metadata: bio.Metadata) !void {
     try writer.print(
-        "{{\"format\":\"{s}\",\"width\":{},\"height\":{},\"sizeC\":{},\"sizeZ\":{},\"sizeT\":{},\"pixelType\":\"{s}\",\"littleEndian\":{},\"planeCount\":{},\"samplesPerPixel\":{}",
+        "{{\"format\":\"{s}\",\"width\":{},\"height\":{},\"sizeC\":{},\"sizeZ\":{},\"sizeT\":{},\"pixelType\":\"{s}\",\"littleEndian\":{},\"planeCount\":{},\"imageCount\":{},\"seriesCount\":{},\"samplesPerPixel\":{}",
         .{
             metadata.format,
             metadata.width,
@@ -1330,6 +1381,8 @@ fn writeMetadataObject(writer: *std.Io.Writer, metadata: bio.Metadata) !void {
             metadata.pixel_type.name(),
             metadata.little_endian,
             metadata.plane_count,
+            metadata.plane_count,
+            metadata.series_count,
             if (metadata.samples_per_pixel == 0) metadata.size_c else metadata.samples_per_pixel,
         },
     );
@@ -1337,11 +1390,46 @@ fn writeMetadataObject(writer: *std.Io.Writer, metadata: bio.Metadata) !void {
         try writer.writeAll(",\"dimensionOrder\":");
         try writeJson(writer, dimension_order);
     }
+    if (metadata.timestamp_count > 0) {
+        try writer.print(",\"timestampCount\":{}", .{metadata.timestamp_count});
+    }
+    if (metadata.position_x_count > 0 or metadata.position_y_count > 0 or metadata.position_z_count > 0 or metadata.position_z1_count > 0) {
+        try writer.writeAll(",\"positionCounts\":{");
+        var wrote = false;
+        if (metadata.position_x_count > 0) {
+            try writer.print("\"x\":{}", .{metadata.position_x_count});
+            wrote = true;
+        }
+        if (metadata.position_y_count > 0) {
+            if (wrote) try writer.writeByte(',');
+            try writer.print("\"y\":{}", .{metadata.position_y_count});
+            wrote = true;
+        }
+        if (metadata.position_z_count > 0) {
+            if (wrote) try writer.writeByte(',');
+            try writer.print("\"z\":{}", .{metadata.position_z_count});
+            wrote = true;
+        }
+        if (metadata.position_z1_count > 0) {
+            if (wrote) try writer.writeByte(',');
+            try writer.print("\"z1\":{}", .{metadata.position_z1_count});
+        }
+        try writer.writeByte('}');
+    }
+    if (metadata.timestamp_first_seconds) |first| {
+        if (metadata.timestamp_last_seconds) |last| {
+            try writer.print(",\"timestampRangeSeconds\":{{\"first\":{d},\"last\":{d}}}", .{ first, last });
+        }
+    }
     if (metadata.image_description) |description| {
         try writer.writeAll(",\"imageDescription\":");
         try writeJson(writer, description);
     }
     try writer.writeByte('}');
+}
+
+fn freeOwnedImageDescription(allocator: std.mem.Allocator, metadata: bio.Metadata) void {
+    if (metadata.image_description) |description| allocator.free(description);
 }
 
 fn writeReaderError(writer: *std.Io.Writer, id: std.json.Value, err: anyerror) !void {
@@ -3195,5 +3283,29 @@ test "metadata json includes ome dimensions and samples per pixel" {
 
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"sizeC\":2") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"samplesPerPixel\":1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"seriesCount\":1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"imageCount\":1") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"dimensionOrder\":\"XYZCT\"") != null);
+}
+
+test "metadata json includes timing and position counts" {
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try writeMetadataObject(&out.writer, .{
+        .format = "nd2",
+        .width = 1,
+        .height = 1,
+        .size_c = 1,
+        .pixel_type = .uint8,
+        .timestamp_count = 5,
+        .position_x_count = 2,
+        .position_z_count = 5,
+        .timestamp_first_seconds = 1.25,
+        .timestamp_last_seconds = 9.5,
+    });
+
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"timestampCount\":5") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"positionCounts\":{\"x\":2,\"z\":5}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"timestampRangeSeconds\":{\"first\":1.25,\"last\":9.5}") != null);
 }

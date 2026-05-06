@@ -15,6 +15,11 @@ type Metadata = {
   pixelType: string;
   littleEndian: boolean;
   planeCount: number;
+  imageCount?: number;
+  seriesCount?: number;
+  timestampCount?: number;
+  positionCounts?: { x?: number; y?: number; z?: number; z1?: number };
+  timestampRangeSeconds?: { first: number; last: number };
   dimensionOrder?: string;
   imageDescription?: string;
 };
@@ -401,7 +406,10 @@ function MetadataPanel({ metadata }: { metadata?: Metadata }) {
     ["Z / C / T", `${metadata.sizeZ} / ${metadata.sizeC} / ${metadata.sizeT}`],
     ["Pixel type", metadata.pixelType],
     ["Endian", metadata.littleEndian ? "little" : "big"],
-    ["Order", metadata.dimensionOrder ?? "XYZCT"]
+    ["Order", metadata.dimensionOrder ?? "XYZCT"],
+    ["Timestamps", metadata.timestampCount ?? 0],
+    ["Time range", timestampRangeLabel(metadata)],
+    ["Positions", positionCountsLabel(metadata)]
   ];
   return (
     <div className="panel">
@@ -416,6 +424,27 @@ function MetadataPanel({ metadata }: { metadata?: Metadata }) {
       </dl>
     </div>
   );
+}
+
+function positionCountsLabel(metadata: Metadata): string {
+  const counts = metadata.positionCounts;
+  if (!counts) return "0";
+  const parts = [
+    counts.x ? `X ${counts.x}` : null,
+    counts.y ? `Y ${counts.y}` : null,
+    counts.z ? `Z ${counts.z}` : null,
+    counts.z1 ? `Z1 ${counts.z1}` : null
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" / ") : "0";
+}
+
+function timestampRangeLabel(metadata: Metadata): string {
+  const range = metadata.timestampRangeSeconds;
+  return range ? `${formatNumber(range.first)} - ${formatNumber(range.last)} s` : "n/a";
+}
+
+function formatNumber(value: number): string {
+  return Number.isFinite(value) ? value.toFixed(3) : "n/a";
 }
 
 function PlaneCanvas({ plane, contrast }: { plane: PlaneResult; contrast: "auto" | "raw" }) {
