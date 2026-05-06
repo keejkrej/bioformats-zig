@@ -120,6 +120,7 @@ function Preferred-NamePattern {
 
     switch ($Format) {
         "amira" { return '\.(am|amiramesh|grey|hx|labels)$' }
+        "cellsens" { return '\.vsi$' }
         "cellomics" { return '\.(c01|dib)$' }
         "ecat7" { return '\.v$' }
         "flex" { return '\.(flex|mea|res)$' }
@@ -187,9 +188,13 @@ function Find-Candidate {
 }
 
 function Find-ZenodoCandidate {
-    param([string]$RecordId)
+    param(
+        [string]$RecordId,
+        [string]$PreferredPattern
+    )
 
     $record = Invoke-RestMethod -UseBasicParsing -Uri "https://zenodo.org/api/records/$RecordId"
+    $fallback = $null
     foreach ($file in @($record.files)) {
         $name = [string]$file.key
         if ($name -notmatch $NamePattern) {
@@ -199,12 +204,18 @@ function Find-ZenodoCandidate {
         if ($length -gt $MaxBytes) {
             continue
         }
-        return [PSCustomObject]@{
+        $candidate = [PSCustomObject]@{
             Url = [string]$file.links.self
             FileName = $name
         }
+        if ($PreferredPattern -and $name -match $PreferredPattern) {
+            return $candidate
+        }
+        if ($null -eq $fallback) {
+            $fallback = $candidate
+        }
     }
-    return $null
+    return $fallback
 }
 
 function Get-IniValue {
@@ -415,6 +426,77 @@ function Download-IncellCompanions {
     Download-RelativeCompanion $baseUrl $match.Groups[1].Value $TargetDir
 }
 
+function Download-ZenodoCompanions {
+    param(
+        [string]$RecordId,
+        [string]$TargetDir,
+        [string]$Pattern
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RecordId)) {
+        return
+    }
+    $record = Invoke-RestMethod -UseBasicParsing -Uri "https://zenodo.org/api/records/$RecordId"
+    foreach ($file in @($record.files)) {
+        $name = [string]$file.key
+        if ($name -notmatch $Pattern) {
+            continue
+        }
+        $length = [long]$file.size
+        if ($length -gt $MaxBytes) {
+            throw "Companion '$name' is $length bytes, above MaxBytes $MaxBytes."
+        }
+        $targetPath = Join-Path $TargetDir ([System.IO.Path]::GetFileName($name))
+        if (-not (Test-Path -LiteralPath $targetPath)) {
+            Invoke-WebRequest -UseBasicParsing -Uri ([string]$file.links.self) -OutFile $targetPath
+        }
+        [PSCustomObject]@{
+            Format = $Format
+            Source = [string]$file.links.self
+            Path = $targetPath
+            Bytes = (Get-Item $targetPath).Length
+        }
+    }
+}
+
+function Download-CellsensCompanions {
+    param(
+        [string]$Source,
+        [string]$RecordId,
+        [string]$TargetDir
+    )
+
+    if ($Source -match 'zenodo\.org/api/records/') {
+        Download-ZenodoCompanions $RecordId $TargetDir '^frame_.*\.ets$'
+        return
+    }
+
+    $baseUrl = [Uri]::new([Uri]$Source, ".").AbsoluteUri
+    $stem = [System.IO.Path]::GetFileNameWithoutExtension(([Uri]$Source).Segments[-1])
+    $pixelsUrl = [Uri]::new([Uri]$baseUrl, "_$stem" + "_/").AbsoluteUri
+    $stackLinks = Get-DirectoryLinks $pixelsUrl
+    foreach ($stackHref in $stackLinks) {
+        $stackUrl = Resolve-Link $pixelsUrl $stackHref
+        if ($null -eq $stackUrl -or -not $stackUrl.EndsWith('/')) {
+            continue
+        }
+        $etsLinks = Get-DirectoryLinks $stackUrl
+        foreach ($etsHref in $etsLinks) {
+            $etsUrl = Resolve-Link $stackUrl $etsHref
+            if ($null -eq $etsUrl) {
+                continue
+            }
+            $leaf = [Uri]::UnescapeDataString(([Uri]$etsUrl).Segments[-1])
+            if ($leaf -notmatch '^frame_.*\.ets$') {
+                continue
+            }
+            $relative = "_$stem" + "_/" + [Uri]::UnescapeDataString(([Uri]$stackUrl).Segments[-1]).TrimEnd('/') + "/" + $leaf
+            Download-RelativeCompanion $baseUrl $relative $TargetDir
+            return
+        }
+    }
+}
+
 function Get-XmlAttributeValue {
     param(
         [string]$Content,
@@ -544,7 +626,8 @@ if ($sourceUrl) {
     }
 }
 if ($null -eq $candidate -and $zenodoRecordId) {
-    $candidate = Find-ZenodoCandidate $zenodoRecordId
+    $preferredPattern = Preferred-NamePattern $Format
+    $candidate = Find-ZenodoCandidate $zenodoRecordId $preferredPattern
 }
 if ($null -eq $candidate) {
     throw "No downloadable candidate for '$Format' matched pattern '$NamePattern' within depth $MaxDepth and size cap $MaxBytes bytes."
@@ -585,6 +668,9 @@ if ($Format -eq "jdce") {
 }
 if ($Format -eq "incell") {
     Download-IncellCompanions $candidate.Url $targetPath $targetDir
+}
+if ($Format -eq "cellsens") {
+    Download-CellsensCompanions $candidate.Url $zenodoRecordId $targetDir
 }
 if ($Format -eq "xlef") {
     Download-XlefCompanions $candidate.Url $targetPath $targetDir

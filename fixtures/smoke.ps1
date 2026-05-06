@@ -77,12 +77,15 @@ $cachePath = Resolve-RepoPath $CacheDir
 if (-not (Test-Path -LiteralPath $cachePath)) {
     throw "Fixture cache not found: $cachePath. Use fixtures/fetch.ps1 first."
 }
+$hasVsiInCache = @(Get-ChildItem -LiteralPath $cachePath -Recurse -Filter "*.vsi" -File -ErrorAction SilentlyContinue).Count -gt 0
 
 $files = @(Get-ChildItem -LiteralPath $cachePath -Recurse -File | Where-Object {
     $hasVmsSibling = @(Get-ChildItem -LiteralPath $_.DirectoryName -Filter "*.vms" -File -ErrorAction SilentlyContinue).Count -gt 0
+    $hasVsiSibling = @(Get-ChildItem -LiteralPath $_.DirectoryName -Filter "*.vsi" -File -ErrorAction SilentlyContinue).Count -gt 0
     $hasNrrdHeaderSibling = @(Get-ChildItem -LiteralPath $_.DirectoryName -Filter "*.nhdr" -File -ErrorAction SilentlyContinue).Count -gt 0
     $hasIcsHeaderSibling = @(Get-ChildItem -LiteralPath $_.DirectoryName -Filter "*.ics" -File -ErrorAction SilentlyContinue).Count -gt 0
     -not ($hasVmsSibling -and $_.Extension -match '^\.(jpg|jpeg|opt)$') -and
+        -not (($hasVsiSibling -or $hasVsiInCache) -and $_.Extension -ieq ".ets") -and
         -not ($hasNrrdHeaderSibling -and $_.Extension -ieq ".raw") -and
         -not ($hasIcsHeaderSibling -and $_.Extension -ieq ".ids")
 })
