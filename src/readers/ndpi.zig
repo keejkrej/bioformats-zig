@@ -13,6 +13,7 @@ pub fn matches(data: []const u8) bool {
 pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
     var metadata = try tiff.readMetadata(data);
     metadata.format = "ndpi";
+    normalizeMetadata(data, &metadata);
     return metadata;
 }
 
@@ -21,8 +22,10 @@ pub fn readPlane(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError
 }
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
+    if (plane_index != 0) return error.InvalidPlaneIndex;
     var plane = try tiff.readPlaneIndex(allocator, data, plane_index);
     plane.metadata.format = "ndpi";
+    normalizeMetadata(data, &plane.metadata);
     return plane;
 }
 
@@ -32,9 +35,17 @@ pub fn readRegionIndex(
     plane_index: u32,
     region: bio.Region,
 ) bio.ReaderError!bio.Plane {
+    if (plane_index != 0) return error.InvalidPlaneIndex;
     var plane = try tiff.readRegionIndex(allocator, data, plane_index, region);
     plane.metadata.format = "ndpi";
+    normalizeMetadata(data, &plane.metadata);
     return plane;
+}
+
+fn normalizeMetadata(data: []const u8, metadata: *bio.Metadata) void {
+    metadata.series_count = tiff.ifdCount(data) orelse metadata.series_count;
+    metadata.plane_count = 1;
+    metadata.dimension_order = "XYCZT";
 }
 
 fn appendU16Le(list: *std.ArrayList(u8), value: u16) !void {
@@ -88,11 +99,15 @@ test "reads ndpi-tagged tiff plane" {
     try std.testing.expect(matches(data.items));
     const metadata = try readMetadata(data.items);
     try std.testing.expectEqualStrings("ndpi", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 
     const plane = try readPlane(std.testing.allocator, data.items);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualStrings("ndpi", plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{42}, plane.data);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 1));
 
     const region_plane = try readRegionIndex(std.testing.allocator, data.items, 0, .{
         .x = 0,
@@ -103,4 +118,27 @@ test "reads ndpi-tagged tiff plane" {
     defer std.testing.allocator.free(region_plane.data);
     try std.testing.expectEqualStrings("ndpi", region_plane.metadata.format);
     try std.testing.expectEqualSlices(u8, &.{42}, region_plane.data);
+}
+
+test "matches Bio-Formats default metadata for cached NDPI fixture" {
+    const file_path = "fixtures/cache/ndpi/test3-DAPI 2 (387) .ndpi";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(16 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("ndpi", metadata.format);
+    try std.testing.expectEqual(@as(u32, 3968), metadata.width);
+    try std.testing.expectEqual(@as(u32, 4864), metadata.height);
+    try std.testing.expectEqual(@as(u16, 3), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 6), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 3), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.rgb8, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data, 1));
 }
