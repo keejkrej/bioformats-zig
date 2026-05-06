@@ -679,6 +679,19 @@ test "matches Bio-Formats plane hashes for cached FV1000 OIB fixture" {
         std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
         try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
     }
+
+    const region = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, 6, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 384), region.data.len);
+    const expected_region: [32]u8 = .{ 0x4d, 0x12, 0xe3, 0xbd, 0xf1, 0xa5, 0x94, 0xce, 0xb1, 0xe0, 0x21, 0x24, 0x7e, 0x00, 0xe9, 0x62, 0x7a, 0x64, 0x7f, 0xbc, 0xb3, 0x35, 0x42, 0xf8, 0x7b, 0x66, 0x3b, 0x8c, 0x8f, 0x80, 0x5b, 0x31 };
+    var region_digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region.data, &region_digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &region_digest);
 }
 
 fn cleanupFixture() void {
