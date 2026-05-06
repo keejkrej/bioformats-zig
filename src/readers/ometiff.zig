@@ -115,3 +115,47 @@ test "rejects non-xml tiff description" {
 
     try std.testing.expect(!matches(data.items));
 }
+
+test "matches Bio-Formats core metadata for cached OME-TIFF fixture" {
+    const file_path = "fixtures/cache/ometiff/Iron-Plate.ome.tiff";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(2 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("ometiff", metadata.format);
+    try std.testing.expectEqual(@as(u32, 576), metadata.width);
+    try std.testing.expectEqual(@as(u32, 472), metadata.height);
+    try std.testing.expectEqual(@as(u16, 3), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 3), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+    try std.testing.expect(!metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCTZ", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats plane hashes for cached OME-TIFF fixture" {
+    const file_path = "fixtures/cache/ometiff/Iron-Plate.ome.tiff";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(2 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0x50, 0x4e, 0xd6, 0xe2, 0xf7, 0xf1, 0x0c, 0x2c, 0x06, 0x4d, 0xc4, 0x5c, 0xcf, 0x09, 0x05, 0xa8, 0x3c, 0x1c, 0x36, 0x4b, 0x81, 0x60, 0x57, 0x40, 0xd8, 0x25, 0xc8, 0xe5, 0xe5, 0x7c, 0x34, 0xc0 } },
+        .{ .plane = 1, .sha256 = .{ 0x1e, 0x86, 0x28, 0xd0, 0x52, 0x17, 0xf8, 0x9c, 0xe8, 0x4a, 0x21, 0x89, 0x96, 0x01, 0x55, 0x56, 0x67, 0x7b, 0x30, 0x00, 0x5b, 0xa8, 0x65, 0x36, 0x58, 0x09, 0x15, 0x06, 0x9e, 0x3b, 0x54, 0x85 } },
+        .{ .plane = 2, .sha256 = .{ 0xb9, 0xa7, 0x65, 0x33, 0x1b, 0x5f, 0x73, 0xd7, 0xae, 0xae, 0xce, 0xc4, 0x6d, 0xdf, 0x3f, 0x4c, 0x20, 0xaa, 0xf8, 0x52, 0xa0, 0xe0, 0x23, 0xff, 0xd3, 0xc5, 0xf5, 0xcd, 0x79, 0x1a, 0xd6, 0x44 } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlaneIndex(std.testing.allocator, data, sample.plane);
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 271872), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+}
