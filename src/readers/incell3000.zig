@@ -238,3 +238,47 @@ test "rejects truncated incell 3000 packed run" {
     try std.testing.expect(!matches(data.items));
     try std.testing.expectError(error.TruncatedData, readPlane(std.testing.allocator, data.items));
 }
+
+test "matches Bio-Formats core metadata for cached InCell 3000 fixture" {
+    const file_path = "fixtures/cache/incell3000/20041103 1049_01_REF-1049-03 - EvoTec_0_A10_0.frm";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(2 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("incell3000", metadata.format);
+    try std.testing.expectEqual(@as(u32, 640), metadata.width);
+    try std.testing.expectEqual(@as(u32, 640), metadata.height);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+}
+
+test "matches Bio-Formats plane and region hashes for cached InCell 3000 fixture" {
+    const file_path = "fixtures/cache/incell3000/20041103 1049_01_REF-1049-03 - EvoTec_0_A10_0.frm";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(2 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const plane = try readPlane(std.testing.allocator, data);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(@as(usize, 819200), plane.data.len);
+    const expected_plane: [32]u8 = .{ 0x7f, 0x3b, 0x87, 0x3b, 0x30, 0x9f, 0x6c, 0x8c, 0x81, 0xce, 0x26, 0x01, 0xa8, 0x38, 0xb8, 0x82, 0x38, 0xe2, 0xe5, 0x13, 0x3b, 0xc6, 0xd2, 0x9d, 0x49, 0xfa, 0xfb, 0x45, 0xd2, 0x49, 0xf1, 0x03 };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_plane, &digest);
+
+    const region_data = try bio.cropPlane(std.testing.allocator, plane, .{ .x = 17, .y = 19, .width = 16, .height = 12 });
+    defer std.testing.allocator.free(region_data);
+    try std.testing.expectEqual(@as(usize, 384), region_data.len);
+    const expected_region: [32]u8 = .{ 0x3f, 0x72, 0xe2, 0x2a, 0x07, 0xa9, 0x20, 0x64, 0xbf, 0xe8, 0x53, 0x62, 0x47, 0x54, 0x68, 0x70, 0x96, 0x56, 0x1e, 0x2b, 0xb8, 0x9c, 0x3d, 0x89, 0xd1, 0x8e, 0x5e, 0xf0, 0x6c, 0xb1, 0x29, 0x9b };
+    std.crypto.hash.sha2.Sha256.hash(region_data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
+}
