@@ -47,6 +47,20 @@ Hash byte arrays with SHA-256 and paste the expected bytes into the Zig test.
 - DCIMG: region reads must match Java's requested-region row flip, not a crop from Zig's full-plane orientation.
 - LOF: cached fixture has Java metadata and full-plane hash coverage; add direct-region hashes when strengthening region proof.
 - CellSens: JPEG-compressed ETS tiles should not use exact region hashes unless the decoder is shared; Bio-Formats and Zig differ by small IDCT rounding deltas. For `Image_V4.1_BF.vsi`, Java direct-region `(0, 0, 16, 16)` is SHA-256 `3cb8575c1bfe8e3c054497ecd857d4a8881f1668485b2bc9e6638829e88753a7`, but the Zig test asserts direct-region size, first-pixel tolerance, and channel/sum ranges tied to that Java probe.
+- TIFF: direct-region proof should exercise the shared TIFF path rather than only delegated readers, because many vendor readers depend on TIFF range reads.
+- XLEF: Java reports RGB frames as non-interleaved planar samples even when the delegated TIFF decoder returns interleaved bytes. Zig converts multi-sample delegated frames to planar order for Java parity.
+- FV1000: cached OIB proof covers a direct-region read from plane 6 at `(17, 19, 16, 12)`, which exercises the OIF/OIB companion traversal path.
+- NDPI: cached whole-slide proof uses a small direct-region read from the first RGB series; avoid full-plane checks for large NDPI fixtures unless the path/range behavior is the target.
+- Cellomics: cached DIB metadata follows Java `XYCZT` order for the single-plane fixture, not the more common `XYZCT` scalar default.
+- DeltaVision: cached R3D/DV proof covers first, middle, and last plane hashes across the 80-plane `XYZCT` stack.
+- Micro-Manager: Java clamps `SizeT` to the first missing timepoint in `metadata.txt` acquisitions. Zig mirrors that by scanning neighboring `img_...` TIFF names before normalizing dimensions.
+- ICS: cached SVI/Huygens headers invert Y rows in Java. Zig keys this from `history software` containing `SVI`, so region proofs must use Java's inverted row orientation.
+
+## Fixture Gaps
+
+- CV7000 cached `110000251230.wpi`: Java `CV7000Reader` currently warns about missing `MeasurementDetail.mrf` and then fails with null channel metadata. Do not count this fixture as a parity proof until the fixture set or reader fallback is clarified.
+- Operetta cached single TIFF: Java `OperettaReader` requires the sibling `Index.idx.xml`; a lone TIFF is not enough for an alignment proof.
+- Hamamatsu VMS cached tile: current Zig reads whole tile files, and the cached tile is very large. Add pixel proof only after the reader has path/range tile reads.
 
 ## Verification Gates
 
