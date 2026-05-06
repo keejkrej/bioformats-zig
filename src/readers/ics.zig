@@ -15,6 +15,7 @@ const Header = struct {
     little_endian: bool,
     data_offset: usize,
     plane_count: u32,
+    invert_y: bool = false,
     image_name: ?[]const u8 = null,
     compression: ?[]const u8 = null,
 };
@@ -43,7 +44,7 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
         if (!eqlIgnoreCase(compression, "uncompressed")) return error.UnsupportedVariant;
     }
     const metadata = metadataFromHeader(header);
-    return readPlaneFromBytes(allocator, metadata, data, header.data_offset, plane_index, bio.Region.full(metadata));
+    return readPlaneFromBytes(allocator, metadata, data, header.data_offset, plane_index, bio.Region.full(metadata), header.invert_y);
 }
 
 pub fn readMetadataPath(
@@ -74,12 +75,12 @@ pub fn readPlanePathRegionIndex(
     }
 
     if (header.version_two) {
-        return readPlaneFromBytes(allocator, metadata, ics, header.data_offset, plane_index, region);
+        return readPlaneFromBytes(allocator, metadata, ics, header.data_offset, plane_index, region, header.invert_y);
     }
 
     const ids = try readIdsFile(allocator, io, path);
     defer allocator.free(ids);
-    return readPlaneFromBytes(allocator, metadata, ids, 0, plane_index, region);
+    return readPlaneFromBytes(allocator, metadata, ids, 0, plane_index, region, header.invert_y);
 }
 
 fn metadataFromHeader(header: Header) bio.Metadata {
@@ -115,6 +116,7 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     var compression: ?[]const u8 = null;
     var image_name: ?[]const u8 = null;
     var data_offset: ?usize = null;
+    var invert_y = false;
 
     while (cursor < data.len) {
         const line = try nextLine(data, &cursor);
@@ -147,6 +149,10 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
                 little_endian = first == 1;
             } else if (eqlIgnoreCase(tokens.items[1], "compression")) {
                 compression = tokens.items[2];
+            }
+        } else if (eqlIgnoreCase(tokens.items[0], "history") and tokens.len >= 3) {
+            if (eqlIgnoreCase(tokens.items[1], "software") and std.mem.indexOf(u8, trimmed, "SVI") != null) {
+                invert_y = true;
             }
         }
     }
@@ -194,6 +200,7 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
         .little_endian = little_endian,
         .data_offset = data_offset.?,
         .plane_count = plane_count,
+        .invert_y = invert_y,
         .image_name = image_name,
         .compression = compression,
     };
@@ -206,6 +213,7 @@ fn readPlaneFromBytes(
     data_offset: usize,
     plane_index: u32,
     region: bio.Region,
+    invert_y: bool,
 ) bio.ReaderError!bio.Plane {
     if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
     try region.validate(metadata);
@@ -215,7 +223,7 @@ fn readPlaneFromBytes(
     const offset = std.math.add(usize, data_offset, plane_offset) catch return error.UnsupportedVariant;
     if (offset > data.len or data.len - offset < plane_len) return error.TruncatedData;
 
-    if (region.isFull(metadata)) {
+    if (region.isFull(metadata) and !invert_y) {
         const out = try allocator.alloc(u8, plane_len);
         @memcpy(out, data[offset..][0..plane_len]);
         return .{ .metadata = metadata, .data = out };
@@ -230,7 +238,8 @@ fn readPlaneFromBytes(
 
     var row: usize = 0;
     while (row < region.height) : (row += 1) {
-        const src_y = @as(usize, region.y) + row;
+        const logical_y = @as(usize, region.y) + row;
+        const src_y = if (invert_y) @as(usize, metadata.height) - 1 - logical_y else logical_y;
         const src_x = @as(usize, region.x) * bytes_per_pixel;
         const src_offset = offset + src_y * src_row_bytes + src_x;
         const dst_offset = row * dst_row_bytes;
@@ -509,4 +518,55 @@ test "rejects compressed ics pixels" {
         [_]u8{7};
 
     try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data, 0));
+}
+
+test "matches Bio-Formats metadata and pixel hashes for cached ICS fixture" {
+    const file_path = "fixtures/cache/ics/benchmark_v1_2018_x64y64z5c2s1t11_w1Laser4054BD4BP_5c8bc101d6559_hrm.ics";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, file_path);
+    try std.testing.expectEqualStrings("ics", metadata.format);
+    try std.testing.expectEqual(@as(u32, 64), metadata.width);
+    try std.testing.expectEqual(@as(u32, 64), metadata.height);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 5), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 5), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.float32, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYZCT", metadata.dimension_order.?);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0xb8, 0xae, 0xc8, 0x86, 0x86, 0x52, 0x7b, 0x5a, 0x18, 0x58, 0x6b, 0x75, 0x32, 0xbe, 0x64, 0xed, 0x38, 0x75, 0x8a, 0x32, 0xc6, 0x75, 0x3a, 0x79, 0x47, 0x1f, 0x0b, 0xe4, 0xec, 0xb0, 0xd9, 0xb8 } },
+        .{ .plane = 2, .sha256 = .{ 0xd1, 0x3f, 0xdd, 0x92, 0xde, 0x34, 0x7f, 0x9f, 0x09, 0x09, 0x12, 0xee, 0x12, 0xc2, 0x15, 0x44, 0x34, 0x68, 0x76, 0x9f, 0x3a, 0x61, 0xec, 0x42, 0x1a, 0x4e, 0x6a, 0xba, 0xef, 0xc9, 0x09, 0xdd } },
+        .{ .plane = 4, .sha256 = .{ 0x60, 0x53, 0x81, 0xd1, 0x28, 0x52, 0x30, 0x84, 0x79, 0x94, 0xfb, 0x6a, 0x0d, 0x34, 0xad, 0x4b, 0x30, 0x21, 0xe6, 0xee, 0xfc, 0x93, 0x9a, 0x7a, 0xf1, 0x79, 0x3f, 0x86, 0xb0, 0xee, 0xe2, 0x61 } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, sample.plane, .{
+            .x = 0,
+            .y = 0,
+            .width = 64,
+            .height = 64,
+        });
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 16384), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+
+    const region = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, 0, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 768), region.data.len);
+    const expected_region: [32]u8 = .{ 0xef, 0x11, 0x5a, 0x0e, 0x0c, 0x15, 0xcd, 0xc4, 0x19, 0x58, 0xca, 0x46, 0xb5, 0xb1, 0x4b, 0x45, 0x61, 0x15, 0xf4, 0xba, 0xec, 0x5e, 0x3c, 0xa6, 0x85, 0x99, 0xd2, 0xa8, 0xf4, 0x35, 0xe3, 0xb8 };
+    var region_digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region.data, &region_digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &region_digest);
 }
