@@ -18,6 +18,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
     var metadata = try tiff.readMetadata(data);
     metadata.format = "flex";
     metadata.image_description = null;
+    normalizeMetadata(data, &metadata);
     return metadata;
 }
 
@@ -27,9 +28,12 @@ pub fn readPlane(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
     if (!matches(data)) return error.InvalidFormat;
+    const metadata = try readMetadata(data);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
     var plane = try tiff.readPlaneIndex(allocator, data, plane_index);
     plane.metadata.format = "flex";
     plane.metadata.image_description = null;
+    normalizeMetadata(data, &plane.metadata);
     return plane;
 }
 
@@ -40,10 +44,66 @@ pub fn readRegionIndex(
     region: bio.Region,
 ) bio.ReaderError!bio.Plane {
     if (!matches(data)) return error.InvalidFormat;
+    const metadata = try readMetadata(data);
+    if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
     var plane = try tiff.readRegionIndex(allocator, data, plane_index, region);
     plane.metadata.format = "flex";
     plane.metadata.image_description = null;
+    normalizeMetadata(data, &plane.metadata);
     return plane;
+}
+
+fn normalizeMetadata(data: []const u8, metadata: *bio.Metadata) void {
+    const xml = tiff.firstIfdAsciiTag(data, flex_tag) orelse return;
+    const grouping = imageArrayGrouping(xml) orelse return;
+    metadata.size_c = grouping.channels;
+    metadata.plane_count = grouping.channels;
+    metadata.series_count = grouping.series;
+    metadata.dimension_order = "XYCZT";
+}
+
+const ImageArrayGrouping = struct {
+    channels: u16,
+    series: u32,
+};
+
+fn imageArrayGrouping(xml: []const u8) ?ImageArrayGrouping {
+    var names: [16][]const u8 = undefined;
+    var count: usize = 0;
+    var pos: usize = 0;
+    while (count < names.len) {
+        const rel = std.mem.indexOf(u8, xml[pos..], "<Array") orelse break;
+        const start = pos + rel;
+        const close_rel = std.mem.indexOfScalar(u8, xml[start..], '>') orelse break;
+        const tag = xml[start .. start + close_rel];
+        pos = start + close_rel + 1;
+        if (std.mem.indexOf(u8, tag, "Type=\"Image\"") == null) continue;
+        const name_key = "Name=\"";
+        const name_rel = std.mem.indexOf(u8, tag, name_key) orelse continue;
+        const name_start = name_rel + name_key.len;
+        const name_end_rel = std.mem.indexOfScalar(u8, tag[name_start..], '"') orelse continue;
+        names[count] = tag[name_start .. name_start + name_end_rel];
+        count += 1;
+    }
+    if (count == 0) return null;
+
+    var period: usize = 1;
+    while (period <= count) : (period += 1) {
+        if (count % period != 0) continue;
+        var i: usize = period;
+        var repeats = true;
+        while (i < count) : (i += 1) {
+            if (!std.mem.eql(u8, names[i], names[i % period])) {
+                repeats = false;
+                break;
+            }
+        }
+        if (repeats) {
+            if (period > std.math.maxInt(u16)) return null;
+            return .{ .channels = @intCast(period), .series = @intCast(count / period) };
+        }
+    }
+    return null;
 }
 
 pub fn readMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !bio.Metadata {
@@ -216,4 +276,56 @@ test "reads flex path from measurement sibling" {
     const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, mea, 0, .{ .x = 0, .y = 0, .width = 1, .height = 1 });
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{92}, plane.data);
+}
+
+test "matches Bio-Formats default metadata for cached FLEX fixture" {
+    const file_path = "fixtures/cache/flex/001001000.flex";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(32 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("flex", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1346), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1001), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 3), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
+    try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data, 2));
+}
+
+test "matches Bio-Formats default plane and region hashes for cached FLEX fixture" {
+    const file_path = "fixtures/cache/flex/001001000.flex";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(32 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0xd2, 0x11, 0x0a, 0xb0, 0x75, 0xcc, 0x31, 0x4e, 0x7d, 0x08, 0x4c, 0x77, 0xdc, 0xf5, 0xb9, 0xfd, 0x45, 0xda, 0x6a, 0x95, 0x22, 0xb3, 0x1e, 0x0f, 0x06, 0x57, 0x4f, 0xe3, 0x02, 0x6b, 0xed, 0x09 } },
+        .{ .plane = 1, .sha256 = .{ 0xbb, 0x66, 0x8c, 0x6e, 0x0a, 0x04, 0xde, 0x59, 0x5d, 0xdd, 0xc6, 0xb4, 0x57, 0x63, 0xaf, 0x65, 0xf4, 0xe8, 0xdf, 0xb6, 0x00, 0x07, 0x32, 0x3b, 0xb1, 0x76, 0x31, 0xa9, 0xe9, 0xae, 0x99, 0xe8 } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlaneIndex(std.testing.allocator, data, sample.plane);
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 2694692), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+
+    const region = try readRegionIndex(std.testing.allocator, data, 0, .{ .x = 17, .y = 19, .width = 16, .height = 12 });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 384), region.data.len);
+    const expected_region: [32]u8 = .{ 0xb9, 0xd6, 0x81, 0x17, 0x47, 0xbc, 0x31, 0xc3, 0x3e, 0x4a, 0x84, 0x70, 0x9b, 0x92, 0x96, 0x74, 0x06, 0x7a, 0x01, 0xa7, 0x61, 0x05, 0xd8, 0x53, 0xa0, 0x1c, 0x4b, 0x1d, 0xb6, 0x0d, 0x6a, 0xc3 };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
 }
