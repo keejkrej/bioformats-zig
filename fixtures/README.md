@@ -19,12 +19,12 @@ because many microscopy datasets are large or have redistribution limits.
   datasets internally, but the public OME image index has no Openlab directory
   and the 2026-05-05 Zenodo/web search did not turn up a small public download.
 - Public probes on 2026-05-06 found that the OME Olympus FluoView `.oib`
-  fixture works as an FV1000 pixel smoke test, and the OpenSlide/OME
-  Hamamatsu VMS fixture works as a regional JPEG-tile pixel smoke test. OME
-  Olympus OIR `.oir` files are useful metadata leads, but currently expose Zig
-  reader pixel-read gaps. The Figshare MINC dataset provides small `.mnc.gz`
-  downloads, but those are MINC2/HDF5-style files rather than the classic
-  NetCDF variant supported by the current Zig MINC reader.
+  fixture works as an FV1000 pixel smoke test, the OpenSlide/OME Hamamatsu VMS
+  fixture works as a regional JPEG-tile pixel smoke test, and the OME Olympus
+  OIR fixture works as a chunked raw-block pixel smoke test. The Figshare MINC
+  dataset provides small `.mnc.gz` downloads, but those are MINC2/HDF5-style
+  files rather than the classic NetCDF variant supported by the current Zig
+  MINC reader.
 
 ## Verified Pixel Fixtures
 
@@ -67,6 +67,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | nifti | `ome_images/NIfTI/` | `avg152T1_LR_nifti.nii` |
 | nrrd | `ome_images/NRRD/gordon/` | `dt-helix.nhdr` |
 | obf | `ome_images/OBF/ngladitz/v4/` | `test-v4-uncompressed.obf` |
+| oir | `ome_images/Olympus-OIR/imagesc-105684/` | `1202-interval_10sec_sequence_frame.oir` |
 | omexml | `ome_images/OME-XML/2011-06/` | `single-image.ome.xml` |
 | ometiff | `ome_images/OME-TIFF/` | `Iron-Plate.ome.tiff` |
 | operetta | `ome_images/PerkinElmer-Operetta/omer/006P_M3/006P__2017-08-19T12_42_59-Measurement 3/Images/` | `r01c02f01p01-ch1sk1fk1fl1.tiff` |

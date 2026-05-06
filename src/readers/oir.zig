@@ -52,10 +52,9 @@ pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_inde
     const metadata = try readMetadata(data);
     if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
     const plane_len = try planeByteCount(metadata);
-    const block = try findPlaneBlock(data, metadata.plane_count, plane_index, plane_len);
     const out = try allocator.alloc(u8, plane_len);
     errdefer allocator.free(out);
-    @memcpy(out, data[block.data_offset..][0..plane_len]);
+    try copyPlaneBlocks(data, plane_index, plane_len, out);
     return .{ .metadata = metadata, .data = out };
 }
 
@@ -64,20 +63,26 @@ const PixelBlock = struct {
     data_len: usize,
 };
 
-fn findPlaneBlock(data: []const u8, plane_count: u32, plane_index: u32, plane_len: usize) bio.ReaderError!PixelBlock {
+fn copyPlaneBlocks(data: []const u8, plane_index: u32, plane_len: usize, out: []u8) bio.ReaderError!void {
     var pos: usize = identifier.len;
-    var index: u32 = 0;
+    var current_plane: u32 = 0;
+    var plane_offset: usize = 0;
     while (pos + 28 <= data.len) : (pos += 1) {
         const block = parsePixelBlockAt(data, pos) catch continue;
-        if (block.data_len == plane_len) {
-            if (index == plane_index) return block;
-            index += 1;
-            pos = block.data_offset + block.data_len - 1;
-        } else if (block.data_len > 0) {
+        if (block.data_len > plane_len or plane_offset > plane_len - block.data_len) {
             return error.UnsupportedVariant;
         }
+        if (current_plane == plane_index) {
+            @memcpy(out[plane_offset..][0..block.data_len], data[block.data_offset..][0..block.data_len]);
+        }
+        plane_offset += block.data_len;
+        pos = block.data_offset + block.data_len - 1;
+        if (plane_offset == plane_len) {
+            if (current_plane == plane_index) return;
+            current_plane += 1;
+            plane_offset = 0;
+        }
     }
-    if (index > 0 and index != plane_count) return error.UnsupportedVariant;
     return error.UnsupportedVariant;
 }
 
@@ -287,6 +292,23 @@ test "reads olympus oir full-plane raw pixel blocks" {
     try std.testing.expectEqual(bio.PixelType.uint16, plane.metadata.pixel_type);
     try std.testing.expectEqualSlices(u8, &second, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
+}
+
+test "assembles olympus oir plane from raw pixel block chunks" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendSlice(std.testing.allocator, identifier ++ "<?xml version=\"1.0\"?><commonframe:frameProperties><commonframe:imageDefinition>");
+    try data.appendSlice(std.testing.allocator, "<base:width>3</base:width><base:height>1</base:height><base:depth>2</base:depth>");
+    try data.appendSlice(std.testing.allocator, "<commonimage:axis><commonparam:axis>ZSTACK</commonparam:axis><commonparam:maxSize>2</commonparam:maxSize></commonimage:axis>");
+    try data.appendSlice(std.testing.allocator, "</commonframe:imageDefinition></commonframe:frameProperties>");
+    try appendPixelBlock(&data, "z001t001_ch0_0", &.{ 1, 0, 2, 0 });
+    try appendPixelBlock(&data, "z001t001_ch0_1", &.{ 3, 0 });
+    try appendPixelBlock(&data, "z002t001_ch0_0", &.{ 4, 0 });
+    try appendPixelBlock(&data, "z002t001_ch0_1", &.{ 5, 0, 6, 0 });
+
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 4, 0, 5, 0, 6, 0 }, plane.data);
 }
 
 test "rejects oversized oir candidate block length without overflow" {

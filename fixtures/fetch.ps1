@@ -145,6 +145,7 @@ function Preferred-NamePattern {
         "nifti" { return '\.nii$' }
         "nrrd" { return '\.(nrrd|nhdr)$' }
         "obf" { return 'uncompressed\.obf$' }
+        "oir" { return '^1202-interval_10sec_sequence_frame\.oir$' }
         "omexml" { return '^single-image\.ome\.xml$' }
         "operetta" { return '^r01c02f01p01-ch1sk1fk1fl1\.tiff$' }
         "scanr" { return '^--W00002--P00001--Z00000--T00000--nucleus-dapi\.tif$' }
