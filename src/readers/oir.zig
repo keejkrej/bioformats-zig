@@ -10,6 +10,7 @@ const Scan = struct {
     samples: u16 = 1,
     size_z: u16 = 1,
     size_t: u16 = 1,
+    lambda_size: u16 = 1,
     pixel_type: bio.PixelType = .uint8,
 };
 
@@ -31,6 +32,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
         found_xml = true;
         pos = xml_end;
     }
+    applyPixelBlockChannels(data, &scan);
     if (!found_xml or scan.width == 0 or scan.height == 0) return error.InvalidFormat;
     const plane_count = std.math.mul(u32, scan.size_c, scan.size_z) catch return error.UnsupportedVariant;
     return .{
@@ -126,7 +128,10 @@ fn parseXml(xml: []const u8, scan: *Scan) bio.ReaderError!void {
     if (logical_channels > 0) scan.size_c = @max(scan.size_c, boundedDimension(logical_channels));
     if (axisSize(xml, "ZSTACK")) |size| scan.size_z = @max(scan.size_z, boundedDimension(size));
     if (axisSize(xml, "TIMELAPSE")) |size| scan.size_t = @max(scan.size_t, boundedDimension(size));
-    if (axisSize(xml, "LAMBDA")) |size| scan.size_c = @max(scan.size_c, boundedDimension(size));
+    if (axisSize(xml, "LAMBDA")) |size| {
+        scan.lambda_size = @max(scan.lambda_size, boundedDimension(size));
+        scan.size_c = @max(scan.size_c, scan.lambda_size);
+    }
 }
 
 fn findXmlEnd(data: []const u8, start: usize) usize {
@@ -149,20 +154,89 @@ fn firstUnsigned(xml: []const u8, comptime names: []const []const u8) ?u32 {
 }
 
 fn axisSize(xml: []const u8, axis_name: []const u8) ?u32 {
+    var target_buf: [96]u8 = undefined;
+    const target = std.fmt.bufPrint(&target_buf, "<commonparam:axis>{s}</commonparam:axis>", .{axis_name}) catch return null;
     var pos: usize = 0;
-    while (std.mem.indexOfPos(u8, xml, pos, "<commonparam:axis")) |axis_start| {
-        const axis_close = std.mem.indexOfPos(u8, xml, axis_start, "</commonparam:axis>") orelse return null;
-        const axis_value_start = std.mem.indexOfScalarPos(u8, xml, axis_start, '>') orelse return null;
-        const value = std.mem.trim(u8, xml[axis_value_start + 1 .. axis_close], " \t\r\n");
-        const search_end = std.mem.indexOfPos(u8, xml, axis_close, "<commonparam:axis") orelse xml.len;
-        if (std.mem.eql(u8, value, axis_name)) {
-            if (tagText(xml[axis_close..search_end], "commonparam:maxSize")) |size| {
-                return std.fmt.parseUnsigned(u32, std.mem.trim(u8, size, " \t\r\n"), 10) catch null;
-            }
+    while (std.mem.indexOfPos(u8, xml, pos, target)) |axis_value_start| {
+        const parent_start = axisParentStart(xml, axis_value_start) orelse {
+            pos = axis_value_start + target.len;
+            continue;
+        };
+        if (axisDisabled(xml[parent_start..axis_value_start])) {
+            pos = axis_value_start + target.len;
+            continue;
         }
-        pos = axis_close + "</commonparam:axis>".len;
+        const search_end = @min(xml.len, axis_value_start + 2048);
+        if (tagText(xml[axis_value_start..search_end], "commonparam:maxSize")) |size| {
+            return std.fmt.parseUnsigned(u32, std.mem.trim(u8, size, " \t\r\n"), 10) catch null;
+        }
+        pos = axis_value_start + target.len;
     }
     return null;
+}
+
+fn axisParentStart(xml: []const u8, axis_value_start: usize) ?usize {
+    const common_image = std.mem.lastIndexOf(u8, xml[0..axis_value_start], "<commonimage:axis");
+    const common_param = std.mem.lastIndexOf(u8, xml[0..axis_value_start], "<commonparam:axis ");
+    if (common_image == null) return common_param;
+    if (common_param == null) return common_image;
+    return @max(common_image.?, common_param.?);
+}
+
+fn axisDisabled(opening: []const u8) bool {
+    return std.mem.indexOf(u8, opening, "enable=\"false\"") != null or
+        std.mem.indexOf(u8, opening, "paramEnable=\"false\"") != null;
+}
+
+fn applyPixelBlockChannels(data: []const u8, scan: *Scan) void {
+    var channels: [128][]const u8 = undefined;
+    var channel_count: usize = 0;
+    var pos: usize = identifier.len;
+    while (pos + 28 <= data.len) : (pos += 1) {
+        const block = parsePixelBlockAt(data, pos) catch continue;
+        const uid_start = pixelBlockUidStart(data, pos) orelse {
+            pos = block.data_offset + block.data_len - 1;
+            continue;
+        };
+        const uid = data[uid_start .. block.data_offset - 8];
+        if (pixelBlockChannelSignature(uid)) |signature| {
+            if (!hasChannelSignature(channels[0..channel_count], signature)) {
+                if (channel_count >= channels.len) return;
+                channels[channel_count] = signature;
+                channel_count += 1;
+            }
+        }
+        pos = block.data_offset + block.data_len - 1;
+    }
+    if (channel_count > 0) {
+        const total = std.math.mul(u32, @intCast(channel_count), scan.lambda_size) catch std.math.maxInt(u32);
+        scan.size_c = boundedDimension(total);
+    }
+}
+
+fn pixelBlockUidStart(data: []const u8, pos: usize) ?usize {
+    if (pos + 20 > data.len) return null;
+    const uid_len = leU32(data[pos + 16 ..][0..4]);
+    if (uid_len == 0 or uid_len > 4096) return null;
+    const uid_start = pos + 20;
+    const uid_len_usize = checkedUsize(uid_len) catch return null;
+    const uid_end = uid_start + uid_len_usize;
+    if (uid_end > data.len) return null;
+    return uid_start;
+}
+
+fn pixelBlockChannelSignature(uid: []const u8) ?[]const u8 {
+    const last = std.mem.lastIndexOfScalar(u8, uid, '_') orelse return null;
+    const previous = std.mem.lastIndexOfScalar(u8, uid[0..last], '_') orelse return null;
+    if (previous + 1 >= last) return null;
+    return uid[previous + 1 .. last];
+}
+
+fn hasChannelSignature(channels: []const []const u8, signature: []const u8) bool {
+    for (channels) |channel| {
+        if (std.mem.eql(u8, channel, signature)) return true;
+    }
+    return false;
 }
 
 fn tagTextEquals(xml: []const u8, tag: []const u8, expected: []const u8) bool {
@@ -274,6 +348,24 @@ fn appendPixelBlock(out: *std.ArrayList(u8), uid: []const u8, pixels: []const u8
     try out.appendSlice(std.testing.allocator, pixels);
 }
 
+test "uses oir pixel block channel IDs instead of disabled lambda metadata" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try data.appendSlice(std.testing.allocator, identifier ++ "<?xml version=\"1.0\"?><commonimage:imageProperties><commonimage:imageInfo>");
+    try data.appendSlice(std.testing.allocator, "<commonimage:width>2</commonimage:width><commonimage:height>1</commonimage:height>");
+    try data.appendSlice(std.testing.allocator, "<commonparam:axis enable=\"true\"><commonparam:axis>TIMELAPSE</commonparam:axis><commonparam:maxSize>8</commonparam:maxSize></commonparam:axis>");
+    try data.appendSlice(std.testing.allocator, "<commonparam:axis enable=\"false\"><commonparam:axis>LAMBDA</commonparam:axis><commonparam:maxSize>7</commonparam:maxSize></commonparam:axis>");
+    try data.appendSlice(std.testing.allocator, "<commonphase:channel id=\"ch-a\" order=\"1\" /><commonphase:channel id=\"ch-b\" order=\"2\" /><commonphase:channel id=\"unused\" order=\"7\" />");
+    try data.appendSlice(std.testing.allocator, "</commonimage:imageInfo></commonimage:imageProperties>");
+    try appendPixelBlock(&data, "t001_0_1_ch-a_0", &.{ 1, 0, 2, 0 });
+    try appendPixelBlock(&data, "t001_0_1_ch-b_0", &.{ 3, 0, 4, 0 });
+
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 8), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 16), metadata.plane_count);
+}
+
 test "reads olympus oir full-plane raw pixel blocks" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
@@ -325,4 +417,25 @@ test "rejects oversized oir candidate block length without overflow" {
     try data.appendNTimes(std.testing.allocator, 0, 16);
 
     try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data.items, 0));
+}
+
+test "matches Bio-Formats core metadata for cached OIR fixture" {
+    const file_path = "fixtures/cache/oir/1202-interval_10sec_sequence_frame.oir";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(32 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("oir", metadata.format);
+    try std.testing.expectEqual(@as(u32, 512), metadata.width);
+    try std.testing.expectEqual(@as(u32, 512), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 8), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 16), metadata.plane_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 }
