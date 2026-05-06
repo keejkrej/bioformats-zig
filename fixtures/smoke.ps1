@@ -1,6 +1,7 @@
 param(
     [string]$CacheDir = "fixtures/cache",
     [string]$Binary = "zig-out/bin/bioformats-zig.exe",
+    [int]$RpcTimeoutMs = 120000,
     [switch]$SkipPixels
 )
 
@@ -50,7 +51,14 @@ function Invoke-BioformatsRpc {
         $request.params = $Params
     }
     Write-ProcessLine $Process (ConvertTo-Json -InputObject $request -Compress -Depth 8)
-    $line = $Process.StandardOutput.ReadLine()
+    $readTask = $Process.StandardOutput.ReadLineAsync()
+    if (-not $readTask.Wait($RpcTimeoutMs)) {
+        if (-not $Process.HasExited) {
+            $Process.Kill()
+        }
+        throw "Timed out waiting $RpcTimeoutMs ms for JSON-RPC response to method '$Method'."
+    }
+    $line = $readTask.Result
     if ([string]::IsNullOrWhiteSpace($line)) {
         throw "No JSON-RPC response for method '$Method'."
     }
