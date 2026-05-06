@@ -51,6 +51,8 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | jdce | `ome_images/JDCE/molecular-devices/Converted/mini-actin_confocal_CDE/` | `mini-actin_confocal_CDE.JDCE` |
 | leo | `ome_images/LEO/` | `2160grating 1024.tif` |
 | lif | `ome_images/Leica-LIF/` | `20191025 Test FRET 585. 423, 426.lif` |
+| lof | `ome_images/Leica-XLEF/format test/format test LOF/` | `mono 8bit.lof` |
+| metamorph | `ome_images/MetaXpress/idr0005/Primary_001/` | `2011-04-19-plate-1_A01_s1_[A192FCC1-DC1A-4523-97BB-07688327EAC3].tif` |
 | metaxpress | `ome_images/MetaXpress/idr0005/Primary_001/` | `2011-04-19-plate-1.HTD` |
 | micromanager | `ome_images/Micro-Manager/1.4.16/serge/Pos0/` | `metadata.txt` |
 | mrc | `ome_images/MRC/EMDB/EMD-2225/` | `EMD-2225.map` |
@@ -66,6 +68,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | sdt | `ome_images/SDT/` | `FocalCheck_A1_20x_8xzoom_800nm.sdt` |
 | spc | `ome_images/SPC-FIFO/biofisika/` | `conv-256x256.set` |
 | tiff | `ome_images/TIFF/` | `A1.pattern1.tif` |
+| xlef | `ome_images/Leica-XLEF/format test/format test TIF/` | `format-test tif.xlef` |
 | zeissczi | `ome_images/Zeiss-CZI/` | `Plate1-Blue-A-02-Scene-1-P2-E1-01.czi` |
 | zeisslsm | `zenodo/10.5281/zenodo.14510432` | `10-01.lsm` |
 
