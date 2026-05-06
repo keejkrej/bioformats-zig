@@ -153,6 +153,7 @@ function Find-Candidate {
         [string]$PreferredPattern
     )
 
+    $hasPreferredPattern = -not [string]::IsNullOrWhiteSpace($PreferredPattern)
     $links = Get-DirectoryLinks $Url
     $fallback = $null
     foreach ($href in $links) {
@@ -170,17 +171,17 @@ function Find-Candidate {
             }
             continue
         }
-        if ($leaf -notmatch $NamePattern -and -not ($PreferredPattern -and $leaf -match $PreferredPattern)) {
+        if ($leaf -notmatch $NamePattern -and -not ($hasPreferredPattern -and $leaf -match $PreferredPattern)) {
             continue
         }
         $length = Get-RemoteLength $resolved
         if ($length -ne $null -and $length -gt $MaxBytes) {
             continue
         }
-        if ($PreferredPattern -and $leaf -match $PreferredPattern) {
+        if ($hasPreferredPattern -and $leaf -match $PreferredPattern) {
             return $resolved
         }
-        if ($null -eq $PreferredPattern -and $null -eq $fallback) {
+        if ($null -eq $fallback) {
             $fallback = $resolved
         }
     }
@@ -193,6 +194,7 @@ function Find-ZenodoCandidate {
         [string]$PreferredPattern
     )
 
+    $hasPreferredPattern = -not [string]::IsNullOrWhiteSpace($PreferredPattern)
     $record = Invoke-RestMethod -UseBasicParsing -Uri "https://zenodo.org/api/records/$RecordId"
     $fallback = $null
     foreach ($file in @($record.files)) {
@@ -208,7 +210,7 @@ function Find-ZenodoCandidate {
             Url = [string]$file.links.self
             FileName = $name
         }
-        if ($PreferredPattern -and $name -match $PreferredPattern) {
+        if ($hasPreferredPattern -and $name -match $PreferredPattern) {
             return $candidate
         }
         if ($null -eq $fallback) {
