@@ -46,6 +46,7 @@ Hash byte arrays with SHA-256 and paste the expected bytes into the Zig test.
 - SPC: cached fixture hashes use fresh Java reader instances because Java state can affect repeated reads.
 - DCIMG: region reads must match Java's requested-region row flip, not a crop from Zig's full-plane orientation.
 - LOF: cached fixture has Java metadata and full-plane hash coverage; add direct-region hashes when strengthening region proof.
+- CellSens: JPEG-compressed ETS tiles should not use exact region hashes unless the decoder is shared; Bio-Formats and Zig differ by small IDCT rounding deltas. For `Image_V4.1_BF.vsi`, Java direct-region `(0, 0, 16, 16)` is SHA-256 `3cb8575c1bfe8e3c054497ecd857d4a8881f1668485b2bc9e6638829e88753a7`, but the Zig test asserts direct-region size, first-pixel tolerance, and channel/sum ranges tied to that Java probe.
 
 ## Verification Gates
 

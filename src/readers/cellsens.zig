@@ -653,4 +653,24 @@ test "matches Bio-Formats core metadata for cached CellSens fixture" {
     });
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqual(@as(usize, 16 * 16 * 3), plane.data.len);
+
+    // Bio-Formats decodes these JPEG ETS tiles through its own codec, so exact
+    // bytes differ slightly from Zig's IDCT rounding. Keep spatial/channel
+    // evidence tied to the Java direct-region probe without requiring a SHA.
+    const java_first: [24]u8 = .{ 0x4d, 0xc2, 0x98, 0x47, 0xbb, 0x94, 0x48, 0xbe, 0x9b, 0x56, 0xc7, 0xa9, 0x61, 0xcb, 0xb5, 0x6a, 0xca, 0xbc, 0x6b, 0xc6, 0xbd, 0x66, 0xc1, 0xbc };
+    for (java_first, plane.data[0..java_first.len]) |expected, actual| {
+        const delta = if (expected > actual) expected - actual else actual - expected;
+        try std.testing.expect(delta <= 4);
+    }
+
+    var sum: u64 = 0;
+    var channel_sums = [_]u64{ 0, 0, 0 };
+    for (plane.data, 0..) |value, i| {
+        sum += value;
+        channel_sums[i % 3] += value;
+    }
+    try std.testing.expect(sum >= 119000 and sum <= 120200);
+    try std.testing.expect(channel_sums[0] >= 24100 and channel_sums[0] <= 24650);
+    try std.testing.expect(channel_sums[1] >= 51000 and channel_sums[1] <= 51600);
+    try std.testing.expect(channel_sums[2] >= 43600 and channel_sums[2] <= 44250);
 }
