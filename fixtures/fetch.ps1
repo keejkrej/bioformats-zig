@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|lof|htd|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|jdce|xlef|xlif|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|lof|htd|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|jdce|xlef|xlif|xdce|xml)$',
     [switch]$List
 )
 
@@ -128,6 +128,7 @@ function Preferred-NamePattern {
         "gatan" { return '\.dm[34]$' }
         "gatandm2" { return '\.dm2$' }
         "hamamatsuvms" { return '\.vms$' }
+        "incell" { return '\.xdce$' }
         "jdce" { return '\.jdce$' }
         "lof" { return '^mono 8bit\.lof$' }
         "metaxpress" { return '\.htd$' }
@@ -397,6 +398,22 @@ function Download-JdceCompanions {
     Download-RelativeCompanion $baseUrl $relative $TargetDir
 }
 
+function Download-IncellCompanions {
+    param(
+        [string]$XdceSource,
+        [string]$XdcePath,
+        [string]$TargetDir
+    )
+
+    $content = Get-Content -LiteralPath $XdcePath -Raw
+    $match = [regex]::Match($content, 'filename\s*=\s*"([^"]+\.(?:tif|tiff))"', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) {
+        return
+    }
+    $baseUrl = [Uri]::new([Uri]$XdceSource, ".").AbsoluteUri
+    Download-RelativeCompanion $baseUrl $match.Groups[1].Value $TargetDir
+}
+
 function Get-XmlAttributeValue {
     param(
         [string]$Content,
@@ -564,6 +581,9 @@ if ($Format -eq "spc") {
 }
 if ($Format -eq "jdce") {
     Download-JdceCompanions $candidate.Url $targetPath $targetDir
+}
+if ($Format -eq "incell") {
+    Download-IncellCompanions $candidate.Url $targetPath $targetDir
 }
 if ($Format -eq "xlef") {
     Download-XlefCompanions $candidate.Url $targetPath $targetDir

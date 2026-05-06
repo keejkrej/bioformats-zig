@@ -111,12 +111,10 @@ fn findMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const u8) 
     const parent = try parentPath(allocator, path);
     defer allocator.free(parent);
     const sibling = try joinPath(allocator, parent, metadata_name);
-    errdefer allocator.free(sibling);
     if (existsFile(io, sibling)) return sibling;
     allocator.free(sibling);
 
     const prefixed = try prefixedMetadataPath(allocator, path);
-    errdefer allocator.free(prefixed);
     if (existsFile(io, prefixed)) return prefixed;
     allocator.free(prefixed);
     return error.FileNotFound;
@@ -409,4 +407,17 @@ test "finds micromanager metadata from selected tiff sibling" {
 
     const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, tiff_path);
     try std.testing.expectEqualStrings("micromanager", metadata.format);
+}
+
+test "missing micromanager metadata sidecar does not double free" {
+    const root = "micromanager-missing-sidecar-test";
+    const tiff_path = "micromanager-missing-sidecar-test/img_000000000_Default_000.tif";
+    std.Io.Dir.cwd().deleteFile(std.testing.io, tiff_path) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, root) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, root) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = tiff_path, .data = &tiny_tiff });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, tiff_path) catch {};
+
+    try std.testing.expectError(error.FileNotFound, findMetadataPath(std.testing.allocator, std.testing.io, tiff_path));
 }

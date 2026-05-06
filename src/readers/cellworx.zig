@@ -245,7 +245,7 @@ fn looksLikeHtd(data: []const u8) bool {
 fn platePrefix(allocator: std.mem.Allocator, htd_path: []const u8) ![]u8 {
     const dot = std.mem.lastIndexOfScalar(u8, htd_path, '.') orelse htd_path.len;
     const out = try allocator.alloc(u8, dot + 1);
-    @memcpy(out[0..dot], htd_path[0..dot]);
+    std.mem.copyForwards(u8, out[0..dot], htd_path[0..dot]);
     out[dot] = '_';
     return out;
 }
