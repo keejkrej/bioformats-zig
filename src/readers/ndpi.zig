@@ -141,4 +141,17 @@ test "matches Bio-Formats default metadata for cached NDPI fixture" {
     try std.testing.expect(metadata.little_endian);
     try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data, 1));
+
+    const region = try readRegionIndex(std.testing.allocator, data, 0, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 576), region.data.len);
+    const expected_region: [32]u8 = .{ 0x64, 0x03, 0xb1, 0xc9, 0x4c, 0xbe, 0x0e, 0xa8, 0x83, 0xda, 0x11, 0xc8, 0x53, 0xf0, 0xed, 0x54, 0xe3, 0x56, 0x9e, 0x43, 0xcd, 0xfe, 0x92, 0x96, 0x71, 0xd7, 0x81, 0x69, 0xec, 0xed, 0x17, 0x04 };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
 }
