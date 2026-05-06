@@ -638,6 +638,49 @@ test "reads fv1000 oif metadata and delegated tiff planes" {
     try std.testing.expectEqualSlices(u8, &.{9}, plane.data);
 }
 
+test "matches Bio-Formats core metadata for cached FV1000 OIB fixture" {
+    const file_path = "fixtures/cache/fv1000/20220824_4492_cord_dapi__iba568_60x.oib";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, file_path);
+    try std.testing.expectEqualStrings("fv1000", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1024), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1024), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 6), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 12), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats plane hashes for cached FV1000 OIB fixture" {
+    const file_path = "fixtures/cache/fv1000/20220824_4492_cord_dapi__iba568_60x.oib";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0xda, 0x89, 0x6c, 0x9c, 0xac, 0xa6, 0x6d, 0xe0, 0x35, 0xef, 0x6e, 0x1a, 0xf0, 0xeb, 0x1a, 0x9f, 0x95, 0xa6, 0xa0, 0x7d, 0x3a, 0x27, 0x3f, 0xeb, 0x3e, 0x7d, 0x5b, 0x9e, 0x05, 0x7d, 0xfa, 0x00 } },
+        .{ .plane = 6, .sha256 = .{ 0xba, 0xd9, 0x57, 0x6e, 0xe5, 0x0f, 0x0c, 0xa6, 0xb9, 0x7a, 0xac, 0x84, 0x6e, 0x5e, 0xc9, 0x39, 0xbd, 0xbd, 0x65, 0xf8, 0xb2, 0x10, 0x0e, 0x72, 0x05, 0x46, 0x9d, 0xb8, 0x65, 0x36, 0x5d, 0x6d } },
+        .{ .plane = 11, .sha256 = .{ 0x61, 0x71, 0xde, 0x0b, 0x37, 0x3b, 0xbc, 0x87, 0x93, 0x7f, 0x97, 0xdd, 0x46, 0x19, 0xf1, 0xcc, 0xe4, 0x36, 0x32, 0x5e, 0xaf, 0x5c, 0x9a, 0xe0, 0x20, 0x35, 0x7f, 0x1e, 0x0d, 0x0c, 0xf8, 0xa9 } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, sample.plane, .{
+            .x = 0,
+            .y = 0,
+            .width = 1024,
+            .height = 1024,
+        });
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 2097152), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+}
+
 fn cleanupFixture() void {
     std.Io.Dir.cwd().deleteFile(std.testing.io, "fv1000-test/sample.files/s_C001T001.tif") catch {};
     std.Io.Dir.cwd().deleteFile(std.testing.io, "fv1000-test/sample.files/s_C001T002.tif") catch {};
