@@ -59,6 +59,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | metamorph | `ome_images/MetaXpress/idr0005/Primary_001/` | `2011-04-19-plate-1_A01_s1_[A192FCC1-DC1A-4523-97BB-07688327EAC3].tif` |
 | metaxpress | `ome_images/MetaXpress/idr0005/Primary_001/` | `2011-04-19-plate-1.HTD` |
 | micromanager | `ome_images/Micro-Manager/1.4.16/serge/Pos0/` | `metadata.txt` |
+| mng | `https://sourceforge.net/projects/libmng/files/libmng-testsuites/MNGsuite-1.0/MNGsuite.zip/download` | `button1.mng` |
 | mrc | `ome_images/MRC/EMDB/EMD-2225/` | `EMD-2225.map` |
 | nd2 | `ome_images/ND2/` | `MeOh_high_fluo_003.nd2` |
 | ndpi | `ome_images/Hamamatsu-NDPI/manuel/` | `test3-DAPI 2 (387) .ndpi` |

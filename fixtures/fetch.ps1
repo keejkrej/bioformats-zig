@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|ndpi|ndpis|czi|lif|lof|htd|ics|ids|dv|dcimg|r3d|frm|mrc|map|nii|nrrd|nhdr|v|xv|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|sdt|jdce|xlef|xlif|xdce|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|ndpi|ndpis|czi|lif|lof|htd|ics|ids|dv|dcimg|r3d|frm|mrc|map|nii|nrrd|nhdr|v|xv|dcm|dicom|ima|vms|ims|mng|ch5|h5|set|spc|sdt|jdce|xlef|xlif|xdce|xml)$',
     [switch]$List
 )
 
@@ -659,6 +659,38 @@ function Download-Cv7000KnownFixture {
     }
 }
 
+function Download-MngKnownFixture {
+    param(
+        [string]$TargetDir
+    )
+
+    $source = "https://sourceforge.net/projects/libmng/files/libmng-testsuites/MNGsuite-1.0/MNGsuite.zip/download"
+    $scratch = Join-Path $TargetDir "_mngsuite"
+    if (Test-Path -LiteralPath $scratch) {
+        Remove-Item -LiteralPath $scratch -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force -Path $scratch | Out-Null
+    try {
+        $zip = Join-Path $scratch "MNGsuite.zip"
+        Invoke-WebRequest -UseBasicParsing -MaximumRedirection 10 -UserAgent "Wget/1.21" -Uri $source -OutFile $zip
+        Expand-Archive -LiteralPath $zip -DestinationPath $scratch
+        $sample = Join-Path $scratch "MNGsuite/images/button1.mng"
+        $targetPath = Join-Path $TargetDir "button1.mng"
+        Copy-Item -LiteralPath $sample -Destination $targetPath -Force
+        [PSCustomObject]@{
+            Format = $Format
+            Source = $source
+            Path = $targetPath
+            Bytes = (Get-Item $targetPath).Length
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $scratch) {
+            Remove-Item -LiteralPath $scratch -Recurse -Force
+        }
+    }
+}
+
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
 $zenodoRecordId = Resolve-ZenodoRecordId ([string[]]$formatEntry.Value)
 if ($null -eq $sourceUrl -and $null -eq $zenodoRecordId) {
@@ -675,6 +707,10 @@ New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
 
 if ($Format -eq "cv7000") {
     Download-Cv7000KnownFixture $targetDir
+    exit 0
+}
+if ($Format -eq "mng") {
+    Download-MngKnownFixture $targetDir
     exit 0
 }
 
