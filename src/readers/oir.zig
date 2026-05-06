@@ -71,6 +71,14 @@ fn copyPlaneBlocks(data: []const u8, plane_index: u32, plane_len: usize, out: []
     var plane_offset: usize = 0;
     while (pos + 28 <= data.len) : (pos += 1) {
         const block = parsePixelBlockAt(data, pos) catch continue;
+        const uid_start = pixelBlockUidStart(data, pos) orelse {
+            pos = block.data_offset + block.data_len - 1;
+            continue;
+        };
+        if (isReferencePixelBlock(data[uid_start .. block.data_offset - 8])) {
+            pos = block.data_offset + block.data_len - 1;
+            continue;
+        }
         if (block.data_len > plane_len or plane_offset > plane_len - block.data_len) {
             return error.UnsupportedVariant;
         }
@@ -230,6 +238,10 @@ fn pixelBlockChannelSignature(uid: []const u8) ?[]const u8 {
     const previous = std.mem.lastIndexOfScalar(u8, uid[0..last], '_') orelse return null;
     if (previous + 1 >= last) return null;
     return uid[previous + 1 .. last];
+}
+
+fn isReferencePixelBlock(uid: []const u8) bool {
+    return std.mem.startsWith(u8, uid, "REF_");
 }
 
 fn hasChannelSignature(channels: []const []const u8, signature: []const u8) bool {
@@ -438,4 +450,26 @@ test "matches Bio-Formats core metadata for cached OIR fixture" {
     try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
     try std.testing.expect(metadata.little_endian);
     try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats plane hashes for cached OIR fixture" {
+    const file_path = "fixtures/cache/oir/1202-interval_10sec_sequence_frame.oir";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(32 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0xe5, 0xf2, 0x8f, 0xd8, 0x81, 0x41, 0x4d, 0xc0, 0x25, 0xe8, 0xa3, 0x9b, 0x32, 0x39, 0xa8, 0x33, 0xd6, 0xde, 0x34, 0xe4, 0xc1, 0xf4, 0x3b, 0x46, 0xa1, 0x9b, 0xfb, 0x50, 0x26, 0x06, 0x10, 0x98 } },
+        .{ .plane = 8, .sha256 = .{ 0x2a, 0x15, 0x39, 0x34, 0x40, 0x44, 0x29, 0x78, 0x28, 0xe0, 0xb7, 0xd6, 0xe0, 0xc5, 0x79, 0xb7, 0x6a, 0x97, 0x53, 0x5c, 0x48, 0x61, 0x14, 0x6b, 0xca, 0x69, 0x1c, 0x35, 0x2f, 0xdd, 0x96, 0xc2 } },
+        .{ .plane = 15, .sha256 = .{ 0x3b, 0x91, 0x70, 0xc1, 0x36, 0x0c, 0xb7, 0x9b, 0x4b, 0x19, 0xa7, 0xf6, 0x12, 0xb2, 0x1c, 0xbb, 0x68, 0x53, 0xf0, 0x75, 0x8a, 0x73, 0xce, 0xa2, 0xe4, 0xd4, 0x2b, 0x41, 0x0d, 0xab, 0xd8, 0x9a } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlaneIndex(std.testing.allocator, data, sample.plane);
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 524288), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
 }
