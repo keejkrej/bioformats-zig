@@ -26,7 +26,15 @@
     "OME InCell3000 public FRM sample was pixel-smoke verified on 2026-05-06 after accepting the payload byte count header field used by the public file.",
     "OME Vectra-QPTIFF public sample was pixel-smoke verified on 2026-05-06 after limiting PerkinElmer byte detection to HTML metadata.",
     "OME CV7000 public samples reach the CV7000 reader, but the tested TIFF plane exposes an unsupported TIFF variant in the current Zig implementation.",
-    "The OME CellH5 reduced public sample 0038.ch5 is 606148334 bytes, above the default public fixture cap."
+    "The OME CellH5 reduced public sample 0038.ch5 is 606148334 bytes, above the default public fixture cap.",
+    "OME KLB public samples were checked on 2026-05-06; the small img.klb and idr0044 sample use compression 1, while the current KLB pixel reader supports uncompressed single-block payloads.",
+    "OME BDV public XML descriptors were checked on 2026-05-06; their HDF5 pixel companions are above the default public fixture cap, with the smallest checked companion 356633292 bytes.",
+    "OME SVS public samples were checked on 2026-05-06; the available 77917.svs and 77928.svs files are above the default public fixture cap.",
+    "OME Trestle public CMU-1.tif was checked on 2026-05-06; it probes as trestle but exposes an unsupported TIFF variant in the current Zig implementation.",
+    "OME Ventana public BIF files were checked on 2026-05-06; the smallest checked BIF is 227377284 bytes, above the default public fixture cap.",
+    "OME Leica-SCN public files were checked on 2026-05-06; the smallest checked SCN is 291812870 bytes, above the default public fixture cap.",
+    "OME Imspector public test.msr was checked on 2026-05-06; it is 275404088 bytes, above the default public fixture cap.",
+    "OME CellWorX idr0005, idr0006, and idr0008 public directories were checked on 2026-05-06 and did not list fetchable HTD/PNL/LOG candidates."
   ],
   "implemented_format_sources": {
     "amira": ["ome_images/AmiraMesh/"],
