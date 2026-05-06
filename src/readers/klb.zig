@@ -13,6 +13,7 @@ const Header = struct {
     compression: u8,
     block_count: usize,
     header_size: usize,
+    data_size: usize,
 
     fn pixelType(self: Header) bio.ReaderError!bio.PixelType {
         return switch (self.data_type) {
@@ -54,19 +55,30 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
     const header = try parseHeader(data);
-    if (header.compression != 0) return error.UnsupportedVariant;
     if (header.block_count != 1 or !std.mem.eql(u32, &header.dims, &header.block_size)) return error.UnsupportedVariant;
     const metadata = try readMetadata(data);
     if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
 
     const plane_len = try planeByteCount(metadata);
     const plane_offset = std.math.mul(usize, plane_len, plane_index) catch return error.UnsupportedVariant;
-    const offset = std.math.add(usize, header.header_size, plane_offset) catch return error.UnsupportedVariant;
-    if (offset > data.len or data.len - offset < plane_len) return error.TruncatedData;
-
     const out = try allocator.alloc(u8, plane_len);
     errdefer allocator.free(out);
-    @memcpy(out, data[offset..][0..plane_len]);
+
+    if (header.compression == 0) {
+        const offset = std.math.add(usize, header.header_size, plane_offset) catch return error.UnsupportedVariant;
+        if (offset > data.len or data.len - offset < plane_len) return error.TruncatedData;
+        @memcpy(out, data[offset..][0..plane_len]);
+    } else if (header.compression == 2) {
+        const volume_len = try volumeByteCount(metadata);
+        const volume = try allocator.alloc(u8, volume_len);
+        defer allocator.free(volume);
+        const src = data[header.header_size..][0..header.data_size];
+        try decodeZlib(src, volume);
+        if (plane_offset > volume.len or volume.len - plane_offset < plane_len) return error.TruncatedData;
+        @memcpy(out, volume[plane_offset..][0..plane_len]);
+    } else {
+        return error.UnsupportedVariant;
+    }
     return .{ .metadata = metadata, .data = out };
 }
 
@@ -130,6 +142,7 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
         .compression = compression,
         .block_count = block_count,
         .header_size = header_size,
+        .data_size = @intCast(previous_end),
     };
 }
 
@@ -144,6 +157,19 @@ fn ceilDiv(numerator: u32, denominator: u32) usize {
 fn planeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
     const pixels = std.math.mul(usize, metadata.width, metadata.height) catch return error.UnsupportedVariant;
     return std.math.mul(usize, pixels, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
+}
+
+fn volumeByteCount(metadata: bio.Metadata) bio.ReaderError!usize {
+    const plane_len = try planeByteCount(metadata);
+    return std.math.mul(usize, plane_len, metadata.plane_count) catch return error.UnsupportedVariant;
+}
+
+fn decodeZlib(src: []const u8, dst: []u8) bio.ReaderError!void {
+    var input: std.Io.Reader = .fixed(src);
+    var output: std.Io.Writer = .fixed(dst);
+    var decompress: std.compress.flate.Decompress = .init(&input, .zlib, &.{});
+    const written = decompress.reader.streamRemaining(&output) catch return error.TruncatedData;
+    if (written != dst.len) return error.TruncatedData;
 }
 
 fn readU32(bytes: []const u8) u32 {
@@ -204,10 +230,23 @@ test "reads uncompressed single-block klb z planes" {
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 2));
 }
 
-test "rejects compressed klb pixels for now" {
+test "reads zlib compressed single-block klb plane" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
-    try appendHeader(&data, .{ 1, 1, 1, 1, 1 }, .{ 1, 1, 1, 1, 1 }, 0, 2, 1);
+    const compressed = [_]u8{ 120, 156, 51, 17, 58, 187, 26, 0, 3, 79, 1, 191 };
+    try appendHeader(&data, .{ 2, 1, 1, 1, 1 }, .{ 2, 1, 1, 1, 1 }, 1, 2, compressed.len);
+    try data.appendSlice(std.testing.allocator, &compressed);
+
+    try std.testing.expect(matches(data.items));
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 0);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{ 0x34, 0x12, 0xcd, 0xab }, plane.data);
+}
+
+test "rejects bzip2 compressed klb pixels for now" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendHeader(&data, .{ 1, 1, 1, 1, 1 }, .{ 1, 1, 1, 1, 1 }, 0, 1, 1);
     try data.append(std.testing.allocator, 7);
 
     try std.testing.expect(matches(data.items));
