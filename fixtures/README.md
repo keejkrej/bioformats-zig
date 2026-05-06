@@ -37,6 +37,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | cellomics | `ome_images/Cellomics/BBBC001/` | `AS_09125_050118150001_A03f00d0.DIB` |
 | cellsens | `ome_images/CellSens/` | `Image_V4.1_BF.vsi` |
 | columbus | `ome_images/PerkinElmer-Columbus/zenodo-6327496/tif/` | `MeasurementIndex.ColumbusIDX.xml` |
+| cv7000 | `ome_images/CV7000/idr0088/110000251230/` | `110000251230.wpi` |
 | dcimg | `ome_images/DCIMG/` | `bead_bot4__560_00000_00000.dcimg` |
 | deltavision | `ome_images/DV/` | `U2OS_AurB_AurA_001_R3D.dv` |
 | dicom | `ome_images/DICOM/` | `CR-MONO1-10-chest.dcm` |

@@ -643,10 +643,38 @@ function Download-NdpisCompanions {
     Download-Companion $baseUrl ([Uri]::EscapeUriString($match.Groups[1].Value.Trim())) $TargetDir
 }
 
+function Download-Cv7000KnownFixture {
+    param(
+        [string]$TargetDir
+    )
+
+    $baseUrl = "https://downloads.openmicroscopy.org/images/CV7000/idr0088/110000251230/"
+    foreach ($name in @(
+        "110000251230.wpi",
+        "MeasurementData.mlf",
+        "110000251230_B02_T0001F001L01A01Z01C01.tif"
+    )) {
+        Download-Companion $baseUrl $name $TargetDir
+    }
+}
+
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
 $zenodoRecordId = Resolve-ZenodoRecordId ([string[]]$formatEntry.Value)
 if ($null -eq $sourceUrl -and $null -eq $zenodoRecordId) {
     throw "Format '$Format' has no direct public URL or Zenodo record in sources.json: $($formatEntry.Value -join ', ')"
+}
+
+$targetRoot = if ([System.IO.Path]::IsPathRooted($OutDir)) {
+    $OutDir
+} else {
+    Join-Path (Get-Location) $OutDir
+}
+$targetDir = Join-Path $targetRoot $Format
+New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+
+if ($Format -eq "cv7000") {
+    Download-Cv7000KnownFixture $targetDir
+    exit 0
 }
 
 $candidate = $null
@@ -670,14 +698,6 @@ if ($null -eq $candidate -and $zenodoRecordId) {
 if ($null -eq $candidate) {
     throw "No downloadable candidate for '$Format' matched pattern '$NamePattern' within depth $MaxDepth and size cap $MaxBytes bytes."
 }
-
-$targetRoot = if ([System.IO.Path]::IsPathRooted($OutDir)) {
-    $OutDir
-} else {
-    Join-Path (Get-Location) $OutDir
-}
-$targetDir = Join-Path $targetRoot $Format
-New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
 
 $targetPath = Join-Path $targetDir $candidate.FileName
 Invoke-WebRequest -UseBasicParsing -Uri $candidate.Url -OutFile $targetPath
