@@ -31,6 +31,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
         .pixel_type = header.pixel_type,
         .little_endian = header.little_endian,
         .plane_count = header.planes,
+        .dimension_order = "XYCZT",
     };
 }
 
@@ -377,6 +378,54 @@ test "reads detached nhdr raw companion pixels" {
     });
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 2, 3, 5, 6 }, plane.data);
+}
+
+test "matches Bio-Formats metadata and pixel hashes for cached NRRD fixture" {
+    const path = "fixtures/cache/nrrd/dt-helix.nhdr";
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, path);
+    try std.testing.expectEqualStrings("nrrd", metadata.format);
+    try std.testing.expectEqual(@as(u32, 38), metadata.width);
+    try std.testing.expectEqual(@as(u32, 39), metadata.height);
+    try std.testing.expectEqual(@as(u16, 40), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 7), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 40), metadata.plane_count);
+    try std.testing.expectEqual(@as(u16, 7), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.float32, metadata.pixel_type);
+    try std.testing.expect(!metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0x0c, 0xe4, 0x59, 0xcb, 0xfc, 0x80, 0x5d, 0xef, 0xc2, 0x8f, 0x5b, 0xc8, 0x67, 0xbb, 0x51, 0x29, 0xdf, 0xed, 0x28, 0x41, 0xe7, 0x85, 0x89, 0xe3, 0xf1, 0x9c, 0x34, 0xc2, 0x3b, 0xe2, 0xb0, 0x5c } },
+        .{ .plane = 20, .sha256 = .{ 0x42, 0x85, 0xee, 0xeb, 0xc7, 0x32, 0xad, 0x58, 0x4b, 0x48, 0x0c, 0xbd, 0x85, 0xd2, 0x24, 0x18, 0xb5, 0x52, 0x28, 0xa0, 0xfc, 0x76, 0x42, 0x03, 0x20, 0xec, 0x41, 0x09, 0xc7, 0xed, 0xb7, 0x30 } },
+        .{ .plane = 39, .sha256 = .{ 0x07, 0x33, 0x3d, 0xa0, 0x22, 0x7c, 0x6d, 0x5b, 0xdb, 0xe7, 0xfc, 0x27, 0x38, 0x57, 0xd7, 0x8b, 0x9d, 0xaf, 0x36, 0x75, 0x27, 0x06, 0x56, 0x5d, 0x4b, 0xa5, 0x46, 0x03, 0x5b, 0xf8, 0xde, 0x14 } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, path, sample.plane, .{
+            .x = 0,
+            .y = 0,
+            .width = metadata.width,
+            .height = metadata.height,
+        });
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 41496), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+
+    const region = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, path, 0, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 5376), region.data.len);
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region.data, &digest, .{});
+    const expected_region_hash: [32]u8 = .{ 0x95, 0x11, 0xe4, 0x47, 0x05, 0x87, 0x7a, 0x47, 0xe9, 0x17, 0x0b, 0xbe, 0x0e, 0x4d, 0x1a, 0xa4, 0x44, 0x1d, 0x1d, 0x87, 0x0d, 0x1a, 0x36, 0x0b, 0x64, 0x8c, 0xeb, 0x35, 0x27, 0x4c, 0x06, 0x95 };
+    try std.testing.expectEqualSlices(u8, &expected_region_hash, &digest);
 }
 
 test "rejects gzip nrrd encoding" {
