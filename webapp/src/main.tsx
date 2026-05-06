@@ -24,7 +24,7 @@ type PlaneResult = {
   metadata: Metadata;
   encoding: "base64";
   data: string;
-  region: { x: number; y: number; width: number; height: number };
+  region?: { x: number; y: number; width: number; height: number };
 };
 
 type DirectoryEntry = {
@@ -441,8 +441,8 @@ function PlaneCanvas({ plane, contrast }: { plane: PlaneResult; contrast: "auto"
 
 function planeToImageData(plane: PlaneResult, contrast: "auto" | "raw"): ImageData {
   const metadata = plane.metadata;
-  const width = plane.region.width;
-  const height = plane.region.height;
+  const width = plane.region?.width ?? metadata.width;
+  const height = plane.region?.height ?? metadata.height;
   const bytes = base64ToBytes(plane.data);
   const image = new ImageData(width, height);
 
