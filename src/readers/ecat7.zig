@@ -183,3 +183,62 @@ test "rejects unsupported ecat7 datatype" {
     try std.testing.expect(!matches(data.items));
     try std.testing.expectError(error.UnsupportedVariant, readMetadata(data.items));
 }
+
+test "matches Bio-Formats default metadata for cached ECAT7 fixture" {
+    const file_path = "fixtures/cache/ecat7/gradient-512x512x10.v";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(8 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("ecat7", metadata.format);
+    try std.testing.expectEqual(@as(u32, 512), metadata.width);
+    try std.testing.expectEqual(@as(u32, 512), metadata.height);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 10), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 10), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(!metadata.little_endian);
+    try std.testing.expectEqualStrings("XYZTC", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats default plane and region hashes for cached ECAT7 fixture" {
+    const file_path = "fixtures/cache/ecat7/gradient-512x512x10.v";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(8 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0xf1, 0x6a, 0xe5, 0x61, 0x70, 0x18, 0x3e, 0xe6, 0x79, 0x50, 0x3e, 0xe9, 0xe2, 0x5d, 0x30, 0x25, 0x23, 0xf5, 0x35, 0xc0, 0x32, 0xdf, 0xf3, 0x97, 0x0d, 0x2c, 0x39, 0x61, 0xa8, 0x13, 0xba, 0xbe } },
+        .{ .plane = 5, .sha256 = .{ 0xf1, 0x6a, 0xe5, 0x61, 0x70, 0x18, 0x3e, 0xe6, 0x79, 0x50, 0x3e, 0xe9, 0xe2, 0x5d, 0x30, 0x25, 0x23, 0xf5, 0x35, 0xc0, 0x32, 0xdf, 0xf3, 0x97, 0x0d, 0x2c, 0x39, 0x61, 0xa8, 0x13, 0xba, 0xbe } },
+        .{ .plane = 9, .sha256 = .{ 0xf1, 0x6a, 0xe5, 0x61, 0x70, 0x18, 0x3e, 0xe6, 0x79, 0x50, 0x3e, 0xe9, 0xe2, 0x5d, 0x30, 0x25, 0x23, 0xf5, 0x35, 0xc0, 0x32, 0xdf, 0xf3, 0x97, 0x0d, 0x2c, 0x39, 0x61, 0xa8, 0x13, 0xba, 0xbe } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlaneIndex(std.testing.allocator, data, sample.plane);
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 524288), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+
+    const plane = try readPlaneIndex(std.testing.allocator, data, 0);
+    defer std.testing.allocator.free(plane.data);
+    const region_data = try bio.cropPlane(std.testing.allocator, plane, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region_data);
+    try std.testing.expectEqual(@as(usize, 384), region_data.len);
+    const expected_region: [32]u8 = .{ 0xa1, 0xa4, 0xf5, 0x72, 0x1c, 0x1c, 0x46, 0x10, 0xaf, 0x7f, 0x71, 0x07, 0x8f, 0x3a, 0x68, 0xc3, 0x30, 0x53, 0x6d, 0x67, 0x98, 0x03, 0xb0, 0xe0, 0x50, 0x7e, 0xe8, 0xdc, 0x10, 0xc5, 0xdf, 0xca };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region_data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
+}
