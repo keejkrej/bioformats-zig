@@ -120,7 +120,7 @@
     "lof": ["ome_images/Leica-XLEF/format test/format test LOF/"],
     "metamorph": ["ome_images/Metamorph/"],
     "metamorphtiff": ["alias-of-metamorph"],
-    "metaxpress": ["ome_images/MetaXpress/"],
+    "metaxpress": ["ome_images/MetaXpress/idr0005/Primary_001/", "ome_images/MetaXpress/"],
     "metaxpresstiff": ["alias-of-metaxpress"],
     "mias": ["needs-public-sample"],
     "micromanager": ["ome_images/Micro-Manager/1.4.16/serge/Pos0/", "ome_images/Micro-Manager/"],

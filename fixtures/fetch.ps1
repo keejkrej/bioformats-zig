@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|lof|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|jdce|xlef|xlif|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|lof|htd|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|jdce|xlef|xlif|xml)$',
     [switch]$List
 )
 
@@ -130,6 +130,7 @@ function Preferred-NamePattern {
         "hamamatsuvms" { return '\.vms$' }
         "jdce" { return '\.jdce$' }
         "lof" { return '^mono 8bit\.lof$' }
+        "metaxpress" { return '\.htd$' }
         "micromanager" { return '^metadata\.txt$' }
         "mrc" { return '\.(mrc|map)$' }
         "nifti" { return '\.nii$' }
@@ -458,6 +459,51 @@ function Download-MicromanagerCompanions {
     Download-RelativeCompanion $baseUrl $match.Groups[1].Value $TargetDir
 }
 
+function Get-HtdFirstWell {
+    param([string]$Content)
+
+    foreach ($match in [regex]::Matches($Content, '(?im)^\s*"WellsSelection(\d+)"\s*,\s*(.+?)\s*$')) {
+        $row = [int]$match.Groups[1].Value
+        $cols = $match.Groups[2].Value.Split(',')
+        for ($i = 0; $i -lt $cols.Count; $i++) {
+            if ($cols[$i].Trim(' ', "`t", '"') -ieq "true") {
+                return ("{0}{1:D2}" -f [char]([int][char]'A' + $row - 1), ($i + 1))
+            }
+        }
+    }
+    return $null
+}
+
+function Download-MetaxpressCompanions {
+    param(
+        [string]$HtdSource,
+        [string]$HtdPath,
+        [string]$TargetDir
+    )
+
+    $content = Get-Content -LiteralPath $HtdPath -Raw
+    $well = Get-HtdFirstWell $content
+    if ([string]::IsNullOrWhiteSpace($well)) {
+        return
+    }
+
+    $baseUrl = [Uri]::new([Uri]$HtdSource, ".").AbsoluteUri
+    $plate = [System.IO.Path]::GetFileNameWithoutExtension(([Uri]$HtdSource).Segments[-1])
+    $links = Get-DirectoryLinks $baseUrl
+    foreach ($href in $links) {
+        $resolved = Resolve-Link $baseUrl $href
+        if ($null -eq $resolved) {
+            continue
+        }
+        $leaf = [Uri]::UnescapeDataString(([Uri]$resolved).Segments[-1])
+        if ($leaf -notmatch '\.(tif|tiff)$' -or $leaf -match '(?i)_thumb' -or -not $leaf.StartsWith("${plate}_${well}")) {
+            continue
+        }
+        Download-Companion $baseUrl ([Uri]::EscapeUriString($leaf)) $TargetDir
+        return
+    }
+}
+
 $sourceUrl = Resolve-SourceUrl ([string[]]$formatEntry.Value)
 $zenodoRecordId = Resolve-ZenodoRecordId ([string[]]$formatEntry.Value)
 if ($null -eq $sourceUrl -and $null -eq $zenodoRecordId) {
@@ -523,4 +569,7 @@ if ($Format -eq "xlef") {
 }
 if ($Format -eq "micromanager") {
     Download-MicromanagerCompanions $candidate.Url $targetPath $targetDir
+}
+if ($Format -eq "metaxpress") {
+    Download-MetaxpressCompanions $candidate.Url $targetPath $targetDir
 }
