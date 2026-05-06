@@ -54,7 +54,6 @@ pub fn readPlane(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError
 
 pub fn readPlaneIndex(allocator: std.mem.Allocator, data: []const u8, plane_index: u32) bio.ReaderError!bio.Plane {
     const header = try parseHeader(data);
-    if (header.frame_footer_size != 0) return error.UnsupportedVariant;
     const metadata = try readMetadata(data);
     if (plane_index >= metadata.plane_count) return error.InvalidPlaneIndex;
     const plane_len = try planeByteCount(metadata);
@@ -203,12 +202,17 @@ test "reads dcimg version 1 mono16 metadata" {
     try std.testing.expectEqual(@as(usize, 2), metadata.bytesPerPixel());
 }
 
-test "rejects dcimg frame footers for now" {
+test "reads dcimg with frame footers" {
     var data: std.ArrayList(u8) = .empty;
     defer data.deinit(std.testing.allocator);
-    try appendHeader(&data, 1, 1, 1, pixel_mono8, 32);
-    try data.appendNTimes(std.testing.allocator, 0, 33);
+    try appendHeader(&data, 1, 1, 2, pixel_mono8, 16);
+    try data.appendSlice(std.testing.allocator, &.{9});
+    try data.appendNTimes(std.testing.allocator, 0xaa, 16);
+    try data.appendSlice(std.testing.allocator, &.{7});
+    try data.appendNTimes(std.testing.allocator, 0xbb, 16);
 
     try std.testing.expect(matches(data.items));
-    try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data.items, 0));
+    const plane = try readPlaneIndex(std.testing.allocator, data.items, 1);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqualSlices(u8, &.{7}, plane.data);
 }

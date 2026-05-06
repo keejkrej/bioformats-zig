@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|lof|htd|ics|ids|dv|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|sdt|jdce|xlef|xlif|xdce|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|czi|lif|lof|htd|ics|ids|dv|dcimg|r3d|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|sdt|jdce|xlef|xlif|xdce|xml)$',
     [switch]$List
 )
 
@@ -122,6 +122,7 @@ function Preferred-NamePattern {
         "amira" { return '\.(am|amiramesh|grey|hx|labels)$' }
         "cellsens" { return '\.vsi$' }
         "cellomics" { return '\.(c01|dib)$' }
+        "dcimg" { return '\.dcimg$' }
         "ecat7" { return '\.v$' }
         "flex" { return '\.(flex|mea|res)$' }
         "fluoview" { return '\.(tif|tiff)$' }
