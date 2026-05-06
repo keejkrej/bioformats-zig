@@ -37,6 +37,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | flex | `ome_images/Flex/idr0007/Plate1/` | `001001000.flex` |
 | fv1000 | `ome_images/Olympus-FluoView/imagesc-71616/` | `20220824_4492_cord_dapi__iba568_60x.oib` |
 | hamamatsuvms | `ome_images/Hamamatsu-VMS/openslide/CMU-3/` | `CMU-3-40x - 2010-01-12 13.57.09.vms` |
+| imaristiff | `ome_images/Imaris-IMS/davemason/` | `Convallaria_3C_10T_confocal_IMS3.ims` |
 | jdce | `ome_images/JDCE/molecular-devices/Converted/mini-actin_confocal_CDE/` | `mini-actin_confocal_CDE.JDCE` |
 | micromanager | `ome_images/Micro-Manager/1.4.16/serge/Pos0/` | `metadata.txt` |
 | nd2 | `ome_images/ND2/` | `MeOh_high_fluo_003.nd2` |

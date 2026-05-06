@@ -130,6 +130,7 @@ function Preferred-NamePattern {
         "gatan" { return '\.dm[34]$' }
         "gatandm2" { return '\.dm2$' }
         "hamamatsuvms" { return '\.vms$' }
+        "imaristiff" { return '_IMS3\.ims$' }
         "incell" { return '\.xdce$' }
         "jdce" { return '\.jdce$' }
         "lof" { return '^mono 8bit\.lof$' }
