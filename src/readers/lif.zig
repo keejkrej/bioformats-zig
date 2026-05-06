@@ -12,8 +12,10 @@ const Scan = struct {
     samples: u16 = 1,
     size_z: u16 = 1,
     size_t: u16 = 1,
+    series_count: u32 = 1,
     pixel_type: bio.PixelType = .uint8,
     row_stride: u32 = 0,
+    dimension_order: ?[]const u8 = null,
 };
 
 const Sections = struct {
@@ -52,7 +54,8 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
         .pixel_type = scan.pixel_type,
         .little_endian = true,
         .plane_count = std.math.mul(u32, zc, scan.size_t) catch return error.UnsupportedVariant,
-        .dimension_order = "XYZCT",
+        .series_count = scan.series_count,
+        .dimension_order = scan.dimension_order orelse "XYZCT",
     };
 }
 
@@ -145,18 +148,23 @@ fn readSections(allocator: std.mem.Allocator, data: []const u8) bio.ReaderError!
 }
 
 fn parseXml(xml: []const u8, scan: *Scan) bio.ReaderError!void {
+    const image_count = countElementStarts(xml, "Image");
+    if (image_count > 0) scan.series_count = image_count;
+    const first_image = firstElementSlice(xml, "Image") orelse xml;
+
     var found_dimensions = false;
     var pos: usize = 0;
-    while (std.mem.indexOfPos(u8, xml, pos, "<DimensionDescription")) |start| {
-        const end = std.mem.indexOfScalarPos(u8, xml, start, '>') orelse return error.InvalidFormat;
-        try parseDimension(xml[start .. end + 1], scan);
+    while (std.mem.indexOfPos(u8, first_image, pos, "<DimensionDescription")) |start| {
+        const end = std.mem.indexOfScalarPos(u8, first_image, start, '>') orelse return error.InvalidFormat;
+        try parseDimension(first_image[start .. end + 1], scan);
         found_dimensions = true;
         pos = end + 1;
     }
     if (!found_dimensions) return error.InvalidFormat;
 
-    const channels = countTagStarts(xml, "ChannelDescription");
+    const channels = countTagStarts(first_image, "ChannelDescription");
     if (channels > 0 and scan.samples == 1) scan.size_c = @max(scan.size_c, boundedDimension(channels));
+    if (scan.size_c > 1 or scan.size_t > 1) scan.dimension_order = "XYCZT";
 }
 
 fn parseDimension(tag: []const u8, scan: *Scan) bio.ReaderError!void {
@@ -232,6 +240,36 @@ fn countTagStarts(xml: []const u8, tag: []const u8) u32 {
         pos = found + pattern.len;
     }
     return count;
+}
+
+fn countElementStarts(xml: []const u8, tag: []const u8) u32 {
+    var count: u32 = 0;
+    var pos: usize = 0;
+    while (findElementStart(xml, tag, pos)) |found| {
+        count += 1;
+        pos = found + tag.len + 1;
+    }
+    return count;
+}
+
+fn firstElementSlice(xml: []const u8, tag: []const u8) ?[]const u8 {
+    const start = findElementStart(xml, tag, 0) orelse return null;
+    var close_buf: [96]u8 = undefined;
+    const close = std.fmt.bufPrint(&close_buf, "</{s}>", .{tag}) catch return null;
+    const end = std.mem.indexOfPos(u8, xml, start, close) orelse return xml[start..];
+    return xml[start .. end + close.len];
+}
+
+fn findElementStart(xml: []const u8, tag: []const u8, start_pos: usize) ?usize {
+    var pattern_buf: [96]u8 = undefined;
+    const pattern = std.fmt.bufPrint(&pattern_buf, "<{s}", .{tag}) catch return null;
+    var pos = start_pos;
+    while (std.mem.indexOfPos(u8, xml, pos, pattern)) |found| {
+        const next = found + pattern.len;
+        if (next >= xml.len or xml[next] == '>' or xml[next] == '/' or std.ascii.isWhitespace(xml[next])) return found;
+        pos = next;
+    }
+    return null;
 }
 
 fn pixelTypeFromBytes(bytes: u32) bio.ReaderError!bio.PixelType {
@@ -345,8 +383,31 @@ test "reads leica lif metadata from initial xml block" {
     try std.testing.expectEqual(@as(u16, 3), metadata.size_z);
     try std.testing.expectEqual(@as(u16, 4), metadata.size_t);
     try std.testing.expectEqual(@as(u32, 24), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
     try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
     try std.testing.expectError(error.UnsupportedVariant, readPlaneIndex(std.testing.allocator, data.items, 0));
+}
+
+test "matches Bio-Formats default core metadata for cached LIF fixture" {
+    const file_path = "fixtures/cache/lif/20191025 Test FRET 585. 423, 426.lif";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(64 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("lif", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1024), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1024), metadata.height);
+    try std.testing.expectEqual(@as(u16, 2), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 2), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 8), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 }
 
 test "rejects leica lof header" {
