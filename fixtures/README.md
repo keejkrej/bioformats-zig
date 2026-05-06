@@ -49,6 +49,7 @@ and a small `readPlane` request against the Zig JSON-RPC binary:
 | ics | `ome_images/ICS/jan/` | `benchmark_v1_2018_x64y64z5c2s1t11_w1Laser4054BD4BP_5c8bc101d6559_hrm.ics` |
 | imaristiff | `ome_images/Imaris-IMS/davemason/` | `Convallaria_3C_10T_confocal_IMS3.ims` |
 | incell | `ome_images/InCell2000/zenodo-14777242/` | `Training_Demo_1.xdce` |
+| incell3000 | `ome_images/InCell3000/BBBC013/BBBC013_v1_images_frm/` | `20041103 1049_01_REF-1049-03 - EvoTec_0_A10_0.frm` |
 | jdce | `ome_images/JDCE/molecular-devices/Converted/mini-actin_confocal_CDE/` | `mini-actin_confocal_CDE.JDCE` |
 | leo | `ome_images/LEO/` | `2160grating 1024.tif` |
 | lif | `ome_images/Leica-LIF/` | `20191025 Test FRET 585. 423, 426.lif` |

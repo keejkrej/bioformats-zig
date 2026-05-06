@@ -42,12 +42,11 @@ fn parseHeader(data: []const u8) bio.ReaderError!Header {
     const pixels_offset = readU16(data, 0);
     const width = readU16(data, 2);
     const n_lines = readU16(data, 4);
-    const component_bytes = readU32(data, 24);
     const trailing_zero = data[28];
 
     if (pixels_offset < min_header_len or pixels_offset >= data.len) return error.InvalidFormat;
     if (width == 0 or n_lines == 0) return error.InvalidFormat;
-    if (component_bytes != 2 or trailing_zero != 0) return error.InvalidFormat;
+    if (trailing_zero != 0) return error.InvalidFormat;
 
     const num_planes = n_lines % 32;
     if (num_planes == 0) return error.InvalidFormat;
@@ -140,12 +139,12 @@ fn readU16(data: []const u8, offset: usize) u16 {
     return std.mem.readInt(u16, data[offset..][0..2], .little);
 }
 
-fn readU32(data: []const u8, offset: usize) u32 {
-    return std.mem.readInt(u32, data[offset..][0..4], .little);
-}
-
 fn writeU16(data: []u8, offset: usize, value: u16) void {
     std.mem.writeInt(u16, data[offset..][0..2], value, .little);
+}
+
+fn writeU32(data: []u8, offset: usize, value: u32) void {
+    std.mem.writeInt(u32, data[offset..][0..4], value, .little);
 }
 
 fn appendU16Le(list: *std.ArrayList(u8), value: u16) !void {
@@ -193,6 +192,22 @@ test "reads uncompressed incell 3000 plane" {
     const plane = try readPlane(std.testing.allocator, data.items);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 11, 0, 22, 0, 33, 0, 44, 0 }, plane.data);
+}
+
+test "accepts incell 3000 payload byte count header field" {
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+    try appendHeader(&data, 32, 2, 2);
+    try appendU16Le(&data, 11);
+    try appendU16Le(&data, 22);
+    try appendU16Le(&data, 33);
+    try appendU16Le(&data, 44);
+    writeU32(data.items, 24, 8);
+
+    try std.testing.expect(matches(data.items));
+    const metadata = try readMetadata(data.items);
+    try std.testing.expectEqual(@as(u32, 2), metadata.width);
+    try std.testing.expectEqual(@as(u32, 2), metadata.height);
 }
 
 test "expands incell 3000 packed run" {

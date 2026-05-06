@@ -23,6 +23,7 @@
     "OME Columbus public sample was pixel-smoke verified on 2026-05-06 after prioritizing Columbus measurement-index content before XML companion probes.",
     "OME-XML single-image public sample was pixel-smoke verified on 2026-05-06 after prioritizing OME-XML content before XML companion probes.",
     "OME Hamamatsu NDPIS public sidecar was pixel-smoke verified on 2026-05-06 with its first NDPI companion.",
+    "OME InCell3000 public FRM sample was pixel-smoke verified on 2026-05-06 after accepting the payload byte count header field used by the public file.",
     "OME CV7000 public samples reach the CV7000 reader, but the tested TIFF plane exposes an unsupported TIFF variant in the current Zig implementation.",
     "The OME CellH5 reduced public sample 0038.ch5 is 606148334 bytes, above the default public fixture cap."
   ],
@@ -41,7 +42,7 @@
     "gatandm2": ["needs-public-sample", "note-ome-gatan-public-dirs-have-dm3-dm4-no-dm2"],
     "ics": ["ome_images/ICS/jan/", "ome_images/ICS/"],
     "incell": ["ome_images/InCell2000/zenodo-14777242/", "ome_images/InCell2000/", "ome_images/HCS/INCELL2000/"],
-    "incell3000": ["ome_images/InCell3000/"],
+    "incell3000": ["ome_images/InCell3000/BBBC013/BBBC013_v1_images_frm/", "ome_images/InCell3000/"],
     "klb": ["ome_images/KLB/"],
     "leo": ["ome_images/LEO/"],
     "leicascn": ["ome_images/Leica-SCN/"],
