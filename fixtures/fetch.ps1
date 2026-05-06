@@ -3,7 +3,7 @@ param(
     [string]$OutDir = "fixtures/cache",
     [int]$MaxDepth = 2,
     [long]$MaxBytes = 209715200,
-    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|ndpi|ndpis|czi|lif|lof|htd|ics|ids|dv|dcimg|r3d|frm|mrc|map|nii|nrrd|nhdr|v|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|sdt|jdce|xlef|xlif|xdce|xml)$',
+    [string]$NamePattern = '\.(tif|tiff|ome\.tiff|png|gif|bmp|jpg|jpeg|jp2|jpx|am|amiramesh|grey|hx|labels|dm2|dm3|dm4|obf|c01|dib|flex|mea|res|oif|oib|pty|lut|dng|lsm|oir|vsi|ets|nd2|ndpi|ndpis|czi|lif|lof|htd|ics|ids|dv|dcimg|r3d|frm|mrc|map|nii|nrrd|nhdr|v|xv|dcm|dicom|ima|vms|ims|ch5|h5|set|spc|sdt|jdce|xlef|xlif|xdce|xml)$',
     [switch]$List
 )
 
@@ -135,6 +135,7 @@ function Preferred-NamePattern {
         "incell" { return '\.xdce$' }
         "incell3000" { return '\.frm$' }
         "jdce" { return '\.jdce$' }
+        "khoros" { return '^airport\.xv$' }
         "lof" { return '^mono 8bit\.lof$' }
         "metaxpress" { return '\.htd$' }
         "micromanager" { return '^metadata\.txt$' }
