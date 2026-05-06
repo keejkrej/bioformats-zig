@@ -62,6 +62,8 @@ pub fn readMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const 
     metadata.size_c = parsed.size_c orelse metadata.size_c;
     metadata.size_t = parsed.size_t orelse metadata.size_t;
     metadata.dimension_order = parsed.dimension_order orelse metadata.dimension_order orelse "XYZCT";
+    clampToExistingTimepoints(&metadata, tiffs.items);
+    normalizeDimensions(&metadata);
     return metadata;
 }
 
@@ -97,11 +99,44 @@ pub fn readPlanePathRegionIndex(
             plane.metadata.size_t = parsed.size_t orelse plane.metadata.size_t;
             plane.metadata.dimension_order = parsed.dimension_order orelse plane.metadata.dimension_order orelse "XYZCT";
             plane.metadata.plane_count = try totalPlaneCount(allocator, io, tiffs.items);
+            clampToExistingTimepoints(&plane.metadata, tiffs.items);
+            normalizeDimensions(&plane.metadata);
             return plane;
         }
         remaining -= count;
     }
     return error.InvalidPlaneIndex;
+}
+
+fn clampToExistingTimepoints(metadata: *bio.Metadata, paths: []const []u8) void {
+    var max_t: ?u16 = null;
+    for (paths) |path| {
+        const t = timeIndexFromName(baseName(path)) orelse continue;
+        max_t = if (max_t) |current| @max(current, t) else t;
+    }
+    const existing_t = if (max_t) |value| value + 1 else return;
+    if (existing_t >= metadata.size_t) return;
+    metadata.size_t = existing_t;
+    metadata.plane_count = @as(u32, metadata.size_z) * @as(u32, metadata.size_c) * @as(u32, metadata.size_t);
+}
+
+fn timeIndexFromName(name: []const u8) ?u16 {
+    if (!std.mem.startsWith(u8, name, "img_")) return null;
+    var pos: usize = 4;
+    const start = pos;
+    while (pos < name.len and std.ascii.isDigit(name[pos])) : (pos += 1) {}
+    if (pos == start or pos >= name.len or name[pos] != '_') return null;
+    return std.fmt.parseUnsigned(u16, name[start..pos], 10) catch null;
+}
+
+fn normalizeDimensions(metadata: *bio.Metadata) void {
+    const zc = @as(u32, metadata.size_z) * @as(u32, metadata.size_c);
+    if (zc == 0) return;
+    const expected = zc * @as(u32, metadata.size_t);
+    if (expected == metadata.plane_count) return;
+    if (metadata.plane_count % zc == 0) {
+        metadata.size_t = @intCast(@min(metadata.plane_count / zc, std.math.maxInt(u16)));
+    }
 }
 
 fn findMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
@@ -420,4 +455,36 @@ test "missing micromanager metadata sidecar does not double free" {
     defer std.Io.Dir.cwd().deleteFile(std.testing.io, tiff_path) catch {};
 
     try std.testing.expectError(error.FileNotFound, findMetadataPath(std.testing.allocator, std.testing.io, tiff_path));
+}
+
+test "matches Bio-Formats metadata and region hash for cached Micro-Manager fixture" {
+    const file_path = "fixtures/cache/micromanager/metadata.txt";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, file_path);
+    try std.testing.expectEqualStrings("micromanager", metadata.format);
+    try std.testing.expectEqual(@as(u32, 2048), metadata.width);
+    try std.testing.expectEqual(@as(u32, 2048), metadata.height);
+    try std.testing.expectEqual(@as(u16, 4), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 4), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(!metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
+
+    const region = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, file_path, 0, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 384), region.data.len);
+    const expected_region: [32]u8 = .{ 0xc3, 0x97, 0xf6, 0x94, 0xe2, 0x54, 0xf3, 0x6c, 0x49, 0x38, 0x3b, 0xb5, 0xfa, 0x8a, 0xef, 0xcc, 0x74, 0x8d, 0x6a, 0x16, 0x97, 0x9e, 0xcd, 0xf0, 0x57, 0x37, 0xae, 0x0c, 0xd1, 0xac, 0x2e, 0x05 };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
 }
