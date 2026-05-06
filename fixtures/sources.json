@@ -39,7 +39,8 @@
     "OME CellWorX idr0005, idr0006, and idr0008 public directories were checked on 2026-05-06 and did not list fetchable HTD/PNL/LOG candidates.",
     "OME Imaris-HDF public candidates croppedCDM3DLz4.ims and Convallaria_3C_1T_confocal.ims were checked on 2026-05-06; both are metadata-readable but their pixels use unsupported HDF5 filter or chunk layouts in the current lightweight reader.",
     "OME Imaris public directories checked on 2026-05-06 cover HDF5 .ims and IMS3 TIFF-style fixtures, not the classic Imaris raw format implemented by the imaris reader.",
-    "OME DV public directories were checked on 2026-05-06 for RCPNL leads; they provide DV/R3D files but no .rcpnl public sample."
+    "OME DV public directories were checked on 2026-05-06 for RCPNL leads; they provide DV/R3D files but no .rcpnl public sample.",
+    "Bio-Formats Zenodo record 17914642 was checked on 2026-05-06 for Nikon NEF leads; it only listed ImageJ Testing Files.zip at 2385631619 bytes, above the default public fixture cap."
   ],
   "implemented_format_sources": {
     "amira": ["ome_images/AmiraMesh/"],
@@ -92,7 +93,7 @@
     "canonraw": ["needs-public-sample"],
     "cellvoyager": ["needs-public-sample"],
     "cellsens": ["ome_images/CellSens/", "zenodo/10.5281/zenodo.17590655"],
-    "cellworx": ["ome_images/CellWorX/"],
+    "cellworx": ["needs-public-sample", "note-ome-cellworx-public-dirs-empty-no-htd-pnl-log"],
     "dng": ["zenodo/10.5281/zenodo.15933943"],
     "columbus": ["ome_images/PerkinElmer-Columbus/zenodo-6327496/tif/", "ome_images/PerkinElmer-Columbus/"],
     "cv7000": ["ome_images/CV7000/", "zenodo/10.5281/zenodo.10683043"],
@@ -162,7 +163,7 @@
     "netpbm": ["generated-fixture"],
     "pgm": ["alias-of-netpbm"],
     "nd2": ["ome_images/ND2/", "zenodo/10.5281/zenodo.16921650", "zenodo/10.5281/zenodo.15493140"],
-    "nikon": ["zenodo/10.5281/zenodo.17914642"],
+    "nikon": ["needs-public-sample", "note-zenodo-17914642-only-large-imagej-testing-zip"],
     "ndpis": ["ome_images/Hamamatsu-NDPI/manuel/", "ome_images/Hamamatsu-NDPI/"],
     "nikonelements": ["needs-public-sample"],
     "nikonelementstiff": ["alias-of-nikonelements"],
