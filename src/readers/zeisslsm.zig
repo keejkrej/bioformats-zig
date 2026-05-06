@@ -79,10 +79,17 @@ fn normalizeMetadata(data: []const u8, metadata: *bio.Metadata) void {
         metadata.size_c = samples;
         metadata.samples_per_pixel = 1;
         metadata.pixel_type = scalarPixelType(metadata.pixel_type);
+        metadata.dimension_order = moveChannelAfterXY(metadata.dimension_order orelse "XYZCT");
         metadata.plane_count = std.math.mul(u32, logical_ifds, samples) catch logical_ifds;
     } else {
         metadata.plane_count = logical_ifds;
     }
+}
+
+fn moveChannelAfterXY(order: []const u8) []const u8 {
+    if (std.mem.eql(u8, order, "XYZTC") or std.mem.eql(u8, order, "XYZCT")) return "XYCZT";
+    if (std.mem.eql(u8, order, "XYTCZ")) return "XYCTZ";
+    return order;
 }
 
 fn scalarPixelType(pixel_type: bio.PixelType) bio.PixelType {
@@ -320,6 +327,7 @@ test "splits zeiss lsm planar samples into channel planes" {
     try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
     try std.testing.expectEqual(@as(u32, 4), metadata.plane_count);
     try std.testing.expectEqual(bio.PixelType.uint8, metadata.pixel_type);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
 
     const plane = try readPlaneIndex(std.testing.allocator, data.items, 2);
     defer std.testing.allocator.free(plane.data);
@@ -327,4 +335,64 @@ test "splits zeiss lsm planar samples into channel planes" {
     try std.testing.expectEqual(bio.PixelType.uint8, plane.metadata.pixel_type);
     try std.testing.expectEqualSlices(u8, &.{30}, plane.data);
     try std.testing.expectError(error.InvalidPlaneIndex, readPlaneIndex(std.testing.allocator, data.items, 4));
+}
+
+test "matches Bio-Formats core metadata for cached Zeiss LSM fixture" {
+    const file_path = "fixtures/cache/zeisslsm/10-01.lsm";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(16 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("zeisslsm", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1024), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1024), metadata.height);
+    try std.testing.expectEqual(@as(u16, 4), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 4), metadata.plane_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCZT", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats plane hashes for cached Zeiss LSM fixture" {
+    const file_path = "fixtures/cache/zeisslsm/10-01.lsm";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(16 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0x0a, 0xff, 0x9f, 0x49, 0x9e, 0xe4, 0xe8, 0x91, 0x6e, 0x29, 0x26, 0xa8, 0x40, 0xe0, 0x3f, 0xc2, 0xb0, 0x8c, 0x4f, 0xe2, 0xff, 0x54, 0x86, 0x65, 0x7d, 0xbc, 0xdc, 0x6b, 0x25, 0x7b, 0xf9, 0x9b } },
+        .{ .plane = 2, .sha256 = .{ 0x1c, 0x1a, 0x9a, 0x91, 0xa9, 0xf0, 0xc3, 0xcd, 0xe0, 0xc7, 0x00, 0x1d, 0xb5, 0x3e, 0x25, 0x62, 0xfe, 0x71, 0x9b, 0x67, 0xf7, 0x4d, 0x8d, 0x25, 0x6c, 0x11, 0xcc, 0xb5, 0xf6, 0xab, 0xc4, 0x87 } },
+        .{ .plane = 3, .sha256 = .{ 0x4c, 0xa8, 0x2e, 0x29, 0x89, 0xe0, 0x1c, 0xde, 0xe6, 0x0b, 0xc3, 0x0a, 0x30, 0xf8, 0x6c, 0xac, 0x3b, 0xd5, 0xe3, 0x7e, 0x05, 0x09, 0x01, 0x26, 0xb1, 0xc4, 0x52, 0xb5, 0x55, 0x9a, 0xa5, 0xb1 } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlaneIndex(std.testing.allocator, data, sample.plane);
+        defer std.testing.allocator.free(plane.data);
+        try std.testing.expectEqual(@as(usize, 2097152), plane.data.len);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+}
+
+test "matches Bio-Formats region hash for cached Zeiss LSM fixture" {
+    const file_path = "fixtures/cache/zeisslsm/10-01.lsm";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(16 * 1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const region = try readRegionIndex(std.testing.allocator, data, 2, .{ .x = 17, .y = 19, .width = 16, .height = 12 });
+    defer std.testing.allocator.free(region.data);
+    try std.testing.expectEqual(@as(usize, 384), region.data.len);
+
+    const expected: [32]u8 = .{ 0xa5, 0x21, 0x1d, 0x09, 0xb5, 0x08, 0xc4, 0x76, 0x4f, 0x05, 0x82, 0xc6, 0x34, 0x4e, 0xdc, 0xdd, 0x52, 0x2c, 0x31, 0x16, 0xf5, 0x5a, 0x42, 0xc9, 0xc9, 0xa0, 0xea, 0xfb, 0xb0, 0x57, 0x54, 0x01 };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected, &digest);
 }
