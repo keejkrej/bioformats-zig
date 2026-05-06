@@ -29,6 +29,8 @@ const DatasetInfo = struct {
     size_z: u16 = 1,
     size_c: u16 = 1,
     size_t: u16 = 1,
+    plane_count: u32 = 1,
+    series_count: u32 = 1,
 
     fn deinit(self: *DatasetInfo, allocator: std.mem.Allocator) void {
         allocator.free(self.companion_path);
@@ -77,8 +79,9 @@ pub fn readMetadataPath(allocator: std.mem.Allocator, io: std.Io, path: []const 
     metadata.size_z = info.size_z;
     metadata.size_c = info.size_c;
     metadata.size_t = info.size_t;
-    metadata.plane_count = @intCast(info.planes.items.len);
-    metadata.dimension_order = "XYCZT";
+    metadata.plane_count = info.plane_count;
+    metadata.series_count = info.series_count;
+    metadata.dimension_order = "XYZCT";
     return metadata;
 }
 
@@ -92,18 +95,33 @@ pub fn readPlanePathRegionIndex(
     var info = try readDatasetInfo(allocator, io, path);
     defer info.deinit(allocator);
     sortPlanes(info.planes.items);
-    if (plane_index >= info.planes.items.len) return error.InvalidPlaneIndex;
+    if (plane_index >= info.plane_count) return error.InvalidPlaneIndex;
 
-    const data = try readFile(allocator, io, info.planes.items[plane_index].path);
+    const metadata = try readMetadataPath(allocator, io, path);
+    try region.validate(metadata);
+    const coords = zctFromPlaneIndex(metadata, plane_index);
+    const plane_ref = findPlane(info.planes.items, coords.z, coords.c, coords.t) orelse
+        if (coords.z > 0) findPlane(info.planes.items, 0, coords.c, coords.t) else null;
+
+    if (plane_ref == null) {
+        const out_len = std.math.mul(usize, region.width, region.height) catch return error.UnsupportedVariant;
+        const bytes = std.math.mul(usize, out_len, metadata.bytesPerPixel()) catch return error.UnsupportedVariant;
+        const out = try allocator.alloc(u8, bytes);
+        @memset(out, 0);
+        return .{ .metadata = metadata, .data = out };
+    }
+
+    const data = try readFile(allocator, io, plane_ref.?.path);
     defer allocator.free(data);
     var plane = try bio.tiff.readRegionIndex(allocator, data, 0, region);
     plane.metadata.format = "incell";
     plane.metadata.image_description = null;
-    plane.metadata.size_z = info.size_z;
-    plane.metadata.size_c = info.size_c;
-    plane.metadata.size_t = info.size_t;
-    plane.metadata.plane_count = @intCast(info.planes.items.len);
-    plane.metadata.dimension_order = "XYCZT";
+    plane.metadata.size_z = metadata.size_z;
+    plane.metadata.size_c = metadata.size_c;
+    plane.metadata.size_t = metadata.size_t;
+    plane.metadata.plane_count = metadata.plane_count;
+    plane.metadata.series_count = metadata.series_count;
+    plane.metadata.dimension_order = metadata.dimension_order;
     return plane;
 }
 
@@ -121,7 +139,25 @@ fn readDatasetInfo(allocator: std.mem.Allocator, io: std.Io, path: []const u8) !
     try collectExplicitPlanes(allocator, io, parent, bytes, &info);
     if (info.planes.items.len == 0) try collectSyntheticPlanes(allocator, io, parent, bytes, &info);
     if (info.planes.items.len == 0) return error.FileNotFound;
+    try applyLayoutMetadata(allocator, bytes, &info);
     return info;
+}
+
+fn applyLayoutMetadata(allocator: std.mem.Allocator, bytes: []const u8, info: *DatasetInfo) !void {
+    var channels: std.ArrayList(Channel) = .empty;
+    defer {
+        for (channels.items) |channel| channel.deinit(allocator);
+        channels.deinit(allocator);
+    }
+    try readChannels(allocator, bytes, &channels);
+    if (channels.items.len > 0) info.size_c = boundedDimension(@intCast(channels.items.len));
+    if (firstAttrU32(bytes, "ZDimensionParameters", "number_of_slices")) |z| info.size_z = boundedDimension(z);
+    if (firstAttrU32(bytes, "TimeSchedule", "number_of_time_points")) |t| info.size_t = boundedDimension(t);
+
+    const field_count = firstAttrU32(bytes, "FieldOffsets", "number_of_fields") orelse maxFieldFromImages(bytes) orelse 1;
+    const well_count = activeWellCount(bytes) orelse uniqueWellCountFromImages(bytes) orelse 1;
+    info.series_count = @max(1, well_count * field_count);
+    info.plane_count = @as(u32, info.size_z) * @as(u32, info.size_c) * @as(u32, info.size_t);
 }
 
 fn findCompanionPath(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
@@ -275,6 +311,86 @@ fn readChannels(allocator: std.mem.Allocator, bytes: []const u8, channels: *std.
             .emission = try allocator.dupe(u8, emission),
         });
     }
+}
+
+fn zctFromPlaneIndex(metadata: bio.Metadata, plane_index: u32) struct { z: u32, c: u32, t: u32 } {
+    const z_count: u32 = @max(metadata.size_z, 1);
+    const c_count: u32 = @max(metadata.size_c, 1);
+    return .{
+        .z = plane_index % z_count,
+        .c = (plane_index / z_count) % c_count,
+        .t = plane_index / (z_count * c_count),
+    };
+}
+
+fn findPlane(planes: []const PlaneRef, z: u32, c: u32, t: u32) ?PlaneRef {
+    for (planes) |plane| {
+        if (plane.z == z and plane.c == c and plane.t == t) return plane;
+    }
+    return null;
+}
+
+fn activeWellCount(bytes: []const u8) ?u32 {
+    const rows = firstAttrU32(bytes, "Plate", "rows") orelse return null;
+    const cols = firstAttrU32(bytes, "Plate", "columns") orelse return null;
+    var pos: usize = 0;
+    var excluded: u32 = 0;
+    while (nextTag(bytes, "Exclude", &pos)) |_| excluded += 1;
+    return rows * cols -| excluded;
+}
+
+fn uniqueWellCountFromImages(bytes: []const u8) ?u32 {
+    var wells: [256]bool = [_]bool{false} ** 256;
+    var count: u32 = 0;
+    var pos: usize = 0;
+    while (nextTag(bytes, "Well", &pos)) |tag| {
+        const label = attrValue(tag, "label") orelse continue;
+        const key = wellKey(label) orelse continue;
+        if (!wells[key]) {
+            wells[key] = true;
+            count += 1;
+        }
+    }
+    return if (count > 0) count else null;
+}
+
+fn wellKey(label: []const u8) ?usize {
+    var row: ?usize = null;
+    var col: ?usize = null;
+    for (label) |ch| {
+        if (row == null and std.ascii.isAlphabetic(ch)) {
+            row = std.ascii.toUpper(ch) - 'A';
+            continue;
+        }
+        if (std.ascii.isDigit(ch)) {
+            const digit = ch - '0';
+            col = (col orelse 0) * 10 + digit;
+        }
+    }
+    const r = row orelse return null;
+    const c = col orelse return null;
+    if (r >= 16 or c == 0 or c > 16) return null;
+    return r * 16 + (c - 1);
+}
+
+fn maxFieldFromImages(bytes: []const u8) ?u32 {
+    var pos: usize = 0;
+    var max_field: u32 = 0;
+    while (nextTag(bytes, "Image", &pos)) |tag| {
+        const filename = attrValue(tag, "filename") orelse attrValue(tag, "Filename") orelse continue;
+        if (fieldFromFilename(filename)) |field| max_field = @max(max_field, field);
+    }
+    return if (max_field > 0) max_field else null;
+}
+
+fn fieldFromFilename(filename: []const u8) ?u32 {
+    const marker = std.mem.indexOf(u8, filename, "fld ") orelse return null;
+    var cursor = marker + 4;
+    var value: u32 = 0;
+    while (cursor < filename.len and std.ascii.isDigit(filename[cursor])) : (cursor += 1) {
+        value = value * 10 + (filename[cursor] - '0');
+    }
+    return if (value > 0) value else null;
 }
 
 fn nextTag(xml: []const u8, element: []const u8, pos: *usize) ?[]const u8 {
@@ -525,6 +641,53 @@ test "reads incell explicit image filename" {
     const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, xdce_path);
     try std.testing.expectEqualStrings("incell", metadata.format);
     try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+}
+
+test "matches Bio-Formats default metadata and pixel hashes for cached InCell fixture" {
+    const path = "fixtures/cache/incell/Training_Demo_1.xdce";
+    const metadata = try readMetadataPath(std.testing.allocator, std.testing.io, path);
+    try std.testing.expectEqualStrings("incell", metadata.format);
+    try std.testing.expectEqual(@as(u32, 1024), metadata.width);
+    try std.testing.expectEqual(@as(u32, 1024), metadata.height);
+    try std.testing.expectEqual(@as(u16, 16), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 4), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 64), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 8), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 1), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.uint16, metadata.pixel_type);
+    try std.testing.expect(metadata.little_endian);
+    try std.testing.expectEqualStrings("XYZCT", metadata.dimension_order.?);
+
+    const expected = [_]struct { plane: u32, sha256: [32]u8 }{
+        .{ .plane = 0, .sha256 = .{ 0x8d, 0xea, 0x4d, 0xe1, 0x27, 0x3e, 0xec, 0xee, 0xe0, 0x5d, 0x83, 0x9f, 0x5e, 0x13, 0xc4, 0xf0, 0xfc, 0xb9, 0x3e, 0xe0, 0x69, 0x0d, 0xcb, 0x5b, 0x50, 0xbe, 0x98, 0x72, 0x90, 0xd9, 0x3c, 0x2f } },
+        .{ .plane = 15, .sha256 = .{ 0x8d, 0xea, 0x4d, 0xe1, 0x27, 0x3e, 0xec, 0xee, 0xe0, 0x5d, 0x83, 0x9f, 0x5e, 0x13, 0xc4, 0xf0, 0xfc, 0xb9, 0x3e, 0xe0, 0x69, 0x0d, 0xcb, 0x5b, 0x50, 0xbe, 0x98, 0x72, 0x90, 0xd9, 0x3c, 0x2f } },
+        .{ .plane = 16, .sha256 = .{ 0x56, 0x47, 0xf0, 0x5e, 0xc1, 0x89, 0x58, 0x94, 0x7d, 0x32, 0x87, 0x4e, 0xeb, 0x78, 0x8f, 0xa3, 0x96, 0xa0, 0x5d, 0x0b, 0xab, 0x7c, 0x1b, 0x71, 0xf1, 0x12, 0xce, 0xb7, 0xe9, 0xb3, 0x1e, 0xee } },
+    };
+    for (expected) |sample| {
+        const plane = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, path, sample.plane, .{
+            .x = 0,
+            .y = 0,
+            .width = metadata.width,
+            .height = metadata.height,
+        });
+        defer std.testing.allocator.free(plane.data);
+        var digest: [32]u8 = undefined;
+        std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+        try std.testing.expectEqualSlices(u8, &sample.sha256, &digest);
+    }
+
+    const region = try readPlanePathRegionIndex(std.testing.allocator, std.testing.io, path, 0, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region.data);
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(region.data, &digest, .{});
+    const expected_region_hash: [32]u8 = .{ 0x6a, 0x0f, 0x85, 0x52, 0x1b, 0x24, 0x45, 0x49, 0x8d, 0xc8, 0x62, 0xc9, 0xf0, 0xe9, 0x34, 0xf6, 0xb2, 0x63, 0x4e, 0x35, 0xd4, 0xa8, 0x10, 0x6c, 0x22, 0x12, 0x06, 0x37, 0x26, 0x4d, 0xbe, 0x66 };
+    try std.testing.expectEqualSlices(u8, &expected_region_hash, &digest);
 }
 
 fn cleanupFixture(root: []const u8, xdce_path: []const u8, image_path: []const u8) void {
