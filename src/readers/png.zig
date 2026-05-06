@@ -36,6 +36,7 @@ pub fn readMetadata(data: []const u8) bio.ReaderError!bio.Metadata {
             else => return error.UnsupportedVariant,
         },
         .little_endian = false,
+        .dimension_order = "XYCTZ",
     };
 }
 
@@ -1598,4 +1599,54 @@ test "reads 8-bit rgba png with up filter" {
     const plane = try readPlane(std.testing.allocator, data.items);
     defer std.testing.allocator.free(plane.data);
     try std.testing.expectEqualSlices(u8, &.{ 1, 2, 3, 4, 6, 7, 8, 9 }, plane.data);
+}
+
+test "matches Bio-Formats default metadata for cached PNG fixture" {
+    const file_path = "fixtures/cache/png/user-1 05 TEST.png";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const metadata = try readMetadata(data);
+    try std.testing.expectEqualStrings("png", metadata.format);
+    try std.testing.expectEqual(@as(u32, 285), metadata.width);
+    try std.testing.expectEqual(@as(u32, 285), metadata.height);
+    try std.testing.expectEqual(@as(u16, 4), metadata.size_c);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_z);
+    try std.testing.expectEqual(@as(u16, 1), metadata.size_t);
+    try std.testing.expectEqual(@as(u32, 1), metadata.plane_count);
+    try std.testing.expectEqual(@as(u32, 1), metadata.series_count);
+    try std.testing.expectEqual(@as(u16, 4), metadata.samples_per_pixel);
+    try std.testing.expectEqual(bio.PixelType.rgba8, metadata.pixel_type);
+    try std.testing.expect(!metadata.little_endian);
+    try std.testing.expectEqualStrings("XYCTZ", metadata.dimension_order.?);
+}
+
+test "matches Bio-Formats default plane and region hashes for cached PNG fixture" {
+    const file_path = "fixtures/cache/png/user-1 05 TEST.png";
+    std.Io.Dir.cwd().access(std.testing.io, file_path, .{}) catch return;
+
+    const data = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, file_path, std.testing.allocator, .limited(1024 * 1024));
+    defer std.testing.allocator.free(data);
+
+    const plane = try readPlane(std.testing.allocator, data);
+    defer std.testing.allocator.free(plane.data);
+    try std.testing.expectEqual(@as(usize, 324900), plane.data.len);
+    const expected_plane: [32]u8 = .{ 0x6b, 0x77, 0x32, 0x16, 0x1c, 0x44, 0x57, 0xf7, 0x36, 0x56, 0xca, 0xf0, 0x4a, 0x28, 0xe5, 0xb6, 0x54, 0x6e, 0x01, 0xa7, 0xf8, 0x33, 0xd2, 0xf3, 0xa1, 0x25, 0xdf, 0x8e, 0xb0, 0xd2, 0x23, 0x0c };
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(plane.data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_plane, &digest);
+
+    const region_data = try bio.cropPlane(std.testing.allocator, plane, .{
+        .x = 17,
+        .y = 19,
+        .width = 16,
+        .height = 12,
+    });
+    defer std.testing.allocator.free(region_data);
+    try std.testing.expectEqual(@as(usize, 768), region_data.len);
+    const expected_region: [32]u8 = .{ 0x58, 0xc4, 0x52, 0x0b, 0xca, 0x80, 0x49, 0xa8, 0xfc, 0x8a, 0x69, 0xfd, 0xde, 0xe7, 0x7f, 0xa9, 0x19, 0xbd, 0x01, 0xf8, 0xd8, 0xd4, 0xa5, 0x26, 0x4b, 0x1d, 0xcf, 0x71, 0xb3, 0xfa, 0xc6, 0xd5 };
+    std.crypto.hash.sha2.Sha256.hash(region_data, &digest, .{});
+    try std.testing.expectEqualSlices(u8, &expected_region, &digest);
 }
