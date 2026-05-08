@@ -91,6 +91,8 @@ fn resolveOpenJpegRoot(b: *std.Build) ?[]const u8 {
 }
 
 fn isOpenJpegRoot(b: *std.Build, root: []const u8) bool {
+    if (!std.fs.path.isAbsolute(root)) return false;
+
     const header = b.pathJoin(&.{ root, "include", "openjpeg-2.5", "openjpeg.h" });
     std.Io.Dir.accessAbsolute(b.graph.io, header, .{}) catch return false;
     const lib_dir = b.pathJoin(&.{ root, "lib" });

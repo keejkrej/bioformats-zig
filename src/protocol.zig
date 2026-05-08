@@ -1744,6 +1744,7 @@ test "formats response includes expanded readers" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"i2i\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imacon\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imagic\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imaris\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"ics\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imod\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"imaristiff\"") != null);
@@ -1809,6 +1810,8 @@ test "formats response includes expanded readers" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"watop\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"zeisslms\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"zeisslsm\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"zeisstiff\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"id\":\"zeisszvi\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"pam\"") != null);
 }
 
@@ -2144,6 +2147,851 @@ test "server opens pcoraw rec path and reads tiff pixels" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
 }
 
+test "server opens bdpathway exp path and reads first plane through companion" {
+    const root_dir = "protocol-bdpathway-test";
+    const well_dir = "protocol-bdpathway-test/Well A1";
+    const exp_path = "protocol-bdpathway-test/Experiment.exp";
+    const image_path = "protocol-bdpathway-test/Well A1/DAPI - n000000.tif";
+    var image: std.ArrayList(u8) = .empty;
+    defer image.deinit(std.testing.allocator);
+    try image.appendSlice(std.testing.allocator, &.{
+        'I', 'I', 42, 0, 8, 0, 0, 0,
+        9, 0, 0, 1, 4, 0, 1, 0,
+        0, 0, 1, 0, 0, 0, 1, 1,
+        4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 2, 1, 3, 0, 1, 0,
+        0, 0, 8, 0, 0, 0, 3, 1,
+        3, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 6, 1, 3, 0, 1, 0,
+        0, 0, 1, 0, 0, 0, 17, 1,
+        4, 0, 1, 0, 0, 0, 122, 0,
+        0, 0, 21, 1, 3, 0, 1, 0,
+        0, 0, 1, 0, 0, 0, 22, 1,
+        4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 23, 1, 4, 0, 1, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 77,
+    });
+    std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, exp_path) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, well_dir) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, root_dir) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, root_dir) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, well_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, well_dir) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = exp_path, .data = "[Image]\\nMontaged=0\\n" });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, exp_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = image.items });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-bdpathway-test/Experiment.exp\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"bdpathway\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"bdpathway\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
+}
+
+test "server opens microct vff path and reads indexed planes" {
+    const path = "protocol-microct-test.vff";
+    const microct =
+        "ncaa\n" ++
+        "rank=3;\n" ++
+        "size=1 1 3;\n" ++
+        "bits=8;\n" ++
+        "\n" ++
+        [_]u8{ 0x0a, 0x14, 0x1e };
+
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = path, .data = microct });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-microct-test.vff\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"microct\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"planeIndex\":0,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"Cg==\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"planeIndex\":1,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"FA==\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"planeIndex\":2,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"Hg==\"") != null);
+}
+
+test "server opens metamorph tiff path and reads first plane" {
+    const path = "protocol-metamorph-test.tif";
+    const data = [_]u8{
+        'I', 'I', 42, 0, 8, 0, 0,   0,
+        9,   0,  0,  1, 4, 0, 1,   0,
+        0,   0,  1,  0, 0, 0, 1,   1,
+        4,   0,  1,  0, 0, 0, 1,   0,
+        0,   0,  2,  1, 3, 0, 1,   0,
+        0,   0,  8,  0, 0, 0, 3,   1,
+        3,   0,  1,  0, 0, 0, 1,   0,
+        0,   0,  6,  1, 3, 0, 1,   0,
+        0,   0,  1,  0, 0, 0, 17,  1,
+        1,   0,  1,  0, 0, 0, 8,   0,
+        4,   0,  1,  0, 0, 0, 1,   0,
+        2,   0,  1,  0, 0, 0, 17,  0,
+        0,   0,
+        3,   0,   3, 0, 4, 0, 0, 0, 1, 2, 3,
+    };
+
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = path, .data = &data });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-metamorph-test.tif\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"metamorph\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"planeIndex\":0,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"metamorph\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AQID\"") != null);
+}
+
+test "server opens cv7000 wpi path and reads first tiff plane" {
+    const root_dir = "protocol-cv7000-test";
+    const images_dir = "protocol-cv7000-test/Images";
+    const wpi_path = "protocol-cv7000-test/plate.wpi";
+    const mlf_path = "protocol-cv7000-test/MeasurementData.mlf";
+    const image_path = "protocol-cv7000-test/Images/img.tif";
+    const tiny_tiff = [_]u8{
+        'I', 'I', 42, 0, 8, 0, 0,  0,
+        9,   0,  0,  1, 4, 0, 1,  0,
+        0,   0,  1,  0, 0, 0, 1,  1,
+        4,   0,  1,  0, 0, 0, 1,  0,
+        0,   0,  2,  1, 3, 0, 1,  0,
+        0,   0,  8,  0, 0, 0, 3,  1,
+        3,   0,  1,  0, 0, 0, 1,  0,
+        0,   0,  6,  1, 3, 0, 1,  0,
+        0,   0,  1,  0, 0, 0, 17, 1,
+        4,   0,  1,  0, 0, 0, 122, 0,
+        0,   0,  21, 1, 3, 0, 1,  0,
+        0,   0,  1,  0, 0, 0, 22, 1,
+        4,   0,  1,  0, 0, 0, 1,  0,
+        0,   0,  23, 1, 4, 0, 1,  0,
+        0,   0,  1,  0, 0, 0, 0,  0,
+        0,   0,  89,
+    };
+    const mlf_fixture =
+        "<bts:Root>\n" ++
+        "<bts:MeasurementRecord bts:Type=\"IMG\" bts:Row=\"1\" bts:Column=\"1\" bts:FieldIndex=\"1\" bts:TimePoint=\"1\" bts:ZIndex=\"1\" bts:Ch=\"1\">Images/img.tif</bts:MeasurementRecord>\n" ++
+        "</bts:Root>\n";
+
+    std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, mlf_path) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, wpi_path) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, images_dir) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, root_dir) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, root_dir) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, images_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, images_dir) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = wpi_path, .data = "<bts:WellPlate/>" });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, wpi_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = mlf_path, .data = mlf_fixture });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, mlf_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = &tiny_tiff });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-cv7000-test/plate.wpi\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"cv7000\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"cv7000\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"WQ==\"") != null);
+}
+
+test "server opens perkinelmer html path and reads first tiff plane" {
+    const root_dir = "protocol-perkinelmer-test";
+    const html_path = "protocol-perkinelmer-test/sample.htm";
+    const tiff_path = "protocol-perkinelmer-test/sample_00000000_001.tif";
+    const tiny_tiff = [_]u8{
+        'I', 'I', 42, 0, 8, 0, 0,  0,
+        9,   0,  0,  1, 4, 0, 1,  0,
+        0,   0,  1,  0, 0, 0, 1,  1,
+        4,   0,  1,  0, 0, 0, 1,  0,
+        0,   0,  2,  1, 3, 0, 1,  0,
+        0,   0,  8,  0, 0, 0, 3,  1,
+        3,   0,  1,  0, 0, 0, 1,  0,
+        0,   0,  6,  1, 3, 0, 1,  0,
+        0,   0,  1,  0, 0, 0, 17, 1,
+        4,   0,  1,  0, 0, 0, 122, 0,
+        0,   0,  21, 1, 3, 0, 1,  0,
+        0,   0,  1,  0, 0, 0, 22, 1,
+        4,   0,  1,  0, 0, 0, 1,  0,
+        0,   0,  23, 1, 4, 0, 1,  0,
+        0,   0,  1,  0, 0, 0, 0,  0,
+        0,   0,  77,
+    };
+    const html_fixture =
+        "<HTML><body><p>PerkinElmer Ultraview</p>" ++
+        "<p>Experiment details:</p><p>1 Wavelengths 1 Frames 1 Slices</p>" ++
+        "</body></HTML>";
+
+    std.Io.Dir.cwd().deleteFile(std.testing.io, tiff_path) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, html_path) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, root_dir) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, root_dir) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = html_path, .data = html_fixture });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, html_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = tiff_path, .data = &tiny_tiff });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, tiff_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-perkinelmer-test/sample.htm\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"perkinelmer\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"perkinelmer\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
+}
+
+test "server opens hamamatsuvms vms path and reads tiled region through jpeg companion" {
+    const root_dir = "protocol-hamamatsuvms-test";
+    const vms_path = "protocol-hamamatsuvms-test/slide.vms";
+    const tile_path = "protocol-hamamatsuvms-test/tile.jpg";
+    const vms =
+        "[Virtual Microscope Specimen]\n" ++
+        "NoLayers=1\n" ++
+        "NoJpegRows=1\n" ++
+        "NoJpegColumns=1\n" ++
+        "ImageFile=tile.jpg\n";
+
+    std.Io.Dir.cwd().deleteFile(std.testing.io, vms_path) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, tile_path) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, root_dir) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, root_dir) catch {};
+
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = tile_path, .data = &bio.jpeg.baseline_red_jpeg });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, tile_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = vms_path, .data = vms });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, vms_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-hamamatsuvms-test/slide.vms\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"hamamatsuvms\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"hamamatsuvms\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"region\":{\"x\":0,\"y\":0,\"width\":1,\"height\":1}") != null);
+}
+
+test "server opens incell xdce path and reads first plane" {
+    const root_dir = "protocol-incell-test";
+    const companion_path = "protocol-incell-test/sample.xdce";
+    const image_path = "protocol-incell-test/sample-image.tif";
+    const tiny_tiff = [_]u8{
+        'I', 'I', 42, 0, 8, 0, 0, 0, 9, 0, 0, 1, 4, 0, 1, 0,
+        0, 0, 1, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 2, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0, 3, 1,
+        3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
+        0, 0, 1, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 23, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 22, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 77,
+    };
+    const xdce =
+        "IN Cell Analyzer\n" ++
+        "<ImageStack><Image filename=\"sample-image.tif\" row=\"1\" column=\"1\" field_index=\"1\" z_index=\"1\" wave_index=\"1\" time_index=\"1\" /></ImageStack>";
+
+    std.Io.Dir.cwd().deleteFile(std.testing.io, companion_path) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, root_dir) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, root_dir) catch {};
+
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = companion_path, .data = xdce });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, companion_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = &tiny_tiff });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-incell-test/sample.xdce\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"incell\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"incell\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
+}
+
+test "server opens cellvoyager measurement result path and reads first plane" {
+    const root_dir = "protocol-cellvoyager-test";
+    const result_path = "protocol-cellvoyager-test/MeasurementResult.xml";
+    const image_path = "protocol-cellvoyager-test/Image/W1F1T1Z1C1.tif";
+    const image_dir = "protocol-cellvoyager-test/Image";
+    const tiny_tiff = [_]u8{
+        'I', 'I', 42, 0, 8, 0, 0, 0, 9, 0, 0, 1, 4, 0, 1, 0,
+        0, 0, 1, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 2, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0, 3, 1,
+        3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
+        0, 0, 1, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 23, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 22, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 77,
+    };
+
+    std.Io.Dir.cwd().deleteFile(std.testing.io, result_path) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, root_dir) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, root_dir) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, image_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, image_dir) catch {};
+
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = result_path, .data = "<MeasurementResult />" });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, result_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = &tiny_tiff });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-cellvoyager-test/MeasurementResult.xml\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"cellvoyager\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"cellvoyager\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AQID\"") != null);
+}
+
+test "server opens zeisslsm tiff path and reads first plane" {
+    const path = "protocol-zeisslsm-test.lsm";
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    const zeiss_lsm_info_tag: u16 = 34412;
+    const lsm_bytes = 92;
+
+    fn appendU16Le(list: *std.ArrayList(u8), value: u16) !void {
+        var bytes: [2]u8 = undefined;
+        std.mem.writeInt(u16, &bytes, value, .little);
+        try list.appendSlice(std.testing.allocator, &bytes);
+    }
+
+    fn appendU32Le(list: *std.ArrayList(u8), value: u32) !void {
+        var bytes: [4]u8 = undefined;
+        std.mem.writeInt(u32, &bytes, value, .little);
+        try list.appendSlice(std.testing.allocator, &bytes);
+    }
+
+    fn appendEntry(
+        list: *std.ArrayList(u8),
+        tag: u16,
+        field_type: u16,
+        count: u32,
+        value: u32,
+    ) !void {
+        try appendU16Le(list, tag);
+        try appendU16Le(list, field_type);
+        try appendU32Le(list, count);
+        try appendU32Le(list, value);
+    }
+
+    try data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&data, 42);
+    try appendU32Le(&data, 8);
+
+    const entry_count: u16 = 10;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const lsm_offset = ifd_end;
+    const pixel_offset = lsm_offset + lsm_bytes;
+
+    try appendU16Le(&data, entry_count);
+    try appendEntry(&data, 256, 4, 1, 1);
+    try appendEntry(&data, 257, 4, 1, 1);
+    try appendEntry(&data, 258, 3, 1, 8);
+    try appendEntry(&data, 259, 3, 1, 1);
+    try appendEntry(&data, 262, 3, 1, 1);
+    try appendEntry(&data, 273, 4, 1, @intCast(pixel_offset));
+    try appendEntry(&data, 277, 3, 1, 1);
+    try appendEntry(&data, 278, 4, 1, 1);
+    try appendEntry(&data, 279, 4, 1, 1);
+    try appendEntry(&data, zeiss_lsm_info_tag, 1, lsm_bytes, @intCast(lsm_offset));
+    try appendU32Le(&data, 0);
+    try data.appendNTimes(std.testing.allocator, 0, lsm_bytes);
+    std.mem.writeInt(u32, data.items[lsm_offset + 16 ..][0..4], 3, .little);
+    std.mem.writeInt(u32, data.items[lsm_offset + 20 ..][0..4], 2, .little);
+    std.mem.writeInt(u32, data.items[lsm_offset + 24 ..][0..4], 4, .little);
+    std.mem.writeInt(u16, data.items[lsm_offset + 88 ..][0..2], 6, .little);
+    try data.append(std.testing.allocator, 0x5a);
+
+    std.Io.Dir.cwd().deleteFile(std.testing.io, path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = path, .data = data.items });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-zeisslsm-test.lsm\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"zeisslsm\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"zeisslsm\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"Wg==\"") != null);
+}
+
+test "server opens zeisszvi cfb path and reads first plane" {
+    const path = "protocol-zeisszvi-test.zvi";
+    var stream: std.ArrayList(u8) = .empty;
+    defer stream.deinit(std.testing.allocator);
+    var cfb: std.ArrayList(u8) = .empty;
+    defer cfb.deinit(std.testing.allocator);
+
+    fn appendU16Le(out: *std.ArrayList(u8), value: u16) !void {
+        var bytes: [2]u8 = undefined;
+        std.mem.writeInt(u16, &bytes, value, .little);
+        try out.appendSlice(std.testing.allocator, &bytes);
+    }
+
+    fn appendU32Le(out: *std.ArrayList(u8), value: u32) !void {
+        var bytes: [4]u8 = undefined;
+        std.mem.writeInt(u32, &bytes, value, .little);
+        try out.appendSlice(std.testing.allocator, &bytes);
+    }
+
+    fn appendSyntheticImageStream(
+        out: *std.ArrayList(u8),
+        width: u32,
+        height: u32,
+        z: u32,
+        c: u32,
+        t: u32,
+        bpp: u32,
+        pixels: []const u8,
+    ) !void {
+        try out.appendNTimes(std.testing.allocator, 0, 11 * 2);
+        try appendU16Le(out, 0);
+        try appendU32Le(out, 28);
+        try out.appendNTimes(std.testing.allocator, 0, 8);
+        try appendU32Le(out, z);
+        try appendU32Le(out, c);
+        try appendU32Le(out, t);
+        try appendU32Le(out, 0);
+        try appendU32Le(out, 0);
+        try out.appendNTimes(std.testing.allocator, 0, 5 * 2);
+        try appendU32Le(out, 0);
+        try appendU32Le(out, width);
+        try appendU32Le(out, height);
+        try appendU32Le(out, 0);
+        try appendU32Le(out, bpp);
+        try appendU32Le(out, 0);
+        try appendU32Le(out, 2);
+        try out.appendSlice(std.testing.allocator, pixels);
+        try out.appendNTimes(std.testing.allocator, 0, 4096 - out.items.len);
+    }
+
+    fn appendDirEntry(
+        out: *std.ArrayList(u8),
+        name: []const u8,
+        object_type: u8,
+        start_sector: u32,
+        stream_size: u64,
+    ) !void {
+        const start = out.items.len;
+        try out.appendNTimes(std.testing.allocator, 0, 128);
+        var i: usize = 0;
+        while (i < name.len) : (i += 1) {
+            std.mem.writeInt(u16, out.items[start + i * 2 ..][0..2], name[i], .little);
+        }
+        std.mem.writeInt(u16, out.items[start + name.len * 2 ..][0..2], 0, .little);
+        std.mem.writeInt(u16, out.items[start + 64 ..][0..2], @intCast((name.len + 1) * 2), .little);
+        out.items[start + 66] = object_type;
+        std.mem.writeInt(u32, out.items[start + 116 ..][0..4], start_sector, .little);
+        std.mem.writeInt(u64, out.items[start + 120 ..][0..8], stream_size, .little);
+    }
+
+    fn appendSyntheticCfb(
+        out: *std.ArrayList(u8),
+        stream_name: []const u8,
+        stream: []const u8,
+    ) !void {
+        const sector_size = 512;
+        const stream_sectors = (stream.len + sector_size - 1) / sector_size;
+        const total_sectors = 2 + stream_sectors;
+        const cfb_magic = [_]u8{ 0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1 };
+
+        try out.appendNTimes(std.testing.allocator, 0, 512 + total_sectors * sector_size);
+        @memcpy(out.items[0..cfb_magic.len], &cfb_magic);
+        std.mem.writeInt(u16, out.items[0x1c..][0..2], 0xfffe, .little);
+        std.mem.writeInt(u16, out.items[0x1e..][0..2], 9, .little);
+        std.mem.writeInt(u16, out.items[0x20..][0..2], 6, .little);
+        std.mem.writeInt(u32, out.items[0x2c..][0..4], 1, .little);
+        std.mem.writeInt(u32, out.items[0x30..][0..4], 1, .little);
+        std.mem.writeInt(u32, out.items[0x38..][0..4], 4096, .little);
+        std.mem.writeInt(u32, out.items[0x3c..][0..4], 0xfffffffe, .little);
+        std.mem.writeInt(u32, out.items[0x44..][0..4], 0xfffffffe, .little);
+        std.mem.writeInt(u32, out.items[0x4c..][0..4], 0, .little);
+        var difat: usize = 0x50;
+        while (difat < 512) : (difat += 4) {
+            std.mem.writeInt(u32, out.items[difat..][0..4], 0xffffffff, .little);
+        }
+
+        const fat_start = 512;
+        var entry: usize = 0;
+        while (entry < sector_size / 4) : (entry += 1) {
+            std.mem.writeInt(u32, out.items[fat_start + entry * 4 ..][0..4], 0xffffffff, .little);
+        }
+        std.mem.writeInt(u32, out.items[fat_start..][0..4], 0xfffffffd, .little);
+        std.mem.writeInt(u32, out.items[fat_start + 4 ..][0..4], 0xfffffffe, .little);
+        var sector: usize = 0;
+        while (sector < stream_sectors) : (sector += 1) {
+            const value: u32 = if (sector + 1 == stream_sectors) 0xfffffffe else @intCast(3 + sector);
+            std.mem.writeInt(u32, out.items[fat_start + (2 + sector) * 4 ..][0..4], value, .little);
+        }
+
+        var directory: std.ArrayList(u8) = .empty;
+        defer directory.deinit(std.testing.allocator);
+        try appendDirEntry(&directory, "Root Entry", 5, 0xfffffffe, 0);
+        try appendDirEntry(&directory, stream_name, 2, 2, stream.len);
+        try directory.appendNTimes(std.testing.allocator, 0, sector_size - directory.items.len);
+        @memcpy(out.items[512 + sector_size ..][0..sector_size], directory.items);
+        @memcpy(out.items[512 + sector_size * 2 ..][0..stream.len], stream);
+    }
+
+    try appendSyntheticImageStream(&stream, 1, 1, 0, 0, 0, 2, &.{ 10, 0 });
+    try appendSyntheticCfb(&cfb, "Image/Item(0)/CONTENTS", stream.items);
+
+    std.Io.Dir.cwd().deleteFile(std.testing.io, path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = path, .data = cfb.items });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-zeisszvi-test.zvi\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"zeisszvi\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"zeisszvi\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"CgA=\"") != null);
+}
+
+test "server opens zeisstiff sibling xml path and reads first plane" {
+    const image_path = "protocol-zeisstiff-test.tif";
+    const xml_path = "protocol-zeisstiff-test.tif_meta.xml";
+    const tiny_tiff = [_]u8{
+        'I', 'I', 42, 0, 8, 0, 0, 0, 9, 0, 0, 1, 4, 0, 1, 0,
+        0, 0, 1, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 2, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0, 3, 1,
+        3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
+        0, 0, 1, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 21, 1, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 22, 1,
+        4, 0, 1, 0, 0, 0, 1, 0,
+        0, 0, 23, 1, 4, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 77,
+    };
+
+    std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, xml_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = image_path, .data = &tiny_tiff });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = xml_path, .data = "<ROOT />" });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, xml_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-zeisstiff-test.tif_meta.xml\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"zeisstiff\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"zeisstiff\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
+}
+
+test "server opens prairie tagged tiff path and reads first region" {
+    const path = "protocol-prairie-test.tif";
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    const software_tag: u16 = 305;
+    const prairie_tag_1: u16 = 33628;
+    const prairie_tag_2: u16 = 33629;
+    const prairie_tag_3: u16 = 33630;
+
+    fn appendU16Le(list: *std.ArrayList(u8), value: u16) !void {
+        var bytes: [2]u8 = undefined;
+        std.mem.writeInt(u16, &bytes, value, .little);
+        try list.appendSlice(std.testing.allocator, &bytes);
+    }
+
+    fn appendU32Le(list: *std.ArrayList(u8), value: u32) !void {
+        var bytes: [4]u8 = undefined;
+        std.mem.writeInt(u32, &bytes, value, .little);
+        try list.appendSlice(std.testing.allocator, &bytes);
+    }
+
+    fn appendEntry(
+        list: *std.ArrayList(u8),
+        tag: u16,
+        field_type: u16,
+        count: u32,
+        value: u32,
+    ) !void {
+        try appendU16Le(list, tag);
+        try appendU16Le(list, field_type);
+        try appendU32Le(list, count);
+        try appendU32Le(list, value);
+    }
+
+    try data.appendSlice(std.testing.allocator, "II");
+    try appendU16Le(&data, 42);
+    try appendU32Le(&data, 8);
+
+    const entry_count: u16 = 13;
+    const ifd_end = 8 + 2 + entry_count * 12 + 4;
+    const software = "Prairie View 5\x00";
+    const software_offset = ifd_end;
+    const pixel_offset = software_offset + software.len;
+
+    try appendU16Le(&data, entry_count);
+    try appendEntry(&data, 256, 4, 1, 2);
+    try appendEntry(&data, 257, 4, 1, 1);
+    try appendEntry(&data, 258, 3, 1, 8);
+    try appendEntry(&data, 259, 3, 1, 1);
+    try appendEntry(&data, 262, 3, 1, 1);
+    try appendEntry(&data, 273, 4, 1, @intCast(pixel_offset));
+    try appendEntry(&data, 277, 3, 1, 1);
+    try appendEntry(&data, 278, 4, 1, 1);
+    try appendEntry(&data, 279, 4, 1, 2);
+    try appendEntry(&data, software_tag, 2, software.len, @intCast(software_offset));
+    try appendEntry(&data, prairie_tag_1, 4, 1, 0);
+    try appendEntry(&data, prairie_tag_2, 4, 1, 0);
+    try appendEntry(&data, prairie_tag_3, 4, 1, 0);
+    try appendU32Le(&data, 0);
+    try data.appendSlice(std.testing.allocator, software);
+    try data.appendSlice(std.testing.allocator, &.{ 91, 92 });
+
+    std.Io.Dir.cwd().deleteFile(std.testing.io, path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = path, .data = data.items });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-prairie-test.tif\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"prairie\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":1,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"prairie\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"Wg==\"") != null);
+}
+
+test "server opens bruker path with companion metadata and reads region" {
+    const root = "protocol-bruker-test";
+    const acq = "protocol-bruker-test/1";
+    const pdata = "protocol-bruker-test/1/pdata";
+    const pdata_one = "protocol-bruker-test/1/pdata/1";
+    const acqp_path = "protocol-bruker-test/1/acqp";
+    const reco_path = "protocol-bruker-test/1/pdata/1/reco";
+    const pixels_path = "protocol-bruker-test/1/pdata/1/2dseq";
+    std.Io.Dir.cwd().deleteFile(std.testing.io, pixels_path) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, reco_path) catch {};
+    std.Io.Dir.cwd().deleteFile(std.testing.io, acqp_path) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, pdata_one) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, pdata) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, acq) catch {};
+    std.Io.Dir.cwd().deleteDir(std.testing.io, root) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, root, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, root) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, acq, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, acq) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, pdata, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, pdata) catch {};
+    try std.Io.Dir.cwd().createDir(std.testing.io, pdata_one, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(std.testing.io, pdata_one) catch {};
+
+    const acqp = "##$NI=1\n##$NR=1\n##$BYTORDA=little\n##$ACQ_size=( 2 )\n2 2\n";
+    const reco = "##$RECO_size=( 2 )\n2 2\n##$RECO_wordtype=_16BIT_UNSGN_INT\n";
+    const pixels = [_]u8{ 1, 0, 2, 0, 3, 0, 4, 0 };
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = acqp_path, .data = acqp });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, acqp_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = reco_path, .data = reco });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, reco_path) catch {};
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = pixels_path, .data = &pixels });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, pixels_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-bruker-test/1/acqp\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"bruker\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":1,\"y\":0,\"width\":1,\"height\":2}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"bruker\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AgAEAA==\"") != null);
+}
+
 test "server probes and opens jpk path through tiff delegate" {
     const file_path = "protocol-jpk-test.jpk";
     const image = [_]u8{
@@ -2405,6 +3253,52 @@ test "server probes imaris tiff ims path before raw imaris" {
     );
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"imaristiff\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"TQ==\"") != null);
+}
+
+test "server opens imaris ims path and reads first plane" {
+    const file_path = "protocol-imaris-test.ims";
+    var data: std.ArrayList(u8) = .empty;
+    defer data.deinit(std.testing.allocator);
+
+    try data.appendNTimes(std.testing.allocator, 0, 336 + 164 * 2);
+    std.mem.writeInt(i32, data.items[0..4], 5_021_964, .big);
+    std.mem.writeInt(i32, data.items[4..8], 1, .big);
+    std.mem.writeInt(i16, data.items[140..142], 1, .big);
+    std.mem.writeInt(i16, data.items[142..144], 1, .big);
+    std.mem.writeInt(i16, data.items[144..146], 1, .big);
+    std.mem.writeInt(i32, data.items[148..152], 2, .big);
+    try data.appendSlice(std.testing.allocator, &.{ 10, 20, 30, 40 });
+
+    try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = file_path, .data = data.items });
+    defer std.Io.Dir.cwd().deleteFile(std.testing.io, file_path) catch {};
+
+    var server = Server.init(std.testing.allocator, std.testing.io);
+    defer server.deinit();
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"open\",\"params\":{\"path\":\"protocol-imaris-test.ims\"}}",
+        &out.writer,
+    );
+    try std.testing.expectEqual(@as(usize, 1), server.handles.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"imaris\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"probe\",\"params\":{\"path\":\"protocol-imaris-test.ims\"}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"imaris\"") != null);
+    out.clearRetainingCapacity();
+
+    _ = try server.handleLine(
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"readPlane\",\"params\":{\"handle\":1,\"x\":0,\"y\":0,\"width\":1,\"height\":1}}",
+        &out.writer,
+    );
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"format\":\"imaris\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"Cg==\"") != null);
 }
 
 test "server opens rcpnl path as deltavision variant" {

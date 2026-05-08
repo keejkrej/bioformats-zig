@@ -39,14 +39,12 @@ Required proof:
 
 ## Current Hot Path
 
-ND2 is the immediate alignment target. The current Zig ND2 reader can detect/read selected path-based ND2 chunk-map data, but it does not yet match Java Bio-Formats for dimension derivation. The next ND2 work should port the Java reader's loop and position logic before expanding pixel-codec coverage:
+ND2 and CZI remain the primary priority formats, but both now have broader parity coverage than the hot-path notes below. The current focus is to close remaining edge-case and codec gaps after core loop/dimension handling is stable:
 
-1. Parse chunk map entries into typed metadata blocks.
-2. Parse `ImageAttributesLV` for physical plane shape and pixel type.
-3. Parse `ImageMetadataLV` / `SLxExperiment` for loop counts and dimension order.
-4. Parse `CustomData|X`, `CustomData|Y`, `CustomData|Z`, `CustomData|Z1`, and acquisition time arrays for position/stage/time metadata.
-5. Build series and plane offsets using the same raster mapping as Java Bio-Formats.
-6. Add a proof test against the large ND2 fixture metadata before changing UI assumptions.
+1. Keep `ImageMetadataLV` / `SLxExperiment` flow and series/plane mapping parity as the canonical path for ND2 and tighten missing edge cases as new fixtures arrive.
+2. Extend pixel-codec and negative-fixture coverage for ND2, CZI, and related multi-file layouts.
+3. Expand protocol-path and companion-file coverage in the same read/metadata parity style for P1–P3 formats with active fixtures.
+4. Use large-file and pathological fixtures to validate range reads, path-priority dispatch, and non-happy-path behavior before broadening UI-facing assumptions.
 
 ## Reranking Rule
 
