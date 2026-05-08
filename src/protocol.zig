@@ -2155,22 +2155,22 @@ test "server opens bdpathway exp path and reads first plane through companion" {
     var image: std.ArrayList(u8) = .empty;
     defer image.deinit(std.testing.allocator);
     try image.appendSlice(std.testing.allocator, &.{
-        'I', 'I', 42, 0, 8, 0, 0, 0,
-        9, 0, 0, 1, 4, 0, 1, 0,
-        0, 0, 1, 0, 0, 0, 1, 1,
-        4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 2, 1, 3, 0, 1, 0,
-        0, 0, 8, 0, 0, 0, 3, 1,
-        3, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 6, 1, 3, 0, 1, 0,
-        0, 0, 1, 0, 0, 0, 17, 1,
-        4, 0, 1, 0, 0, 0, 122, 0,
-        0, 0, 21, 1, 3, 0, 1, 0,
-        0, 0, 1, 0, 0, 0, 22, 1,
-        4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 23, 1, 4, 0, 1, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 77,
+        'I', 'I', 42, 0, 8, 0, 0,   0,
+        9,   0,   0,  1, 4, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 1,   1,
+        4,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   2,  1, 3, 0, 1,   0,
+        0,   0,   8,  0, 0, 0, 3,   1,
+        3,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   6,  1, 3, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 17,  1,
+        4,   0,   1,  0, 0, 0, 122, 0,
+        0,   0,   21, 1, 3, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 22,  1,
+        4,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   23, 1, 4, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 0,   0,
+        0,   0,   77,
     });
     std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
     std.Io.Dir.cwd().deleteFile(std.testing.io, exp_path) catch {};
@@ -2258,20 +2258,20 @@ test "server opens microct vff path and reads indexed planes" {
 test "server opens metamorph tiff path and reads first plane" {
     const path = "protocol-metamorph-test.tif";
     const data = [_]u8{
-        'I', 'I', 42, 0, 8, 0, 0,   0,
-        9,   0,  0,  1, 4, 0, 1,   0,
-        0,   0,  1,  0, 0, 0, 1,   1,
-        4,   0,  1,  0, 0, 0, 1,   0,
-        0,   0,  2,  1, 3, 0, 1,   0,
-        0,   0,  8,  0, 0, 0, 3,   1,
-        3,   0,  1,  0, 0, 0, 1,   0,
-        0,   0,  6,  1, 3, 0, 1,   0,
-        0,   0,  1,  0, 0, 0, 17,  1,
-        1,   0,  1,  0, 0, 0, 8,   0,
-        4,   0,  1,  0, 0, 0, 1,   0,
-        2,   0,  1,  0, 0, 0, 17,  0,
-        0,   0,
-        3,   0,   3, 0, 4, 0, 0, 0, 1, 2, 3,
+        'I', 'I', 42, 0, 8, 0, 0,  0,
+        9,   0,   0,  1, 4, 0, 1,  0,
+        0,   0,   1,  0, 0, 0, 1,  1,
+        4,   0,   1,  0, 0, 0, 1,  0,
+        0,   0,   2,  1, 3, 0, 1,  0,
+        0,   0,   8,  0, 0, 0, 3,  1,
+        3,   0,   1,  0, 0, 0, 1,  0,
+        0,   0,   6,  1, 3, 0, 1,  0,
+        0,   0,   1,  0, 0, 0, 17, 1,
+        1,   0,   1,  0, 0, 0, 8,  0,
+        4,   0,   1,  0, 0, 0, 1,  0,
+        2,   0,   1,  0, 0, 0, 17, 0,
+        0,   0,   3,  0, 3, 0, 4,  0,
+        0,   0,   1,  2, 3,
     };
 
     try std.Io.Dir.cwd().writeFile(std.testing.io, .{ .sub_path = path, .data = &data });
@@ -2306,22 +2306,22 @@ test "server opens cv7000 wpi path and reads first tiff plane" {
     const mlf_path = "protocol-cv7000-test/MeasurementData.mlf";
     const image_path = "protocol-cv7000-test/Images/img.tif";
     const tiny_tiff = [_]u8{
-        'I', 'I', 42, 0, 8, 0, 0,  0,
-        9,   0,  0,  1, 4, 0, 1,  0,
-        0,   0,  1,  0, 0, 0, 1,  1,
-        4,   0,  1,  0, 0, 0, 1,  0,
-        0,   0,  2,  1, 3, 0, 1,  0,
-        0,   0,  8,  0, 0, 0, 3,  1,
-        3,   0,  1,  0, 0, 0, 1,  0,
-        0,   0,  6,  1, 3, 0, 1,  0,
-        0,   0,  1,  0, 0, 0, 17, 1,
-        4,   0,  1,  0, 0, 0, 122, 0,
-        0,   0,  21, 1, 3, 0, 1,  0,
-        0,   0,  1,  0, 0, 0, 22, 1,
-        4,   0,  1,  0, 0, 0, 1,  0,
-        0,   0,  23, 1, 4, 0, 1,  0,
-        0,   0,  1,  0, 0, 0, 0,  0,
-        0,   0,  89,
+        'I', 'I', 42, 0, 8, 0, 0,   0,
+        9,   0,   0,  1, 4, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 1,   1,
+        4,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   2,  1, 3, 0, 1,   0,
+        0,   0,   8,  0, 0, 0, 3,   1,
+        3,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   6,  1, 3, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 17,  1,
+        4,   0,   1,  0, 0, 0, 122, 0,
+        0,   0,   21, 1, 3, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 22,  1,
+        4,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   23, 1, 4, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 0,   0,
+        0,   0,   89,
     };
     const mlf_fixture =
         "<bts:Root>\n" ++
@@ -2371,22 +2371,22 @@ test "server opens perkinelmer html path and reads first tiff plane" {
     const html_path = "protocol-perkinelmer-test/sample.htm";
     const tiff_path = "protocol-perkinelmer-test/sample_00000000_001.tif";
     const tiny_tiff = [_]u8{
-        'I', 'I', 42, 0, 8, 0, 0,  0,
-        9,   0,  0,  1, 4, 0, 1,  0,
-        0,   0,  1,  0, 0, 0, 1,  1,
-        4,   0,  1,  0, 0, 0, 1,  0,
-        0,   0,  2,  1, 3, 0, 1,  0,
-        0,   0,  8,  0, 0, 0, 3,  1,
-        3,   0,  1,  0, 0, 0, 1,  0,
-        0,   0,  6,  1, 3, 0, 1,  0,
-        0,   0,  1,  0, 0, 0, 17, 1,
-        4,   0,  1,  0, 0, 0, 122, 0,
-        0,   0,  21, 1, 3, 0, 1,  0,
-        0,   0,  1,  0, 0, 0, 22, 1,
-        4,   0,  1,  0, 0, 0, 1,  0,
-        0,   0,  23, 1, 4, 0, 1,  0,
-        0,   0,  1,  0, 0, 0, 0,  0,
-        0,   0,  77,
+        'I', 'I', 42, 0, 8, 0, 0,   0,
+        9,   0,   0,  1, 4, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 1,   1,
+        4,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   2,  1, 3, 0, 1,   0,
+        0,   0,   8,  0, 0, 0, 3,   1,
+        3,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   6,  1, 3, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 17,  1,
+        4,   0,   1,  0, 0, 0, 122, 0,
+        0,   0,   21, 1, 3, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 22,  1,
+        4,   0,   1,  0, 0, 0, 1,   0,
+        0,   0,   23, 1, 4, 0, 1,   0,
+        0,   0,   1,  0, 0, 0, 0,   0,
+        0,   0,   77,
     };
     const html_fixture =
         "<HTML><body><p>PerkinElmer Ultraview</p>" ++
@@ -2474,14 +2474,14 @@ test "server opens incell xdce path and reads first plane" {
     const companion_path = "protocol-incell-test/sample.xdce";
     const image_path = "protocol-incell-test/sample-image.tif";
     const tiny_tiff = [_]u8{
-        'I', 'I', 42, 0, 8, 0, 0, 0, 9, 0, 0, 1, 4, 0, 1, 0,
-        0, 0, 1, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 2, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0, 3, 1,
-        3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
-        0, 0, 1, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 23, 1, 4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 22, 1, 4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 77,
+        'I', 'I', 42, 0, 8,  0, 0,  0, 9, 0, 0, 1, 4, 0, 1,  0,
+        0,   0,   1,  0, 0,  0, 1,  1, 4, 0, 1, 0, 0, 0, 1,  0,
+        0,   0,   2,  1, 3,  0, 1,  0, 0, 0, 8, 0, 0, 0, 3,  1,
+        3,   0,   1,  0, 0,  0, 1,  0, 0, 0, 6, 1, 3, 0, 1,  0,
+        0,   0,   1,  0, 0,  0, 17, 1, 4, 0, 1, 0, 0, 0, 1,  0,
+        0,   0,   23, 1, 4,  0, 1,  0, 0, 0, 1, 0, 0, 0, 22, 1,
+        4,   0,   1,  0, 0,  0, 1,  0, 0, 0, 0, 0, 0, 0, 0,  0,
+        0,   0,   0,  0, 77,
     };
     const xdce =
         "IN Cell Analyzer\n" ++
@@ -2526,14 +2526,14 @@ test "server opens cellvoyager measurement result path and reads first plane" {
     const image_path = "protocol-cellvoyager-test/Image/W1F1T1Z1C1.tif";
     const image_dir = "protocol-cellvoyager-test/Image";
     const tiny_tiff = [_]u8{
-        'I', 'I', 42, 0, 8, 0, 0, 0, 9, 0, 0, 1, 4, 0, 1, 0,
-        0, 0, 1, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 2, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0, 3, 1,
-        3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
-        0, 0, 1, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 23, 1, 4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 22, 1, 4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 77,
+        'I', 'I', 42, 0, 8,  0, 0,  0, 9, 0, 0, 1, 4, 0, 1,  0,
+        0,   0,   1,  0, 0,  0, 1,  1, 4, 0, 1, 0, 0, 0, 1,  0,
+        0,   0,   2,  1, 3,  0, 1,  0, 0, 0, 8, 0, 0, 0, 3,  1,
+        3,   0,   1,  0, 0,  0, 1,  0, 0, 0, 6, 1, 3, 0, 1,  0,
+        0,   0,   1,  0, 0,  0, 17, 1, 4, 0, 1, 0, 0, 0, 1,  0,
+        0,   0,   23, 1, 4,  0, 1,  0, 0, 0, 1, 0, 0, 0, 22, 1,
+        4,   0,   1,  0, 0,  0, 1,  0, 0, 0, 0, 0, 0, 0, 0,  0,
+        0,   0,   0,  0, 77,
     };
 
     std.Io.Dir.cwd().deleteFile(std.testing.io, result_path) catch {};
@@ -2571,6 +2571,130 @@ test "server opens cellvoyager measurement result path and reads first plane" {
     try std.testing.expect(std.mem.indexOf(u8, out.written(), "\"data\":\"AQID\"") != null);
 }
 
+fn appendU16Le(list: *std.ArrayList(u8), value: u16) !void {
+    var bytes: [2]u8 = undefined;
+    std.mem.writeInt(u16, &bytes, value, .little);
+    try list.appendSlice(std.testing.allocator, &bytes);
+}
+
+fn appendU32Le(list: *std.ArrayList(u8), value: u32) !void {
+    var bytes: [4]u8 = undefined;
+    std.mem.writeInt(u32, &bytes, value, .little);
+    try list.appendSlice(std.testing.allocator, &bytes);
+}
+
+fn appendEntry(
+    list: *std.ArrayList(u8),
+    tag: u16,
+    field_type: u16,
+    count: u32,
+    value: u32,
+) !void {
+    try appendU16Le(list, tag);
+    try appendU16Le(list, field_type);
+    try appendU32Le(list, count);
+    try appendU32Le(list, value);
+}
+
+fn appendSyntheticImageStream(
+    out: *std.ArrayList(u8),
+    width: u32,
+    height: u32,
+    z: u32,
+    c: u32,
+    t: u32,
+    bpp: u32,
+    pixels: []const u8,
+) !void {
+    try out.appendNTimes(std.testing.allocator, 0, 11 * 2);
+    try appendU16Le(out, 0);
+    try appendU32Le(out, 28);
+    try out.appendNTimes(std.testing.allocator, 0, 8);
+    try appendU32Le(out, z);
+    try appendU32Le(out, c);
+    try appendU32Le(out, t);
+    try appendU32Le(out, 0);
+    try appendU32Le(out, 0);
+    try out.appendNTimes(std.testing.allocator, 0, 5 * 2);
+    try appendU32Le(out, 0);
+    try appendU32Le(out, width);
+    try appendU32Le(out, height);
+    try appendU32Le(out, 0);
+    try appendU32Le(out, bpp);
+    try appendU32Le(out, 0);
+    try appendU32Le(out, 2);
+    try out.appendSlice(std.testing.allocator, pixels);
+    try out.appendNTimes(std.testing.allocator, 0, 4096 - out.items.len);
+}
+
+fn appendDirEntry(
+    out: *std.ArrayList(u8),
+    name: []const u8,
+    object_type: u8,
+    start_sector: u32,
+    stream_size: u64,
+) !void {
+    const start = out.items.len;
+    try out.appendNTimes(std.testing.allocator, 0, 128);
+    var i: usize = 0;
+    while (i < name.len) : (i += 1) {
+        std.mem.writeInt(u16, out.items[start + i * 2 ..][0..2], name[i], .little);
+    }
+    std.mem.writeInt(u16, out.items[start + name.len * 2 ..][0..2], 0, .little);
+    std.mem.writeInt(u16, out.items[start + 64 ..][0..2], @intCast((name.len + 1) * 2), .little);
+    out.items[start + 66] = object_type;
+    std.mem.writeInt(u32, out.items[start + 116 ..][0..4], start_sector, .little);
+    std.mem.writeInt(u64, out.items[start + 120 ..][0..8], stream_size, .little);
+}
+
+fn appendSyntheticCfb(
+    out: *std.ArrayList(u8),
+    stream_name: []const u8,
+    stream: []const u8,
+) !void {
+    const sector_size = 512;
+    const stream_sectors = (stream.len + sector_size - 1) / sector_size;
+    const total_sectors = 2 + stream_sectors;
+    const cfb_magic = [_]u8{ 0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1 };
+
+    try out.appendNTimes(std.testing.allocator, 0, 512 + total_sectors * sector_size);
+    @memcpy(out.items[0..cfb_magic.len], &cfb_magic);
+    std.mem.writeInt(u16, out.items[0x1c..][0..2], 0xfffe, .little);
+    std.mem.writeInt(u16, out.items[0x1e..][0..2], 9, .little);
+    std.mem.writeInt(u16, out.items[0x20..][0..2], 6, .little);
+    std.mem.writeInt(u32, out.items[0x2c..][0..4], 1, .little);
+    std.mem.writeInt(u32, out.items[0x30..][0..4], 1, .little);
+    std.mem.writeInt(u32, out.items[0x38..][0..4], 4096, .little);
+    std.mem.writeInt(u32, out.items[0x3c..][0..4], 0xfffffffe, .little);
+    std.mem.writeInt(u32, out.items[0x44..][0..4], 0xfffffffe, .little);
+    std.mem.writeInt(u32, out.items[0x4c..][0..4], 0, .little);
+    var difat: usize = 0x50;
+    while (difat < 512) : (difat += 4) {
+        std.mem.writeInt(u32, out.items[difat..][0..4], 0xffffffff, .little);
+    }
+
+    const fat_start = 512;
+    var entry: usize = 0;
+    while (entry < sector_size / 4) : (entry += 1) {
+        std.mem.writeInt(u32, out.items[fat_start + entry * 4 ..][0..4], 0xffffffff, .little);
+    }
+    std.mem.writeInt(u32, out.items[fat_start..][0..4], 0xfffffffd, .little);
+    std.mem.writeInt(u32, out.items[fat_start + 4 ..][0..4], 0xfffffffe, .little);
+    var sector: usize = 0;
+    while (sector < stream_sectors) : (sector += 1) {
+        const value: u32 = if (sector + 1 == stream_sectors) 0xfffffffe else @intCast(3 + sector);
+        std.mem.writeInt(u32, out.items[fat_start + (2 + sector) * 4 ..][0..4], value, .little);
+    }
+
+    var directory: std.ArrayList(u8) = .empty;
+    defer directory.deinit(std.testing.allocator);
+    try appendDirEntry(&directory, "Root Entry", 5, 0xfffffffe, 0);
+    try appendDirEntry(&directory, stream_name, 2, 2, stream.len);
+    try directory.appendNTimes(std.testing.allocator, 0, sector_size - directory.items.len);
+    @memcpy(out.items[512 + sector_size ..][0..sector_size], directory.items);
+    @memcpy(out.items[512 + sector_size * 2 ..][0..stream.len], stream);
+}
+
 test "server opens zeisslsm tiff path and reads first plane" {
     const path = "protocol-zeisslsm-test.lsm";
     var data: std.ArrayList(u8) = .empty;
@@ -2578,31 +2702,6 @@ test "server opens zeisslsm tiff path and reads first plane" {
 
     const zeiss_lsm_info_tag: u16 = 34412;
     const lsm_bytes = 92;
-
-    fn appendU16Le(list: *std.ArrayList(u8), value: u16) !void {
-        var bytes: [2]u8 = undefined;
-        std.mem.writeInt(u16, &bytes, value, .little);
-        try list.appendSlice(std.testing.allocator, &bytes);
-    }
-
-    fn appendU32Le(list: *std.ArrayList(u8), value: u32) !void {
-        var bytes: [4]u8 = undefined;
-        std.mem.writeInt(u32, &bytes, value, .little);
-        try list.appendSlice(std.testing.allocator, &bytes);
-    }
-
-    fn appendEntry(
-        list: *std.ArrayList(u8),
-        tag: u16,
-        field_type: u16,
-        count: u32,
-        value: u32,
-    ) !void {
-        try appendU16Le(list, tag);
-        try appendU16Le(list, field_type);
-        try appendU32Le(list, count);
-        try appendU32Le(list, value);
-    }
 
     try data.appendSlice(std.testing.allocator, "II");
     try appendU16Le(&data, 42);
@@ -2665,117 +2764,6 @@ test "server opens zeisszvi cfb path and reads first plane" {
     var cfb: std.ArrayList(u8) = .empty;
     defer cfb.deinit(std.testing.allocator);
 
-    fn appendU16Le(out: *std.ArrayList(u8), value: u16) !void {
-        var bytes: [2]u8 = undefined;
-        std.mem.writeInt(u16, &bytes, value, .little);
-        try out.appendSlice(std.testing.allocator, &bytes);
-    }
-
-    fn appendU32Le(out: *std.ArrayList(u8), value: u32) !void {
-        var bytes: [4]u8 = undefined;
-        std.mem.writeInt(u32, &bytes, value, .little);
-        try out.appendSlice(std.testing.allocator, &bytes);
-    }
-
-    fn appendSyntheticImageStream(
-        out: *std.ArrayList(u8),
-        width: u32,
-        height: u32,
-        z: u32,
-        c: u32,
-        t: u32,
-        bpp: u32,
-        pixels: []const u8,
-    ) !void {
-        try out.appendNTimes(std.testing.allocator, 0, 11 * 2);
-        try appendU16Le(out, 0);
-        try appendU32Le(out, 28);
-        try out.appendNTimes(std.testing.allocator, 0, 8);
-        try appendU32Le(out, z);
-        try appendU32Le(out, c);
-        try appendU32Le(out, t);
-        try appendU32Le(out, 0);
-        try appendU32Le(out, 0);
-        try out.appendNTimes(std.testing.allocator, 0, 5 * 2);
-        try appendU32Le(out, 0);
-        try appendU32Le(out, width);
-        try appendU32Le(out, height);
-        try appendU32Le(out, 0);
-        try appendU32Le(out, bpp);
-        try appendU32Le(out, 0);
-        try appendU32Le(out, 2);
-        try out.appendSlice(std.testing.allocator, pixels);
-        try out.appendNTimes(std.testing.allocator, 0, 4096 - out.items.len);
-    }
-
-    fn appendDirEntry(
-        out: *std.ArrayList(u8),
-        name: []const u8,
-        object_type: u8,
-        start_sector: u32,
-        stream_size: u64,
-    ) !void {
-        const start = out.items.len;
-        try out.appendNTimes(std.testing.allocator, 0, 128);
-        var i: usize = 0;
-        while (i < name.len) : (i += 1) {
-            std.mem.writeInt(u16, out.items[start + i * 2 ..][0..2], name[i], .little);
-        }
-        std.mem.writeInt(u16, out.items[start + name.len * 2 ..][0..2], 0, .little);
-        std.mem.writeInt(u16, out.items[start + 64 ..][0..2], @intCast((name.len + 1) * 2), .little);
-        out.items[start + 66] = object_type;
-        std.mem.writeInt(u32, out.items[start + 116 ..][0..4], start_sector, .little);
-        std.mem.writeInt(u64, out.items[start + 120 ..][0..8], stream_size, .little);
-    }
-
-    fn appendSyntheticCfb(
-        out: *std.ArrayList(u8),
-        stream_name: []const u8,
-        stream: []const u8,
-    ) !void {
-        const sector_size = 512;
-        const stream_sectors = (stream.len + sector_size - 1) / sector_size;
-        const total_sectors = 2 + stream_sectors;
-        const cfb_magic = [_]u8{ 0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1 };
-
-        try out.appendNTimes(std.testing.allocator, 0, 512 + total_sectors * sector_size);
-        @memcpy(out.items[0..cfb_magic.len], &cfb_magic);
-        std.mem.writeInt(u16, out.items[0x1c..][0..2], 0xfffe, .little);
-        std.mem.writeInt(u16, out.items[0x1e..][0..2], 9, .little);
-        std.mem.writeInt(u16, out.items[0x20..][0..2], 6, .little);
-        std.mem.writeInt(u32, out.items[0x2c..][0..4], 1, .little);
-        std.mem.writeInt(u32, out.items[0x30..][0..4], 1, .little);
-        std.mem.writeInt(u32, out.items[0x38..][0..4], 4096, .little);
-        std.mem.writeInt(u32, out.items[0x3c..][0..4], 0xfffffffe, .little);
-        std.mem.writeInt(u32, out.items[0x44..][0..4], 0xfffffffe, .little);
-        std.mem.writeInt(u32, out.items[0x4c..][0..4], 0, .little);
-        var difat: usize = 0x50;
-        while (difat < 512) : (difat += 4) {
-            std.mem.writeInt(u32, out.items[difat..][0..4], 0xffffffff, .little);
-        }
-
-        const fat_start = 512;
-        var entry: usize = 0;
-        while (entry < sector_size / 4) : (entry += 1) {
-            std.mem.writeInt(u32, out.items[fat_start + entry * 4 ..][0..4], 0xffffffff, .little);
-        }
-        std.mem.writeInt(u32, out.items[fat_start..][0..4], 0xfffffffd, .little);
-        std.mem.writeInt(u32, out.items[fat_start + 4 ..][0..4], 0xfffffffe, .little);
-        var sector: usize = 0;
-        while (sector < stream_sectors) : (sector += 1) {
-            const value: u32 = if (sector + 1 == stream_sectors) 0xfffffffe else @intCast(3 + sector);
-            std.mem.writeInt(u32, out.items[fat_start + (2 + sector) * 4 ..][0..4], value, .little);
-        }
-
-        var directory: std.ArrayList(u8) = .empty;
-        defer directory.deinit(std.testing.allocator);
-        try appendDirEntry(&directory, "Root Entry", 5, 0xfffffffe, 0);
-        try appendDirEntry(&directory, stream_name, 2, 2, stream.len);
-        try directory.appendNTimes(std.testing.allocator, 0, sector_size - directory.items.len);
-        @memcpy(out.items[512 + sector_size ..][0..sector_size], directory.items);
-        @memcpy(out.items[512 + sector_size * 2 ..][0..stream.len], stream);
-    }
-
     try appendSyntheticImageStream(&stream, 1, 1, 0, 0, 0, 2, &.{ 10, 0 });
     try appendSyntheticCfb(&cfb, "Image/Item(0)/CONTENTS", stream.items);
 
@@ -2808,14 +2796,14 @@ test "server opens zeisstiff sibling xml path and reads first plane" {
     const image_path = "protocol-zeisstiff-test.tif";
     const xml_path = "protocol-zeisstiff-test.tif_meta.xml";
     const tiny_tiff = [_]u8{
-        'I', 'I', 42, 0, 8, 0, 0, 0, 9, 0, 0, 1, 4, 0, 1, 0,
-        0, 0, 1, 0, 0, 0, 1, 1, 4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 2, 1, 3, 0, 1, 0, 0, 0, 8, 0, 0, 0, 3, 1,
-        3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 6, 1, 3, 0, 1, 0,
-        0, 0, 1, 0, 0, 0, 17, 1, 4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 21, 1, 3, 0, 1, 0, 0, 0, 1, 0, 0, 0, 22, 1,
-        4, 0, 1, 0, 0, 0, 1, 0,
-        0, 0, 23, 1, 4, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 77,
+        'I', 'I', 42, 0, 8, 0, 0,  0, 9, 0, 0,  1, 4, 0, 1,  0,
+        0,   0,   1,  0, 0, 0, 1,  1, 4, 0, 1,  0, 0, 0, 1,  0,
+        0,   0,   2,  1, 3, 0, 1,  0, 0, 0, 8,  0, 0, 0, 3,  1,
+        3,   0,   1,  0, 0, 0, 1,  0, 0, 0, 6,  1, 3, 0, 1,  0,
+        0,   0,   1,  0, 0, 0, 17, 1, 4, 0, 1,  0, 0, 0, 1,  0,
+        0,   0,   21, 1, 3, 0, 1,  0, 0, 0, 1,  0, 0, 0, 22, 1,
+        4,   0,   1,  0, 0, 0, 1,  0, 0, 0, 23, 1, 4, 0, 1,  0,
+        0,   0,   1,  0, 0, 0, 0,  0, 0, 0, 77,
     };
 
     std.Io.Dir.cwd().deleteFile(std.testing.io, image_path) catch {};
@@ -2856,31 +2844,6 @@ test "server opens prairie tagged tiff path and reads first region" {
     const prairie_tag_1: u16 = 33628;
     const prairie_tag_2: u16 = 33629;
     const prairie_tag_3: u16 = 33630;
-
-    fn appendU16Le(list: *std.ArrayList(u8), value: u16) !void {
-        var bytes: [2]u8 = undefined;
-        std.mem.writeInt(u16, &bytes, value, .little);
-        try list.appendSlice(std.testing.allocator, &bytes);
-    }
-
-    fn appendU32Le(list: *std.ArrayList(u8), value: u32) !void {
-        var bytes: [4]u8 = undefined;
-        std.mem.writeInt(u32, &bytes, value, .little);
-        try list.appendSlice(std.testing.allocator, &bytes);
-    }
-
-    fn appendEntry(
-        list: *std.ArrayList(u8),
-        tag: u16,
-        field_type: u16,
-        count: u32,
-        value: u32,
-    ) !void {
-        try appendU16Le(list, tag);
-        try appendU16Le(list, field_type);
-        try appendU32Le(list, count);
-        try appendU32Le(list, value);
-    }
 
     try data.appendSlice(std.testing.allocator, "II");
     try appendU16Le(&data, 42);
